@@ -92,7 +92,7 @@ func (s *LedgerService) validateJournalBalance(transactions []models.Transaction
 // PersistJournal creates a new journal entry with its transactions after validation.
 // It ensures the journal balances and adheres to other M1 rules.
 // TODO: Add UserID parameter for audit fields once user context is available.
-func (s *LedgerService) PersistJournal(ctx context.Context, journal models.Journal, transactions []models.Transaction) (*models.Journal, error) {
+func (s *LedgerService) PersistJournal(ctx context.Context, journal models.Journal, transactions []models.Transaction, userID string) (*models.Journal, error) {
 	// --- Validation ---
 	// 1. Check minimum entries
 	if len(transactions) < 2 {
@@ -134,7 +134,7 @@ func (s *LedgerService) PersistJournal(ctx context.Context, journal models.Journ
 	// --- Persistence ---
 	// Populate Audit Fields & Defaults
 	// TODO: Get actual UserID
-	creatorUserID := "SYSTEM_MVP" // Placeholder
+	creatorUserID := userID
 	now := time.Now().UTC()
 
 	// Assign Journal ID if not provided (or let DB handle)

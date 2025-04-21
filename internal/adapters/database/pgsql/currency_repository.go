@@ -23,7 +23,7 @@ func NewCurrencyRepository(pool *pgxpool.Pool) ports.CurrencyRepository {
 // Assumes CurrencyCode is the unique identifier.
 func (r *currencyRepository) SaveCurrency(ctx context.Context, currency models.Currency) error {
 	// In a real app, use proper UserID. Placeholder for M1.
-	creatorUserID := "SYSTEM_MVP"
+	creatorUserID := currency.CreatedBy
 	now := time.Now().UTC()
 
 	// Simple UPSERT logic (adjust based on actual table schema/constraints)

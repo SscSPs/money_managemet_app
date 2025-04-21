@@ -25,7 +25,7 @@ func NewAccountRepository(pool *pgxpool.Pool) ports.AccountRepository {
 // Note: Update/Inactivate logic will be added in later milestones/methods.
 func (r *accountRepository) SaveAccount(ctx context.Context, account models.Account) error {
 	// Use actual UserID when available
-	creatorUserID := "SYSTEM_MVP"
+	creatorUserID := account.CreatedBy
 	now := time.Now().UTC()
 
 	query := `

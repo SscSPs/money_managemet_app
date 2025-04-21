@@ -7,4 +7,5 @@ import (
 type CreateJournalAndTxn struct {
 	Journal      models.Journal       `json:"journal"`
 	Transactions []models.Transaction `json:"transactions"`
+	UserID       string               `json:"userID"`
 }

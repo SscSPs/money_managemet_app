@@ -129,6 +129,9 @@ func setupAPIV1Routes(r *gin.Engine, cfg *config.Config, dbPool *pgxpool.Pool) {
 	v1 := r.Group("/api/v1")
 	addExampleAPI(v1)
 	addLedgerAPI(v1, dbPool)
+	addAccountAPI(v1, dbPool)
+	addUserAPI(v1, dbPool)
+	addCurrencyAPI(v1, dbPool)
 }
 
 func addLedgerAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool) {
@@ -142,6 +145,37 @@ func addLedgerAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool) {
 func addExampleAPI(v1 *gin.RouterGroup) {
 	eg := v1.Group("/example")
 	eg.GET("/helloworld", handlers.GetHome)
+}
+
+func addAccountAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool) {
+	accountRepo := pgsql.NewAccountRepository(dbPool)
+	accountService := services.NewAccountService(accountRepo)
+	accountHandler := handlers.NewAccountHandler(accountService)
+
+	accounts := v1.Group("/accounts")
+	accounts.POST("/", accountHandler.CreateAccount)
+	accounts.GET("/:accountID", accountHandler.GetAccount)
+}
+
+func addUserAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool) {
+	userRepo := pgsql.NewUserRepository(dbPool)
+	userService := services.NewUserService(userRepo)
+	userHandler := handlers.NewUserHandler(userService)
+
+	users := v1.Group("/users")
+	users.POST("/", userHandler.CreateUser)
+	users.GET("/:userID", userHandler.GetUser)
+}
+
+func addCurrencyAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool) {
+	currencyRepo := pgsql.NewCurrencyRepository(dbPool)
+	currencyService := services.NewCurrencyService(currencyRepo)
+	currencyHandler := handlers.NewCurrencyHandler(currencyService)
+
+	currencies := v1.Group("/currencies")
+	currencies.POST("/", currencyHandler.CreateCurrency)
+	currencies.GET("/", currencyHandler.ListCurrencies)
+	currencies.GET("/:currencyCode", currencyHandler.GetCurrency)
 }
 
 func setupSwaggerRoutes(r *gin.Engine, cfg *config.Config) {

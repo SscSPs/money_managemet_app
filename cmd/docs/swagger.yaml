@@ -1,5 +1,76 @@
 basePath: /
 definitions:
+  dto.AccountResponse:
+    properties:
+      accountID:
+        type: string
+      accountType:
+        $ref: '#/definitions/models.AccountType'
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      currencyCode:
+        type: string
+      description:
+        type: string
+      isActive:
+        type: boolean
+      lastUpdatedAt:
+        type: string
+      lastUpdatedBy:
+        type: string
+      name:
+        type: string
+      parentAccountID:
+        description: 'Note: Empty string if null in DB'
+        type: string
+    type: object
+  dto.CreateAccountRequest:
+    properties:
+      accountType:
+        allOf:
+        - $ref: '#/definitions/models.AccountType'
+        enum:
+        - ASSET
+        - LIABILITY
+        - EQUITY
+        - INCOME
+        - EXPENSE
+      currencyCode:
+        type: string
+      description:
+        description: Optional
+        type: string
+      name:
+        type: string
+      parentAccountID:
+        description: Optional, use pointer for nullability
+        type: string
+      userID:
+        description: needed for audit fields
+        type: string
+    required:
+    - accountType
+    - currencyCode
+    - name
+    type: object
+  dto.CreateCurrencyRequest:
+    properties:
+      currencyCode:
+        type: string
+      name:
+        type: string
+      symbol:
+        type: string
+      userID:
+        type: string
+    required:
+    - currencyCode
+    - name
+    - symbol
+    - userID
+    type: object
   dto.CreateJournalAndTxn:
     properties:
       journal:
@@ -8,7 +79,62 @@ definitions:
         items:
           $ref: '#/definitions/models.Transaction'
         type: array
+      userID:
+        type: string
     type: object
+  dto.CreateUserRequest:
+    properties:
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  dto.CurrencyResponse:
+    properties:
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      currencyCode:
+        type: string
+      lastUpdatedAt:
+        type: string
+      lastUpdatedBy:
+        type: string
+      name:
+        type: string
+      symbol:
+        type: string
+    type: object
+  dto.UserResponse:
+    properties:
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      lastUpdatedAt:
+        type: string
+      lastUpdatedBy:
+        type: string
+      name:
+        type: string
+      userID:
+        type: string
+    type: object
+  models.AccountType:
+    enum:
+    - ASSET
+    - LIABILITY
+    - EQUITY
+    - INCOME
+    - EXPENSE
+    type: string
+    x-enum-varnames:
+    - Asset
+    - Liability
+    - Equity
+    - Income
+    - Expense
   models.Journal:
     properties:
       createdAt:
@@ -96,6 +222,148 @@ info:
   title: MMA Backend API
   version: "1.0"
 paths:
+  /accounts:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new account (Asset, Liability, Equity, Income, Expense)
+      parameters:
+      - description: Account details
+        in: body
+        name: account
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateAccountRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.AccountResponse'
+        "400":
+          description: Invalid input
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Create a new financial account
+      tags:
+      - accounts
+  /accounts/{accountID}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves details for a specific account by its ID
+      parameters:
+      - description: Account ID
+        in: path
+        name: accountID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AccountResponse'
+        "404":
+          description: Account not found
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get an account by ID
+      tags:
+      - accounts
+  /currencies:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of all currencies supported by the system
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.CurrencyResponse'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: List all available currencies
+      tags:
+      - currencies
+    post:
+      consumes:
+      - application/json
+      description: Adds a new currency to the system (e.g., USD, EUR)
+      parameters:
+      - description: Currency details
+        in: body
+        name: currency
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateCurrencyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CurrencyResponse'
+        "400":
+          description: Invalid input
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Create a new currency
+      tags:
+      - currencies
+  /currencies/{currencyCode}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves details for a specific currency by its 3-letter code
+      parameters:
+      - description: Currency Code (3 uppercase letters)
+        in: path
+        name: currencyCode
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CurrencyResponse'
+        "400":
+          description: Invalid currency code format
+          schema:
+            type: string
+        "404":
+          description: Currency not found
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get a currency by code
+      tags:
+      - currencies
   /example/helloworld:
     get:
       consumes:
@@ -165,4 +433,63 @@ paths:
       summary: Get a journal entry and its transactions
       tags:
       - ledger
+  /users:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user account
+      parameters:
+      - description: User details
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.UserResponse'
+        "400":
+          description: Invalid input
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Create a new user
+      tags:
+      - users
+  /users/{userID}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves details for a specific user by their ID
+      parameters:
+      - description: User ID
+        in: path
+        name: userID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserResponse'
+        "404":
+          description: User not found
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get a user by ID
+      tags:
+      - users
 swagger: "2.0"

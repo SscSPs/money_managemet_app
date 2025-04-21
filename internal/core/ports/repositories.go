@@ -42,6 +42,7 @@ type ExchangeRateRepository interface {
 
 // UserRepository defines persistence operations for Users (needed for CreatedBy/UpdatedBy).
 type UserRepository interface {
+	SaveUser(ctx context.Context, user models.User) error
 	FindUserByID(ctx context.Context, userID string) (*models.User, error)
 	// SaveUser might be needed if users are managed within the app later
 }

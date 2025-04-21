@@ -29,7 +29,7 @@ func NewLedgerHandler(ledgerService *services.LedgerService) *LedgerHandler {
 func (h *LedgerHandler) PersistJournal(c *gin.Context) {
 	createReq := dto.CreateJournalAndTxn{}
 	c.ShouldBindJSON(&createReq)
-	journal, err := h.ledgerService.PersistJournal(c.Request.Context(), createReq.Journal, createReq.Transactions)
+	journal, err := h.ledgerService.PersistJournal(c.Request.Context(), createReq.Journal, createReq.Transactions, createReq.UserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
