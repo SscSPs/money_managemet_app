@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+
 	"github.com/SscSPs/money_managemet_app/cmd/docs"
 	"github.com/SscSPs/money_managemet_app/internal/handlers"
 	"github.com/SscSPs/money_managemet_app/pkg/config"
+	"github.com/SscSPs/money_managemet_app/pkg/database"
 	"github.com/gin-gonic/gin"
 
 	swaggerFiles "github.com/swaggo/files"
@@ -25,6 +28,15 @@ func main() {
 		log.Fatal(err)
 		return
 	}
+
+	// Initialize database connection
+	dbPool, err := database.NewPgxPool(context.Background(), cfg.DatabaseURL, cfg.EnableDBCheck)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+		return
+	}
+	// Defer closing the connection pool
+	defer dbPool.Close()
 
 	if cfg.IsProduction {
 		gin.SetMode(gin.ReleaseMode)

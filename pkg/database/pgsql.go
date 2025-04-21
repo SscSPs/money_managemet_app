@@ -9,7 +9,7 @@ import (
 )
 
 // NewPgxPool creates a new PostgreSQL connection pool.
-func NewPgxPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+func NewPgxPool(ctx context.Context, databaseURL string, enableDBCheck bool) (*pgxpool.Pool, error) {
 	if databaseURL == "" {
 		return nil, fmt.Errorf("database URL cannot be empty")
 	}
@@ -30,10 +30,13 @@ func NewPgxPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) 
 	}
 
 	// Test the connection
-	err = pool.Ping(ctx)
-	if err != nil {
-		pool.Close() // Close the pool if ping fails
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+	if enableDBCheck {
+		log.Println("Checking database connection...")
+		err = pool.Ping(ctx)
+		if err != nil {
+			pool.Close() // Close the pool if ping fails
+			return nil, fmt.Errorf("failed to ping database: %w", err)
+		}
 	}
 
 	log.Println("Successfully connected to PostgreSQL database.")

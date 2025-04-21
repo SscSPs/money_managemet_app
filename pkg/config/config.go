@@ -10,9 +10,10 @@ import (
 
 // Config holds application configuration.
 type Config struct {
-	DatabaseURL  string
-	Port         string
-	IsProduction bool
+	DatabaseURL   string
+	Port          string
+	IsProduction  bool
+	EnableDBCheck bool
 }
 
 // LoadConfig loads configuration from environment variables.
@@ -33,6 +34,7 @@ func LoadConfig() (*Config, error) {
 		log.Printf("Warning: PORT environment variable not set. Defaulting to %s\n", port)
 	}
 
+	// Load IsProduction flag
 	isProdStr := os.Getenv("IS_PRODUCTION")
 	isProd, err := strconv.ParseBool(isProdStr)
 	if err != nil {
@@ -43,9 +45,19 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
+	enableDBCheckStr := os.Getenv("ENABLE_DB_CHECK")
+	enableDBCheck, err := strconv.ParseBool(enableDBCheckStr)
+	if err != nil {
+		enableDBCheck = false
+		if enableDBCheckStr != "" {
+			log.Printf("Warning: Invalid value for ENABLE_DB_CHECK ('%s'). Defaulting to false.\n", enableDBCheckStr)
+		}
+	}
+
 	return &Config{
-		DatabaseURL:  dbURL,
-		Port:         port,
-		IsProduction: isProd,
+		DatabaseURL:   dbURL,
+		Port:          port,
+		IsProduction:  isProd,
+		EnableDBCheck: enableDBCheck,
 	}, nil
 }
