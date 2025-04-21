@@ -1,0 +1,26 @@
+basePath: /
+host: localhost:8080
+info:
+  contact: {}
+  description: This is a sample server for MMA backend.
+  title: MMA Backend API
+  version: "1.0"
+paths:
+  /example/helloworld:
+    get:
+      consumes:
+      - application/json
+      description: get a welcome message
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Welcome to my Go app!
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Show a welcome message
+      tags:
+      - home
+swagger: "2.0"
