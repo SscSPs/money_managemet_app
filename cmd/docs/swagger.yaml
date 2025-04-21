@@ -1,4 +1,94 @@
 basePath: /
+definitions:
+  dto.CreateJournalAndTxn:
+    properties:
+      journal:
+        $ref: '#/definitions/models.Journal'
+      transactions:
+        items:
+          $ref: '#/definitions/models.Transaction'
+        type: array
+    type: object
+  models.Journal:
+    properties:
+      createdAt:
+        type: string
+      createdBy:
+        description: UserID Reference
+        type: string
+      currencyCode:
+        description: Primary currency of the Journal (Not Null)
+        type: string
+      description:
+        description: Nullable user description
+        type: string
+      journalDate:
+        description: Date the event occurred
+        type: string
+      journalID:
+        description: Primary Key (e.g., UUID)
+        type: string
+      lastUpdatedAt:
+        type: string
+      lastUpdatedBy:
+        description: UserID Reference
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/models.JournalStatus'
+        description: 'Default: Posted'
+    type: object
+  models.JournalStatus:
+    enum:
+    - POSTED
+    - REVERSED
+    type: string
+    x-enum-varnames:
+    - Posted
+    - Reversed
+  models.Transaction:
+    properties:
+      accountID:
+        description: FK -> Account.accountID (Not Null)
+        type: string
+      amount:
+        description: Positive value; Precise decimal type
+        type: number
+      createdAt:
+        type: string
+      createdBy:
+        description: UserID Reference
+        type: string
+      currencyCode:
+        description: Must match Journal currency (Not Null)
+        type: string
+      journalID:
+        description: FK -> Journal.journalID (Not Null)
+        type: string
+      lastUpdatedAt:
+        type: string
+      lastUpdatedBy:
+        description: UserID Reference
+        type: string
+      notes:
+        description: Nullable
+        type: string
+      transactionID:
+        description: Primary Key (e.g., UUID)
+        type: string
+      transactionType:
+        allOf:
+        - $ref: '#/definitions/models.TransactionType'
+        description: DEBIT or CREDIT (Not Null)
+    type: object
+  models.TransactionType:
+    enum:
+    - DEBIT
+    - CREDIT
+    type: string
+    x-enum-varnames:
+    - Debit
+    - Credit
 host: localhost:8080
 info:
   contact: {}
@@ -23,4 +113,56 @@ paths:
       summary: Show a welcome message
       tags:
       - home
+  /ledger:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new journal and associated transactions
+      parameters:
+      - description: Journal and Transactions
+        in: body
+        name: journal
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateJournalAndTxn'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Persist a journal entry with its transactions
+      tags:
+      - ledger
+  /ledger/{journalID}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a journal and its associated transactions by journal
+        ID
+      parameters:
+      - description: Journal ID
+        in: path
+        name: journalID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CreateJournalAndTxn'
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Get a journal entry and its transactions
+      tags:
+      - ledger
 swagger: "2.0"

@@ -40,6 +40,216 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/ledger": {
+            "post": {
+                "description": "Creates a new journal and associated transactions",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ledger"
+                ],
+                "summary": "Persist a journal entry with its transactions",
+                "parameters": [
+                    {
+                        "description": "Journal and Transactions",
+                        "name": "journal",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateJournalAndTxn"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/ledger/{journalID}": {
+            "get": {
+                "description": "Retrieves a journal and its associated transactions by journal ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ledger"
+                ],
+                "summary": "Get a journal entry and its transactions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Journal ID",
+                        "name": "journalID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateJournalAndTxn"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "dto.CreateJournalAndTxn": {
+            "type": "object",
+            "properties": {
+                "journal": {
+                    "$ref": "#/definitions/models.Journal"
+                },
+                "transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Transaction"
+                    }
+                }
+            }
+        },
+        "models.Journal": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "description": "UserID Reference",
+                    "type": "string"
+                },
+                "currencyCode": {
+                    "description": "Primary currency of the Journal (Not Null)",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "Nullable user description",
+                    "type": "string"
+                },
+                "journalDate": {
+                    "description": "Date the event occurred",
+                    "type": "string"
+                },
+                "journalID": {
+                    "description": "Primary Key (e.g., UUID)",
+                    "type": "string"
+                },
+                "lastUpdatedAt": {
+                    "type": "string"
+                },
+                "lastUpdatedBy": {
+                    "description": "UserID Reference",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Default: Posted",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.JournalStatus"
+                        }
+                    ]
+                }
+            }
+        },
+        "models.JournalStatus": {
+            "type": "string",
+            "enum": [
+                "POSTED",
+                "REVERSED"
+            ],
+            "x-enum-varnames": [
+                "Posted",
+                "Reversed"
+            ]
+        },
+        "models.Transaction": {
+            "type": "object",
+            "properties": {
+                "accountID": {
+                    "description": "FK -\u003e Account.accountID (Not Null)",
+                    "type": "string"
+                },
+                "amount": {
+                    "description": "Positive value; Precise decimal type",
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "description": "UserID Reference",
+                    "type": "string"
+                },
+                "currencyCode": {
+                    "description": "Must match Journal currency (Not Null)",
+                    "type": "string"
+                },
+                "journalID": {
+                    "description": "FK -\u003e Journal.journalID (Not Null)",
+                    "type": "string"
+                },
+                "lastUpdatedAt": {
+                    "type": "string"
+                },
+                "lastUpdatedBy": {
+                    "description": "UserID Reference",
+                    "type": "string"
+                },
+                "notes": {
+                    "description": "Nullable",
+                    "type": "string"
+                },
+                "transactionID": {
+                    "description": "Primary Key (e.g., UUID)",
+                    "type": "string"
+                },
+                "transactionType": {
+                    "description": "DEBIT or CREDIT (Not Null)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.TransactionType"
+                        }
+                    ]
+                }
+            }
+        },
+        "models.TransactionType": {
+            "type": "string",
+            "enum": [
+                "DEBIT",
+                "CREDIT"
+            ],
+            "x-enum-varnames": [
+                "Debit",
+                "Credit"
+            ]
         }
     }
 }`
