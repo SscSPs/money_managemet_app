@@ -20,7 +20,11 @@ import (
 // @BasePath /
 
 func main() {
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
 
 	if cfg.IsProduction {
 		gin.SetMode(gin.ReleaseMode)
@@ -29,7 +33,7 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 
-	err := r.SetTrustedProxies(nil)
+	err = r.SetTrustedProxies(nil)
 	if err != nil {
 		log.Fatal(err)
 		return
@@ -52,7 +56,7 @@ func addExampleAPI(v1 *gin.RouterGroup) {
 	eg.GET("/helloworld", handlers.GetHome)
 }
 
-func setupSwaggerRoutes(r *gin.Engine, cfg config.Config) {
+func setupSwaggerRoutes(r *gin.Engine, cfg *config.Config) {
 	// Swagger setup
 	if cfg.IsProduction {
 		//no swagger in prod
