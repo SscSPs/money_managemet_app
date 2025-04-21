@@ -113,7 +113,7 @@ paths:
       summary: Show a welcome message
       tags:
       - home
-  /ledger:
+  /ledger/:
     post:
       consumes:
       - application/json

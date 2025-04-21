@@ -25,7 +25,7 @@ func NewLedgerHandler(ledgerService *services.LedgerService) *LedgerHandler {
 // @Param   journal body dto.CreateJournalAndTxn true "Journal and Transactions"
 // @Success 200 {object} string
 // @Failure 500 {object} string
-// @Router /ledger [post]
+// @Router /ledger/ [post]
 func (h *LedgerHandler) PersistJournal(c *gin.Context) {
 	createReq := dto.CreateJournalAndTxn{}
 	c.ShouldBindJSON(&createReq)

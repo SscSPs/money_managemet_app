@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"log"
 
 	"github.com/SscSPs/money_managemet_app/cmd/docs"
 	"github.com/SscSPs/money_managemet_app/internal/adapters/database/pgsql"
@@ -12,10 +14,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	migrate "github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/jackc/pgx/v5/stdlib"
+
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-
-	"log"
 )
 
 // @title MMA Backend API
@@ -32,14 +37,73 @@ func main() {
 		return
 	}
 
-	// Initialize database connection
+	// Initialize database connection pool (for application use)
 	dbPool, err := database.NewPgxPool(context.Background(), cfg.DatabaseURL, cfg.EnableDBCheck)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		log.Fatalf("Failed to initialize database pool: %v", err)
 		return
 	}
 	// Defer closing the connection pool
 	defer dbPool.Close()
+	log.Println("Database connection pool established.")
+
+	// --- Run Database Migrations ---
+	log.Println("Running database migrations...")
+	// Open a temporary standard sql.DB connection for migrations
+	// Using pgx/v5/stdlib driver to be compatible with the main pool
+	migrationDB, err := sql.Open("pgx", cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("Failed to open database connection for migrations: %v", err)
+	}
+	if err := migrationDB.Ping(); err != nil {
+		log.Fatalf("Failed to ping database for migrations: %v", err)
+	}
+	defer func() {
+		if cerr := migrationDB.Close(); cerr != nil {
+			log.Printf("Error closing migration DB connection: %v", cerr)
+		}
+	}()
+
+	// Create a postgres driver instance for migrate
+	driver, err := postgres.WithInstance(migrationDB, &postgres.Config{})
+	if err != nil {
+		log.Fatalf("Could not create postgres driver instance for migrations: %v", err)
+	}
+
+	// Point to the migrations directory (adjust path if needed)
+	migrationsPath := "file://migrations"
+
+	// Create a new migrate instance
+	m, err := migrate.NewWithDatabaseInstance(
+		migrationsPath,
+		"postgres", // Database name used by migrate
+		driver,
+	)
+	if err != nil {
+		log.Fatalf("Could not create migrate instance: %v", err)
+	}
+
+	// Apply all available "up" migrations
+	err = m.Up()
+	if err != nil && err != migrate.ErrNoChange {
+		log.Fatalf("Failed to apply migrations: %v", err)
+	}
+
+	// Check for dirty migrations after running Up.
+	sourceErr, dbErr := m.Close()
+	if sourceErr != nil {
+		log.Fatalf("Migration source error: %v", sourceErr)
+	}
+	if dbErr != nil {
+		log.Fatalf("Migration database error: %v", dbErr)
+	}
+
+	if err == migrate.ErrNoChange {
+		log.Println("No new migrations to apply.")
+	} else {
+		log.Println("Database migrations applied successfully.")
+	}
+	// --- End Database Migrations ---
 
 	if cfg.IsProduction {
 		gin.SetMode(gin.ReleaseMode)
@@ -71,7 +135,7 @@ func addLedgerAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	ledger := v1.Group("/ledger")
 	ledgerService := services.NewLedgerService(pgsql.NewAccountRepository(dbPool), pgsql.NewJournalRepository(dbPool))
 	ledgerHandler := handlers.NewLedgerHandler(ledgerService)
-	ledger.POST("/create", ledgerHandler.PersistJournal)
+	ledger.POST("/", ledgerHandler.PersistJournal)
 	ledger.GET("/:journalID", ledgerHandler.GetJournal)
 }
 

@@ -5,6 +5,6 @@ import (
 )
 
 type CreateJournalAndTxn struct {
-	Journal      models.Journal
-	Transactions []models.Transaction
+	Journal      models.Journal       `json:"journal"`
+	Transactions []models.Transaction `json:"transactions"`
 }

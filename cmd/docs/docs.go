@@ -41,7 +41,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/ledger": {
+        "/ledger/": {
             "post": {
                 "description": "Creates a new journal and associated transactions",
                 "consumes": [
