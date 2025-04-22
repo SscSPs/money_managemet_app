@@ -5,34 +5,38 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/SscSPs/money_managemet_app/internal/adapters/database/pgsql"
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type LedgerHandler struct {
+type ledgerHandler struct {
 	ledgerService *services.LedgerService
 }
 
-func NewLedgerHandler(ledgerService *services.LedgerService) *LedgerHandler {
-	return &LedgerHandler{
+func newLedgerHandler(ledgerService *services.LedgerService) *ledgerHandler {
+	return &ledgerHandler{
 		ledgerService: ledgerService,
 	}
 }
 
-// PersistJournal godoc
+// persistJournal godoc
 // @Summary Persist a journal entry with its transactions
 // @Description Creates a new journal and associated transactions
 // @Tags ledger
 // @Accept  json
 // @Produce  json
 // @Param   journal body dto.CreateJournalAndTxn true "Journal and Transactions"
-// @Success 200 {object} string
-// @Failure 500 {object} string
+// @Success 200 {object} map[string]string "Returns the ID of the created journal"
+// @Failure 400 {object} map[string]string "Invalid request format"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Failed to persist journal"
 // @Router /ledger/ [post]
-func (h *LedgerHandler) PersistJournal(c *gin.Context) {
+func (h *ledgerHandler) persistJournal(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c)
 
 	createReq := dto.CreateJournalAndTxn{}
@@ -42,7 +46,6 @@ func (h *LedgerHandler) PersistJournal(c *gin.Context) {
 		return
 	}
 
-	// Get the ID of the user *performing* the action from the context
 	creatorUserID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		logger.Error("Creator user ID not found in context")
@@ -50,14 +53,11 @@ func (h *LedgerHandler) PersistJournal(c *gin.Context) {
 		return
 	}
 
-	// Log the creator performing the action
 	logger = logger.With(slog.String("creator_user_id", creatorUserID))
 
-	// Note: createReq.UserID is ambiguous here. Assuming it's metadata about the journal,
-	// not necessarily the creator. Passing creatorUserID explicitly to the service.
 	journal, err := h.ledgerService.PersistJournal(c.Request.Context(), createReq.Journal, createReq.Transactions, creatorUserID)
 	if err != nil {
-		logger.Error("Failed to persist journal in service", slog.String("error", err.Error()), slog.String("request_user_id", createReq.UserID)) // Log the UserID from request if relevant
+		logger.Error("Failed to persist journal in service", slog.String("error", err.Error()))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist journal"})
 		return
 	}
@@ -66,17 +66,18 @@ func (h *LedgerHandler) PersistJournal(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"journalID": journal.JournalID})
 }
 
-// GetJournal godoc
+// getJournal godoc
 // @Summary Get a journal entry and its transactions
 // @Description Retrieves a journal and its associated transactions by journal ID
 // @Tags ledger
 // @Accept  json
 // @Produce  json
 // @Param   journalID path string true "Journal ID"
-// @Success 200 {object} dto.CreateJournalAndTxn
-// @Failure 500 {object} string
+// @Success 200 {object} dto.CreateJournalAndTxn "Journal and its transactions"
+// @Failure 404 {object} map[string]string "Journal not found"
+// @Failure 500 {object} map[string]string "Failed to retrieve journal"
 // @Router /ledger/{journalID} [get]
-func (h *LedgerHandler) GetJournal(c *gin.Context) {
+func (h *ledgerHandler) getJournal(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c)
 	journalID := c.Param("journalID")
 
@@ -94,4 +95,19 @@ func (h *LedgerHandler) GetJournal(c *gin.Context) {
 
 	logger.Debug("Journal retrieved successfully", slog.String("journal_id", journalID))
 	c.JSON(http.StatusOK, dto.CreateJournalAndTxn{Journal: *journal, Transactions: txns})
+}
+
+// registerLedgerRoutes registers ledger specific routes
+func registerLedgerRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
+	journalRepo := pgsql.NewJournalRepository(dbPool)
+	accountRepo := pgsql.NewAccountRepository(dbPool)
+	ledgerService := services.NewLedgerService(accountRepo, journalRepo)
+
+	ledgerHandler := newLedgerHandler(ledgerService)
+
+	ledger := group.Group("/ledger")
+	{
+		ledger.POST("/", ledgerHandler.persistJournal)
+		ledger.GET("/:journalID", ledgerHandler.getJournal)
+	}
 }

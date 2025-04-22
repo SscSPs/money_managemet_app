@@ -5,27 +5,27 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/SscSPs/money_managemet_app/internal/adapters/database/pgsql"
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
+
 	"github.com/gin-gonic/gin"
-	// For parsing query params
-	// TODO: Add logging import
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type UserHandler struct {
+type userHandler struct {
 	userService *services.UserService
-	// logger      *slog.Logger // Removed: logger is now retrieved from context
 }
 
-func NewUserHandler(userService *services.UserService) *UserHandler {
-	return &UserHandler{
+func newUserHandler(userService *services.UserService) *userHandler {
+	return &userHandler{
 		userService: userService,
 	}
 }
 
-// CreateUser godoc
+// createUser godoc
 // @Summary Create a new user
 // @Description Creates a new user account
 // @Tags users
@@ -36,7 +36,7 @@ func NewUserHandler(userService *services.UserService) *UserHandler {
 // @Failure 400 {object} string "Invalid input"
 // @Failure 500 {object} string "Internal server error"
 // @Router /users [post]
-func (h *UserHandler) CreateUser(c *gin.Context) {
+func (h *userHandler) createUser(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c)
 
 	var createReq dto.CreateUserRequest
@@ -69,7 +69,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 	c.JSON(http.StatusCreated, dto.ToUserResponse(user))
 }
 
-// GetUser godoc
+// getUser godoc
 // @Summary Get a user by ID
 // @Description Retrieves details for a specific user by their ID
 // @Tags users
@@ -80,7 +80,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 // @Failure 404 {object} string "User not found"
 // @Failure 500 {object} string "Internal server error"
 // @Router /users/{userID} [get]
-func (h *UserHandler) GetUser(c *gin.Context) {
+func (h *userHandler) getUser(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c) // Get logger from context
 	userID := c.Param("userID")
 
@@ -101,7 +101,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.ToUserResponse(user))
 }
 
-// ListUsers godoc
+// listUsers godoc
 // @Summary List users
 // @Description Retrieves a paginated list of users
 // @Tags users
@@ -112,7 +112,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 // @Success 200 {object} dto.ListUsersResponse
 // @Failure 500 {object} string "Internal server error"
 // @Router /users [get]
-func (h *UserHandler) ListUsers(c *gin.Context) {
+func (h *userHandler) listUsers(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c)
 
 	// Bind query parameters for pagination
@@ -145,7 +145,7 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.ToListUserResponse(users))
 }
 
-// UpdateUser godoc
+// updateUser godoc
 // @Summary Update a user
 // @Description Updates a user's details (currently only name)
 // @Tags users
@@ -159,7 +159,7 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 // @Failure 404 {object} string "User not found"
 // @Failure 500 {object} string "Internal server error"
 // @Router /users/{userID} [put]
-func (h *UserHandler) UpdateUser(c *gin.Context) {
+func (h *userHandler) updateUser(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c)
 	userID := c.Param("userID")
 
@@ -198,7 +198,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.ToUserResponse(user))
 }
 
-// DeleteUser godoc
+// deleteUser godoc
 // @Summary Delete a user
 // @Description Soft-deletes a user by their ID
 // @Tags users
@@ -210,7 +210,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 // @Failure 404 {object} string "User not found"
 // @Failure 500 {object} string "Internal server error"
 // @Router /users/{userID} [delete]
-func (h *UserHandler) DeleteUser(c *gin.Context) {
+func (h *userHandler) deleteUser(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c)
 	userID := c.Param("userID")
 
@@ -240,6 +240,24 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 
 	logger.Info("User deleted successfully", slog.String("user_id", userID))
 	c.Status(http.StatusNoContent)
+}
+
+// registerUserRoutes registers user CRUD routes
+func registerUserRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
+	// Instantiate dependencies
+	userRepo := pgsql.NewUserRepository(dbPool)
+	userService := services.NewUserService(userRepo)
+	userHandler := newUserHandler(userService)
+
+	// Define routes
+	users := group.Group("/users")
+	{
+		users.POST("/", userHandler.createUser)          // Create
+		users.GET("/", userHandler.listUsers)            // List (Read all)
+		users.GET("/:userID", userHandler.getUser)       // Read one
+		users.PUT("/:userID", userHandler.updateUser)    // Update
+		users.DELETE("/:userID", userHandler.deleteUser) // Delete
+	}
 }
 
 // TODO: Add other user handlers (List, Update, Delete) later

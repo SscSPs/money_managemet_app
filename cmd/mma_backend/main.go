@@ -7,23 +7,16 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/SscSPs/money_managemet_app/cmd/docs"
-	"github.com/SscSPs/money_managemet_app/internal/adapters/database/pgsql"
-	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/handlers"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/SscSPs/money_managemet_app/pkg/config"
 	"github.com/SscSPs/money_managemet_app/pkg/database"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/jackc/pgx/v5/stdlib"
-
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // @title MMA Backend API
@@ -73,11 +66,6 @@ func main() {
 		logger.Error("Failed to ping database for migrations", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	defer func() {
-		if cerr := migrationDB.Close(); cerr != nil {
-			logger.Error("Error closing migration DB connection", slog.String("error", cerr.Error()))
-		}
-	}()
 
 	// Create a postgres driver instance for migrate
 	driver, err := postgres.WithInstance(migrationDB, &postgres.Config{})
@@ -125,10 +113,10 @@ func main() {
 	}
 	// --- End Database Migrations ---
 
+	// Initialize Gin engine
 	if cfg.IsProduction {
 		gin.SetMode(gin.ReleaseMode)
 	}
-
 	r := gin.New()
 
 	// Global middleware (logging, recovery)
@@ -140,97 +128,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup handlers
-	authHandler := handlers.NewAuthHandler(cfg)
-
-	// Public routes (e.g., login, health check)
-	authRoutes := r.Group("/auth")
-	{
-		authRoutes.POST("/login", authHandler.Login)
-		// TODO: Add refresh token route later
-	}
-
-	// Setup API v1 routes with Auth Middleware
-	setupAPIV1Routes(r, cfg, dbPool, logger)
-
-	// Swagger routes (typically public or conditionally available)
-	setupSwaggerRoutes(r, cfg)
+	// Register all routes
+	handlers.RegisterRoutes(r, cfg, dbPool)
 
 	logger.Info("Server starting", slog.String("port", cfg.Port))
 	if err := r.Run(":" + cfg.Port); err != nil {
 		logger.Error("Server failed to run", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-}
-
-func setupAPIV1Routes(r *gin.Engine, cfg *config.Config, dbPool *pgxpool.Pool, logger *slog.Logger) {
-	// Apply AuthMiddleware to the entire v1 group
-	v1 := r.Group("/api/v1", middleware.AuthMiddleware(cfg.JWTSecret))
-
-	// Pass dbPool and the base logger (handlers get request-scoped logger from context)
-	addExampleAPI(v1) // Should example be protected? Maybe move outside v1 or make public.
-	addLedgerAPI(v1, dbPool, logger)
-	addAccountAPI(v1, dbPool, logger)
-	addUserAPI(v1, dbPool, logger)
-	addCurrencyAPI(v1, dbPool, logger)
-}
-
-func addLedgerAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool, logger *slog.Logger) {
-	ledger := v1.Group("/ledger")
-	ledgerService := services.NewLedgerService(pgsql.NewAccountRepository(dbPool), pgsql.NewJournalRepository(dbPool))
-	ledgerHandler := handlers.NewLedgerHandler(ledgerService)
-	ledger.POST("/", ledgerHandler.PersistJournal)
-	ledger.GET("/:journalID", ledgerHandler.GetJournal)
-}
-
-func addExampleAPI(v1 *gin.RouterGroup) {
-	eg := v1.Group("/example")
-	eg.GET("/helloworld", handlers.GetHome)
-}
-
-func addAccountAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool, logger *slog.Logger) {
-	accountRepo := pgsql.NewAccountRepository(dbPool)
-	accountService := services.NewAccountService(accountRepo)
-	accountHandler := handlers.NewAccountHandler(accountService)
-
-	accounts := v1.Group("/accounts")
-	accounts.POST("/", accountHandler.CreateAccount)
-	accounts.GET("/:accountID", accountHandler.GetAccount)
-}
-
-func addUserAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool, logger *slog.Logger) {
-	userRepo := pgsql.NewUserRepository(dbPool)
-	userService := services.NewUserService(userRepo)
-	userHandler := handlers.NewUserHandler(userService)
-
-	users := v1.Group("/users")
-	{
-		users.POST("/", userHandler.CreateUser)          // Create
-		users.GET("/", userHandler.ListUsers)            // List (Read all)
-		users.GET("/:userID", userHandler.GetUser)       // Read one
-		users.PUT("/:userID", userHandler.UpdateUser)    // Update
-		users.DELETE("/:userID", userHandler.DeleteUser) // Delete
-	}
-}
-
-func addCurrencyAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool, logger *slog.Logger) {
-	currencyRepo := pgsql.NewCurrencyRepository(dbPool)
-	currencyService := services.NewCurrencyService(currencyRepo)
-	currencyHandler := handlers.NewCurrencyHandler(currencyService)
-
-	currencies := v1.Group("/currencies")
-	currencies.POST("/", currencyHandler.CreateCurrency)
-	currencies.GET("/", currencyHandler.ListCurrencies)
-	currencies.GET("/:currencyCode", currencyHandler.GetCurrency)
-}
-
-func setupSwaggerRoutes(r *gin.Engine, cfg *config.Config) {
-	// Swagger setup
-	if cfg.IsProduction {
-		//no swagger in prod
-		return
-	}
-	docs.SwaggerInfo.BasePath = "/api/v1"
-	swagger := r.Group("/swagger")
-	swagger.GET("/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }

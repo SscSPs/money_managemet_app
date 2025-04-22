@@ -6,27 +6,27 @@ import (
 	"net/http"
 	"strings" // For uppercase conversion
 
+	"github.com/SscSPs/money_managemet_app/internal/adapters/database/pgsql"
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 	// TODO: Add logging import
 )
 
 type CurrencyHandler struct {
 	currencyService *services.CurrencyService
-	// logger          *slog.Logger // Removed
 }
 
-// NewCurrencyHandler no longer needs logger
-func NewCurrencyHandler(currencyService *services.CurrencyService) *CurrencyHandler {
+func newCurrencyHandler(currencyService *services.CurrencyService) *CurrencyHandler {
 	return &CurrencyHandler{
 		currencyService: currencyService,
 	}
 }
 
-// CreateCurrency godoc
+// createCurrency godoc
 // @Summary Create a new currency
 // @Description Adds a new currency to the system (e.g., USD, EUR)
 // @Tags currencies
@@ -37,7 +37,7 @@ func NewCurrencyHandler(currencyService *services.CurrencyService) *CurrencyHand
 // @Failure 400 {object} string "Invalid input"
 // @Failure 500 {object} string "Internal server error"
 // @Router /currencies [post]
-func (h *CurrencyHandler) CreateCurrency(c *gin.Context) {
+func (h *CurrencyHandler) createCurrency(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c) // Get logger from context
 
 	var createReq dto.CreateCurrencyRequest
@@ -77,7 +77,7 @@ func (h *CurrencyHandler) CreateCurrency(c *gin.Context) {
 	c.JSON(http.StatusCreated, dto.ToCurrencyResponse(currency))
 }
 
-// GetCurrency godoc
+// getCurrency godoc
 // @Summary Get a currency by code
 // @Description Retrieves details for a specific currency by its 3-letter code
 // @Tags currencies
@@ -89,7 +89,7 @@ func (h *CurrencyHandler) CreateCurrency(c *gin.Context) {
 // @Failure 404 {object} string "Currency not found"
 // @Failure 500 {object} string "Internal server error"
 // @Router /currencies/{currencyCode} [get]
-func (h *CurrencyHandler) GetCurrency(c *gin.Context) {
+func (h *CurrencyHandler) getCurrency(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c) // Get logger from context
 	currencyCode := strings.ToUpper(c.Param("currencyCode"))
 
@@ -120,7 +120,7 @@ func (h *CurrencyHandler) GetCurrency(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.ToCurrencyResponse(currency))
 }
 
-// ListCurrencies godoc
+// listCurrencies godoc
 // @Summary List all available currencies
 // @Description Retrieves a list of all currencies supported by the system
 // @Tags currencies
@@ -129,7 +129,7 @@ func (h *CurrencyHandler) GetCurrency(c *gin.Context) {
 // @Success 200 {array} dto.CurrencyResponse
 // @Failure 500 {object} string "Internal server error"
 // @Router /currencies [get]
-func (h *CurrencyHandler) ListCurrencies(c *gin.Context) {
+func (h *CurrencyHandler) listCurrencies(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c) // Get logger from context
 
 	currencies, err := h.currencyService.ListCurrencies(c.Request.Context())
@@ -142,4 +142,20 @@ func (h *CurrencyHandler) ListCurrencies(c *gin.Context) {
 
 	logger.Debug("Currencies listed successfully", slog.Int("count", len(currencies)))
 	c.JSON(http.StatusOK, dto.ToListCurrencyResponse(currencies))
+}
+
+// registerCurrencyRoutes registers currency specific routes
+func registerCurrencyRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
+	// Instantiate dependencies
+	currencyRepo := pgsql.NewCurrencyRepository(dbPool)
+	currencyService := services.NewCurrencyService(currencyRepo)
+	currencyHandler := newCurrencyHandler(currencyService)
+
+	// Define routes
+	currencies := group.Group("/currencies")
+	{
+		currencies.POST("/", currencyHandler.createCurrency)
+		currencies.GET("/", currencyHandler.listCurrencies)
+		currencies.GET("/:currencyCode", currencyHandler.getCurrency)
+	}
 }

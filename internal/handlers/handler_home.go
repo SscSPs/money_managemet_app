@@ -6,14 +6,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetHome godoc
-// @Summary Show a welcome message
-// @Description get a welcome message
-// @Tags home
-// @Accept  json
-// @Produce  json
-// @Success 200 {array} string "Welcome to my Go app!"
-// @Router /example/helloworld [get]
-func GetHome(c *gin.Context) {
-	c.JSON(http.StatusOK, [1]string{"Welcome to my Go app!"})
+// getHome godoc
+// @Summary Show the status of server.
+// @Description get the status of server.
+// @Tags root
+// @Accept */*
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router / [get]
+func getHome(ctx *gin.Context) {
+	ctx.JSON(http.StatusOK, gin.H{"message": "Hello World From MMA Backend API v1"})
+}
+
+// registerExampleRoutes registers the example '/helloworld' route
+func registerExampleRoutes(group *gin.RouterGroup) {
+	eg := group.Group("/example")
+	eg.GET("/helloworld", getHome)
 }

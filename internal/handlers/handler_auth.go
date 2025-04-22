@@ -15,8 +15,8 @@ type AuthHandler struct {
 	cfg *config.Config // Needs config for JWT secret and expiry
 }
 
-// NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler(cfg *config.Config) *AuthHandler {
+// newAuthHandler creates a new AuthHandler.
+func newAuthHandler(cfg *config.Config) *AuthHandler {
 	return &AuthHandler{cfg: cfg}
 }
 
@@ -31,7 +31,7 @@ type LoginResponse struct {
 	Token string `json:"token"`
 }
 
-// Login godoc
+// login godoc
 // @Summary Log in a user
 // @Description Authenticates a user (dummy implementation) and returns a JWT.
 // @Tags auth
@@ -43,7 +43,7 @@ type LoginResponse struct {
 // @Failure 401 {object} string "Invalid credentials (dummy check)"
 // @Failure 500 {object} string "Internal server error (token generation failed)"
 // @Router /auth/login [post]
-func (h *AuthHandler) Login(c *gin.Context) {
+func (h *AuthHandler) login(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c)
 	var req LoginRequest
 
@@ -86,4 +86,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	logger.Info("User logged in successfully", "user_id", dummyUserID)
 	c.JSON(http.StatusOK, LoginResponse{Token: tokenString})
+}
+
+// RegisterAuthRoutes registers authentication related routes (/auth)
+func RegisterAuthRoutes(engine *gin.Engine, cfg *config.Config) {
+	authHandler := newAuthHandler(cfg)
+
+	authRoutes := engine.Group("/auth")
+	{
+		authRoutes.POST("/login", authHandler.login)
+		// TODO: Add refresh token route later
+	}
 }

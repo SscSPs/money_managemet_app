@@ -15,6 +15,30 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/": {
+            "get": {
+                "description": "get the status of server.",
+                "consumes": [
+                    "*/*"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "root"
+                ],
+                "summary": "Show the status of server.",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/accounts": {
             "post": {
                 "description": "Creates a new account (Asset, Liability, Equity, Income, Expense)",
@@ -41,21 +65,36 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "201": {
-                        "description": "Created",
+                        "description": "The created account",
                         "schema": {
                             "$ref": "#/definitions/dto.AccountResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid input",
+                        "description": "Invalid request format",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -85,7 +124,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "The requested account",
                         "schema": {
                             "$ref": "#/definitions/dto.AccountResponse"
                         }
@@ -93,13 +132,19 @@ const docTemplate = `{
                     "404": {
                         "description": "Account not found",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -283,32 +328,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/example/helloworld": {
-            "get": {
-                "description": "get a welcome message",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "home"
-                ],
-                "summary": "Show a welcome message",
-                "responses": {
-                    "200": {
-                        "description": "Welcome to my Go app!",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/ledger/": {
             "post": {
                 "description": "Creates a new journal and associated transactions",
@@ -335,15 +354,39 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Returns the ID of the created journal",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Failed to persist journal",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -373,15 +416,27 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Journal and its transactions",
                         "schema": {
                             "$ref": "#/definitions/dto.CreateJournalAndTxn"
                         }
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    "404": {
+                        "description": "Journal not found",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to retrieve journal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -765,19 +820,7 @@ const docTemplate = `{
         "dto.CurrencyResponse": {
             "type": "object",
             "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "createdBy": {
-                    "type": "string"
-                },
                 "currencyCode": {
-                    "type": "string"
-                },
-                "lastUpdatedAt": {
-                    "type": "string"
-                },
-                "lastUpdatedBy": {
                     "type": "string"
                 },
                 "name": {
@@ -1007,7 +1050,7 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "localhost:8080",
-	BasePath:         "/api/v1",
+	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "MMA Backend API",
 	Description:      "This is a sample server for MMA backend.",

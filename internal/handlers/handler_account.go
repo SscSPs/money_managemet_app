@@ -5,37 +5,38 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/SscSPs/money_managemet_app/internal/adapters/database/pgsql"
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
-	// TODO: Add logging import (e.g., "log/slog")
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type AccountHandler struct {
+type accountHandler struct {
 	accountService *services.AccountService
-	// logger         *slog.Logger // Removed
 }
 
-func NewAccountHandler(accountService *services.AccountService) *AccountHandler {
-	return &AccountHandler{
+func newAccountHandler(accountService *services.AccountService) *accountHandler {
+	return &accountHandler{
 		accountService: accountService,
 	}
 }
 
-// CreateAccount godoc
+// createAccount godoc
 // @Summary Create a new financial account
 // @Description Creates a new account (Asset, Liability, Equity, Income, Expense)
 // @Tags accounts
 // @Accept  json
 // @Produce  json
 // @Param   account body dto.CreateAccountRequest true "Account details"
-// @Success 201 {object} dto.AccountResponse
-// @Failure 400 {object} string "Invalid input"
-// @Failure 500 {object} string "Internal server error"
+// @Success 201 {object} dto.AccountResponse "The created account"
+// @Failure 400 {object} map[string]string "Invalid request format"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Internal server error"
 // @Router /accounts [post]
-func (h *AccountHandler) CreateAccount(c *gin.Context) {
+func (h *accountHandler) createAccount(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c)
 
 	var createReq dto.CreateAccountRequest
@@ -56,9 +57,7 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
 	// Log the creator performing the action
 	logger = logger.With(slog.String("creator_user_id", creatorUserID))
 
-	// Note: createReq.UserID likely refers to the owner of the account, which might
-	// differ from the creatorUserID if an admin is creating an account for someone else.
-	// The service layer needs to handle this distinction based on business logic.
+	// Call the service to create the account
 	account, err := h.accountService.CreateAccount(c.Request.Context(), createReq, creatorUserID)
 	if err != nil {
 		// TODO: Differentiate between validation errors (4xx) and server errors (5xx) if service returns specific errors
@@ -67,22 +66,22 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
 		return
 	}
 	logger.Info("Account created successfully", slog.String("account_id", account.AccountID))
-	c.JSON(http.StatusCreated, dto.ToAccountResponse(account))
+	c.JSON(http.StatusCreated, dto.ToAccountResponse(account)) // Use DTO for response
 }
 
-// GetAccount godoc
+// getAccount godoc
 // @Summary Get an account by ID
 // @Description Retrieves details for a specific account by its ID
 // @Tags accounts
 // @Accept  json
 // @Produce  json
 // @Param   accountID path string true "Account ID"
-// @Success 200 {object} dto.AccountResponse
-// @Failure 404 {object} string "Account not found"
-// @Failure 500 {object} string "Internal server error"
+// @Success 200 {object} dto.AccountResponse "The requested account"
+// @Failure 404 {object} map[string]string "Account not found"
+// @Failure 500 {object} map[string]string "Internal server error"
 // @Router /accounts/{accountID} [get]
-func (h *AccountHandler) GetAccount(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c) // Get logger from context
+func (h *accountHandler) getAccount(c *gin.Context) {
+	logger := middleware.GetLoggerFromContext(c)
 	accountID := c.Param("accountID")
 
 	account, err := h.accountService.GetAccountByID(c.Request.Context(), accountID)
@@ -100,10 +99,23 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
 		return
 	}
 
-	// No need for explicit nil check if service returns ErrNotFound
-
 	logger.Debug("Account retrieved successfully", slog.String("account_id", account.AccountID))
-	c.JSON(http.StatusOK, dto.ToAccountResponse(account))
+	c.JSON(http.StatusOK, dto.ToAccountResponse(account)) // Use DTO for response
+}
+
+// registerAccountRoutes registers account specific routes
+func registerAccountRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
+	// Instantiate dependencies
+	accountRepo := pgsql.NewAccountRepository(dbPool)
+	accountService := services.NewAccountService(accountRepo)
+	accountHandler := newAccountHandler(accountService)
+
+	// Define routes
+	accounts := group.Group("/accounts")
+	{
+		accounts.POST("/", accountHandler.createAccount)
+		accounts.GET("/:accountID", accountHandler.getAccount)
+	}
 }
 
 // TODO: Add ListAccounts handler later

@@ -1,4 +1,4 @@
-basePath: /api/v1
+basePath: /
 definitions:
   dto.AccountResponse:
     properties:
@@ -91,15 +91,7 @@ definitions:
     type: object
   dto.CurrencyResponse:
     properties:
-      createdAt:
-        type: string
-      createdBy:
-        type: string
       currencyCode:
-        type: string
-      lastUpdatedAt:
-        type: string
-      lastUpdatedBy:
         type: string
       name:
         type: string
@@ -250,6 +242,22 @@ info:
   title: MMA Backend API
   version: "1.0"
 paths:
+  /:
+    get:
+      consumes:
+      - '*/*'
+      description: get the status of server.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Show the status of server.
+      tags:
+      - root
   /accounts:
     post:
       consumes:
@@ -266,17 +274,27 @@ paths:
       - application/json
       responses:
         "201":
-          description: Created
+          description: The created account
           schema:
             $ref: '#/definitions/dto.AccountResponse'
         "400":
-          description: Invalid input
+          description: Invalid request format
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal server error
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
       summary: Create a new financial account
       tags:
       - accounts
@@ -295,17 +313,21 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: The requested account
           schema:
             $ref: '#/definitions/dto.AccountResponse'
         "404":
           description: Account not found
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal server error
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
       summary: Get an account by ID
       tags:
       - accounts
@@ -426,23 +448,6 @@ paths:
       summary: Get a currency by code
       tags:
       - currencies
-  /example/helloworld:
-    get:
-      consumes:
-      - application/json
-      description: get a welcome message
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Welcome to my Go app!
-          schema:
-            items:
-              type: string
-            type: array
-      summary: Show a welcome message
-      tags:
-      - home
   /ledger/:
     post:
       consumes:
@@ -459,13 +464,29 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Returns the ID of the created journal
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
-          description: Internal Server Error
+          description: Failed to persist journal
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
       summary: Persist a journal entry with its transactions
       tags:
       - ledger
@@ -485,13 +506,21 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Journal and its transactions
           schema:
             $ref: '#/definitions/dto.CreateJournalAndTxn'
-        "500":
-          description: Internal Server Error
+        "404":
+          description: Journal not found
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to retrieve journal
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       summary: Get a journal entry and its transactions
       tags:
       - ledger
