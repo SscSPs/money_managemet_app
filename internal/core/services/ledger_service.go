@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/core/ports"
@@ -137,12 +138,8 @@ func (s *LedgerService) PersistJournal(ctx context.Context, journal models.Journ
 	creatorUserID := userID
 	now := time.Now().UTC()
 
-	// Assign Journal ID if not provided (or let DB handle)
-	if journal.JournalID == "" {
-		// journal.JournalID = uuid.NewString() // Example if using UUIDs
-		journal.JournalID = fmt.Sprintf("JRN-%d", now.UnixNano()) // Simple placeholder
-	}
-	journal.Status = models.Posted // Ensure default status
+	journal.JournalID = uuid.NewString() // Example if using UUIDs
+	journal.Status = models.Posted       // Ensure default status
 	journal.CreatedAt = now
 	journal.CreatedBy = creatorUserID
 	journal.LastUpdatedAt = now
@@ -150,10 +147,7 @@ func (s *LedgerService) PersistJournal(ctx context.Context, journal models.Journ
 
 	for i := range transactions {
 		// Assign Transaction ID if not provided
-		if transactions[i].TransactionID == "" {
-			// transactions[i].TransactionID = uuid.NewString()
-			transactions[i].TransactionID = fmt.Sprintf("TXN-%d-%d", now.UnixNano(), i) // Simple placeholder
-		}
+		transactions[i].TransactionID = uuid.NewString()
 		// Link transaction to journal
 		transactions[i].JournalID = journal.JournalID
 		// Ensure currency matches journal (already validated, but good practice)

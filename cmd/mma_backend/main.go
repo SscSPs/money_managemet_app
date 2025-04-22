@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"os"
 
@@ -101,7 +102,7 @@ func main() {
 
 	// Apply all available "up" migrations
 	err = m.Up()
-	if err != nil && err != migrate.ErrNoChange {
+	if err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		logger.Error("Failed to apply migrations", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
@@ -117,7 +118,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err == migrate.ErrNoChange {
+	if errors.Is(err, migrate.ErrNoChange) {
 		logger.Info("No new migrations to apply.")
 	} else {
 		logger.Info("Database migrations applied successfully.")

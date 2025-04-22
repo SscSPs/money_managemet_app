@@ -1,8 +1,6 @@
 package dto
 
 import (
-	"time"
-
 	"github.com/SscSPs/money_managemet_app/internal/models"
 )
 
@@ -16,25 +14,17 @@ type CreateCurrencyRequest struct {
 
 // CurrencyResponse defines the data returned for a currency.
 type CurrencyResponse struct {
-	CurrencyCode  string    `json:"currencyCode"`
-	Symbol        string    `json:"symbol"`
-	Name          string    `json:"name"`
-	CreatedAt     time.Time `json:"createdAt"`
-	CreatedBy     string    `json:"createdBy"`
-	LastUpdatedAt time.Time `json:"lastUpdatedAt"`
-	LastUpdatedBy string    `json:"lastUpdatedBy"`
+	CurrencyCode string `json:"currencyCode"`
+	Symbol       string `json:"symbol"`
+	Name         string `json:"name"`
 }
 
 // ToCurrencyResponse converts a models.Currency to CurrencyResponse DTO
 func ToCurrencyResponse(curr *models.Currency) CurrencyResponse {
 	return CurrencyResponse{
-		CurrencyCode:  curr.CurrencyCode,
-		Symbol:        curr.Symbol,
-		Name:          curr.Name,
-		CreatedAt:     curr.CreatedAt,
-		CreatedBy:     curr.CreatedBy,
-		LastUpdatedAt: curr.LastUpdatedAt,
-		LastUpdatedBy: curr.LastUpdatedBy,
+		CurrencyCode: curr.CurrencyCode,
+		Symbol:       curr.Symbol,
+		Name:         curr.Name,
 	}
 }
 

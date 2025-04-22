@@ -28,9 +28,9 @@ func (s *CurrencyService) CreateCurrency(ctx context.Context, req dto.CreateCurr
 		Name:         req.Name,
 		AuditFields: models.AuditFields{
 			CreatedAt:     now,
-			CreatedBy:     creatorUserID, // TODO: Get actual user ID
+			CreatedBy:     creatorUserID,
 			LastUpdatedAt: now,
-			LastUpdatedBy: creatorUserID, // TODO: Get actual user ID
+			LastUpdatedBy: creatorUserID,
 		},
 	}
 
