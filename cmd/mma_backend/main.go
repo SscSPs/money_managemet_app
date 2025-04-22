@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"database/sql"
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/SscSPs/money_managemet_app/cmd/docs"
 	"github.com/SscSPs/money_managemet_app/internal/adapters/database/pgsql"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/handlers"
+	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/SscSPs/money_managemet_app/pkg/config"
 	"github.com/SscSPs/money_managemet_app/pkg/database"
 	"github.com/gin-gonic/gin"
@@ -30,44 +32,57 @@ import (
 // @host localhost:8080
 // @BasePath /
 
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
+
+// @security BearerAuth
 func main() {
+	// Initialize structured logger
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger) // Optional: Set as default logger
+
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal(err)
-		return
+		logger.Error("Failed to load config", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 
 	// Initialize database connection pool (for application use)
 	dbPool, err := database.NewPgxPool(context.Background(), cfg.DatabaseURL, cfg.EnableDBCheck)
 	if err != nil {
-		log.Fatalf("Failed to initialize database pool: %v", err)
-		return
+		logger.Error("Failed to initialize database pool", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 	// Defer closing the connection pool
 	defer dbPool.Close()
-	log.Println("Database connection pool established.")
+	logger.Info("Database connection pool established.")
 
 	// --- Run Database Migrations ---
-	log.Println("Running database migrations...")
+	logger.Info("Running database migrations...")
 	// Open a temporary standard sql.DB connection for migrations
 	// Using pgx/v5/stdlib driver to be compatible with the main pool
 	migrationDB, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("Failed to open database connection for migrations: %v", err)
+		logger.Error("Failed to open database connection for migrations", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 	if err := migrationDB.Ping(); err != nil {
-		log.Fatalf("Failed to ping database for migrations: %v", err)
+		logger.Error("Failed to ping database for migrations", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 	defer func() {
 		if cerr := migrationDB.Close(); cerr != nil {
-			log.Printf("Error closing migration DB connection: %v", cerr)
+			logger.Error("Error closing migration DB connection", slog.String("error", cerr.Error()))
 		}
 	}()
 
 	// Create a postgres driver instance for migrate
 	driver, err := postgres.WithInstance(migrationDB, &postgres.Config{})
 	if err != nil {
-		log.Fatalf("Could not create postgres driver instance for migrations: %v", err)
+		logger.Error("Could not create postgres driver instance for migrations", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 
 	// Point to the migrations directory (adjust path if needed)
@@ -80,28 +95,32 @@ func main() {
 		driver,
 	)
 	if err != nil {
-		log.Fatalf("Could not create migrate instance: %v", err)
+		logger.Error("Could not create migrate instance", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 
 	// Apply all available "up" migrations
 	err = m.Up()
 	if err != nil && err != migrate.ErrNoChange {
-		log.Fatalf("Failed to apply migrations: %v", err)
+		logger.Error("Failed to apply migrations", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 
 	// Check for dirty migrations after running Up.
 	sourceErr, dbErr := m.Close()
 	if sourceErr != nil {
-		log.Fatalf("Migration source error: %v", sourceErr)
+		logger.Error("Migration source error", slog.String("error", sourceErr.Error()))
+		os.Exit(1)
 	}
 	if dbErr != nil {
-		log.Fatalf("Migration database error: %v", dbErr)
+		logger.Error("Migration database error", slog.String("error", dbErr.Error()))
+		os.Exit(1)
 	}
 
 	if err == migrate.ErrNoChange {
-		log.Println("No new migrations to apply.")
+		logger.Info("No new migrations to apply.")
 	} else {
-		log.Println("Database migrations applied successfully.")
+		logger.Info("Database migrations applied successfully.")
 	}
 	// --- End Database Migrations ---
 
@@ -110,31 +129,52 @@ func main() {
 	}
 
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
+
+	// Global middleware (logging, recovery)
+	r.Use(middleware.StructuredLoggingMiddleware(logger), gin.Recovery())
 
 	err = r.SetTrustedProxies(nil)
 	if err != nil {
-		log.Fatal(err)
-		return
+		logger.Error("Failed to set trusted proxies", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 
-	setupAPIV1Routes(r, cfg, dbPool)
+	// Setup handlers
+	authHandler := handlers.NewAuthHandler(cfg)
+
+	// Public routes (e.g., login, health check)
+	authRoutes := r.Group("/auth")
+	{
+		authRoutes.POST("/login", authHandler.Login)
+		// TODO: Add refresh token route later
+	}
+
+	// Setup API v1 routes with Auth Middleware
+	setupAPIV1Routes(r, cfg, dbPool, logger)
+
+	// Swagger routes (typically public or conditionally available)
 	setupSwaggerRoutes(r, cfg)
 
-	log.Printf("Server is running on port %s...\n", cfg.Port)
-	log.Fatal(r.Run(":" + cfg.Port))
+	logger.Info("Server starting", slog.String("port", cfg.Port))
+	if err := r.Run(":" + cfg.Port); err != nil {
+		logger.Error("Server failed to run", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 }
 
-func setupAPIV1Routes(r *gin.Engine, cfg *config.Config, dbPool *pgxpool.Pool) {
-	v1 := r.Group("/api/v1")
-	addExampleAPI(v1)
-	addLedgerAPI(v1, dbPool)
-	addAccountAPI(v1, dbPool)
-	addUserAPI(v1, dbPool)
-	addCurrencyAPI(v1, dbPool)
+func setupAPIV1Routes(r *gin.Engine, cfg *config.Config, dbPool *pgxpool.Pool, logger *slog.Logger) {
+	// Apply AuthMiddleware to the entire v1 group
+	v1 := r.Group("/api/v1", middleware.AuthMiddleware(cfg.JWTSecret))
+
+	// Pass dbPool and the base logger (handlers get request-scoped logger from context)
+	addExampleAPI(v1) // Should example be protected? Maybe move outside v1 or make public.
+	addLedgerAPI(v1, dbPool, logger)
+	addAccountAPI(v1, dbPool, logger)
+	addUserAPI(v1, dbPool, logger)
+	addCurrencyAPI(v1, dbPool, logger)
 }
 
-func addLedgerAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool) {
+func addLedgerAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool, logger *slog.Logger) {
 	ledger := v1.Group("/ledger")
 	ledgerService := services.NewLedgerService(pgsql.NewAccountRepository(dbPool), pgsql.NewJournalRepository(dbPool))
 	ledgerHandler := handlers.NewLedgerHandler(ledgerService)
@@ -147,7 +187,7 @@ func addExampleAPI(v1 *gin.RouterGroup) {
 	eg.GET("/helloworld", handlers.GetHome)
 }
 
-func addAccountAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool) {
+func addAccountAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool, logger *slog.Logger) {
 	accountRepo := pgsql.NewAccountRepository(dbPool)
 	accountService := services.NewAccountService(accountRepo)
 	accountHandler := handlers.NewAccountHandler(accountService)
@@ -157,17 +197,22 @@ func addAccountAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	accounts.GET("/:accountID", accountHandler.GetAccount)
 }
 
-func addUserAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool) {
+func addUserAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool, logger *slog.Logger) {
 	userRepo := pgsql.NewUserRepository(dbPool)
 	userService := services.NewUserService(userRepo)
 	userHandler := handlers.NewUserHandler(userService)
 
 	users := v1.Group("/users")
-	users.POST("/", userHandler.CreateUser)
-	users.GET("/:userID", userHandler.GetUser)
+	{
+		users.POST("/", userHandler.CreateUser)          // Create
+		users.GET("/", userHandler.ListUsers)            // List (Read all)
+		users.GET("/:userID", userHandler.GetUser)       // Read one
+		users.PUT("/:userID", userHandler.UpdateUser)    // Update
+		users.DELETE("/:userID", userHandler.DeleteUser) // Delete
+	}
 }
 
-func addCurrencyAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool) {
+func addCurrencyAPI(v1 *gin.RouterGroup, dbPool *pgxpool.Pool, logger *slog.Logger) {
 	currencyRepo := pgsql.NewCurrencyRepository(dbPool)
 	currencyService := services.NewCurrencyService(currencyRepo)
 	currencyHandler := handlers.NewCurrencyHandler(currencyService)
@@ -187,5 +232,4 @@ func setupSwaggerRoutes(r *gin.Engine, cfg *config.Config) {
 	docs.SwaggerInfo.BasePath = "/api/v1"
 	swagger := r.Group("/swagger")
 	swagger.GET("/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
 }

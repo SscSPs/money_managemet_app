@@ -1,21 +1,27 @@
 package handlers
 
 import (
+	"errors"
+	"log/slog"
 	"net/http"
 
+	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
+	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
 	// TODO: Add logging import (e.g., "log/slog")
 )
 
 type AccountHandler struct {
 	accountService *services.AccountService
-	// TODO: Inject logger
+	// logger         *slog.Logger // Removed
 }
 
 func NewAccountHandler(accountService *services.AccountService) *AccountHandler {
-	return &AccountHandler{accountService: accountService}
+	return &AccountHandler{
+		accountService: accountService,
+	}
 }
 
 // CreateAccount godoc
@@ -30,23 +36,37 @@ func NewAccountHandler(accountService *services.AccountService) *AccountHandler 
 // @Failure 500 {object} string "Internal server error"
 // @Router /accounts [post]
 func (h *AccountHandler) CreateAccount(c *gin.Context) {
+	logger := middleware.GetLoggerFromContext(c)
+
 	var createReq dto.CreateAccountRequest
 	if err := c.ShouldBindJSON(&createReq); err != nil {
-		// TODO: Add structured logging
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input: " + err.Error()})
+		logger.Error("Failed to bind JSON for CreateAccount", slog.String("error", err.Error()))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
-	userID := createReq.UserID
+	// Get the ID of the user *performing* the action from the context
+	creatorUserID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		logger.Error("Creator user ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
-	account, err := h.accountService.CreateAccount(c.Request.Context(), createReq, userID)
+	// Log the creator performing the action
+	logger = logger.With(slog.String("creator_user_id", creatorUserID))
+
+	// Note: createReq.UserID likely refers to the owner of the account, which might
+	// differ from the creatorUserID if an admin is creating an account for someone else.
+	// The service layer needs to handle this distinction based on business logic.
+	account, err := h.accountService.CreateAccount(c.Request.Context(), createReq, creatorUserID)
 	if err != nil {
-		// TODO: Add structured logging
 		// TODO: Differentiate between validation errors (4xx) and server errors (5xx) if service returns specific errors
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create account: " + err.Error()})
+		logger.Error("Failed to create account in service", slog.String("error", err.Error()), slog.String("requested_name", createReq.Name), slog.String("account_owner_id", createReq.UserID))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create account"})
 		return
 	}
-
+	logger.Info("Account created successfully", slog.String("account_id", account.AccountID))
 	c.JSON(http.StatusCreated, dto.ToAccountResponse(account))
 }
 
@@ -62,21 +82,27 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
 // @Failure 500 {object} string "Internal server error"
 // @Router /accounts/{accountID} [get]
 func (h *AccountHandler) GetAccount(c *gin.Context) {
+	logger := middleware.GetLoggerFromContext(c) // Get logger from context
 	accountID := c.Param("accountID")
 
 	account, err := h.accountService.GetAccountByID(c.Request.Context(), accountID)
 	if err != nil {
-		// TODO: Add structured logging
-		// TODO: Check if error is a specific "not found" error and return 404
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get account: " + err.Error()})
+		// Check for specific ErrNotFound
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Account not found", slog.String("account_id", accountID))
+			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+			return
+		}
+		// Log other errors
+		logger.Error("Failed to get account from service", slog.String("error", err.Error()), slog.String("account_id", accountID))
+		// Use generic error message
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve account"})
 		return
 	}
 
-	if account == nil { // Should ideally be handled by error checking above
-		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
-		return
-	}
+	// No need for explicit nil check if service returns ErrNotFound
 
+	logger.Debug("Account retrieved successfully", slog.String("account_id", account.AccountID))
 	c.JSON(http.StatusOK, dto.ToAccountResponse(account))
 }
 

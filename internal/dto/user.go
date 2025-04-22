@@ -35,3 +35,32 @@ func ToUserResponse(user *models.User) UserResponse {
 		LastUpdatedBy: user.LastUpdatedBy,
 	}
 }
+
+// UpdateUserRequest defines the data allowed for updating a user.
+// Using pointers to differentiate between omitted fields and zero-value fields.
+type UpdateUserRequest struct {
+	Name *string `json:"name"` // Only name is updatable for now
+}
+
+// ListUsersParams defines query parameters for listing users.
+type ListUsersParams struct {
+	Limit  int `form:"limit,default=20"`
+	Offset int `form:"offset,default=0"`
+}
+
+// ListUsersResponse wraps the list of users.
+type ListUsersResponse struct {
+	Users []UserResponse `json:"users"`
+	// TODO: Add pagination metadata (total count, limit, offset) later
+}
+
+// ToListUserResponse converts a slice of models.User to ListUsersResponse DTO
+func ToListUserResponse(users []models.User) ListUsersResponse {
+	userResponses := make([]UserResponse, len(users))
+	for i, user := range users {
+		userResponses[i] = ToUserResponse(&user)
+	}
+	return ListUsersResponse{
+		Users: userResponses,
+	}
+}

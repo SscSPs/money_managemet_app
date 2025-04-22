@@ -1,22 +1,29 @@
 package handlers
 
 import (
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings" // For uppercase conversion
 
+	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
+	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
 	// TODO: Add logging import
 )
 
 type CurrencyHandler struct {
 	currencyService *services.CurrencyService
-	// TODO: Inject logger
+	// logger          *slog.Logger // Removed
 }
 
+// NewCurrencyHandler no longer needs logger
 func NewCurrencyHandler(currencyService *services.CurrencyService) *CurrencyHandler {
-	return &CurrencyHandler{currencyService: currencyService}
+	return &CurrencyHandler{
+		currencyService: currencyService,
+	}
 }
 
 // CreateCurrency godoc
@@ -31,30 +38,42 @@ func NewCurrencyHandler(currencyService *services.CurrencyService) *CurrencyHand
 // @Failure 500 {object} string "Internal server error"
 // @Router /currencies [post]
 func (h *CurrencyHandler) CreateCurrency(c *gin.Context) {
+	logger := middleware.GetLoggerFromContext(c) // Get logger from context
+
 	var createReq dto.CreateCurrencyRequest
 	if err := c.ShouldBindJSON(&createReq); err != nil {
-		// TODO: Add structured logging
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input: " + err.Error()})
+		logger.Error("Failed to bind JSON for CreateCurrency", slog.String("error", err.Error()))
+		// Use generic error message
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
-	// Although binding handles uppercase, explicit check is good practice
+	// Validate currency code format
 	if len(createReq.CurrencyCode) != 3 || createReq.CurrencyCode != strings.ToUpper(createReq.CurrencyCode) {
+		logger.Warn("Invalid currency code format in request body", slog.String("code", createReq.CurrencyCode))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Currency code must be 3 uppercase letters"})
 		return
 	}
 
-	// TODO: Get actual creator UserID from request context
-	creatorUserID := createReq.UserID
+	// Get creator user ID from context
+	creatorUserID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		logger.Error("Creator user ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	logger = logger.With(slog.String("creator_user_id", creatorUserID))
 
 	currency, err := h.currencyService.CreateCurrency(c.Request.Context(), createReq, creatorUserID)
 	if err != nil {
-		// TODO: Add structured logging
-		// TODO: Check for specific errors (e.g., duplicate currency code if not handled by DB upsert)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create currency: " + err.Error()})
+		// TODO: Check for specific errors (e.g., duplicate currency code)
+		logger.Error("Failed to create currency in service", slog.String("error", err.Error()), slog.String("code", createReq.CurrencyCode))
+		// Use generic error message
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create currency"})
 		return
 	}
 
+	logger.Info("Currency created successfully", slog.String("code", currency.CurrencyCode))
 	c.JSON(http.StatusCreated, dto.ToCurrencyResponse(currency))
 }
 
@@ -71,26 +90,33 @@ func (h *CurrencyHandler) CreateCurrency(c *gin.Context) {
 // @Failure 500 {object} string "Internal server error"
 // @Router /currencies/{currencyCode} [get]
 func (h *CurrencyHandler) GetCurrency(c *gin.Context) {
-	currencyCode := strings.ToUpper(c.Param("currencyCode")) // Ensure uppercase
+	logger := middleware.GetLoggerFromContext(c) // Get logger from context
+	currencyCode := strings.ToUpper(c.Param("currencyCode"))
 
-	if len(currencyCode) != 3 {
+	if len(currencyCode) != 3 { // Basic validation
+		logger.Warn("Invalid currency code format requested in path", slog.String("code", c.Param("currencyCode")))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Currency code must be 3 letters"})
 		return
 	}
 
 	currency, err := h.currencyService.GetCurrencyByCode(c.Request.Context(), currencyCode)
 	if err != nil {
-		// TODO: Add structured logging
-		// TODO: The service should return a specific error for not found
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get currency: " + err.Error()})
+		// Check for specific ErrNotFound
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Currency not found", slog.String("code", currencyCode))
+			c.JSON(http.StatusNotFound, gin.H{"error": "Currency not found"})
+			return
+		}
+		// Log other errors
+		logger.Error("Failed to get currency from service", slog.String("error", err.Error()), slog.String("code", currencyCode))
+		// Use generic error message
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve currency"})
 		return
 	}
 
-	if currency == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Currency not found"})
-		return
-	}
+	// No need for explicit nil check if service returns ErrNotFound
 
+	logger.Debug("Currency retrieved successfully", slog.String("code", currency.CurrencyCode))
 	c.JSON(http.StatusOK, dto.ToCurrencyResponse(currency))
 }
 
@@ -104,12 +130,16 @@ func (h *CurrencyHandler) GetCurrency(c *gin.Context) {
 // @Failure 500 {object} string "Internal server error"
 // @Router /currencies [get]
 func (h *CurrencyHandler) ListCurrencies(c *gin.Context) {
+	logger := middleware.GetLoggerFromContext(c) // Get logger from context
+
 	currencies, err := h.currencyService.ListCurrencies(c.Request.Context())
 	if err != nil {
-		// TODO: Add structured logging
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list currencies: " + err.Error()})
+		logger.Error("Failed to list currencies from service", slog.String("error", err.Error()))
+		// Use generic error message
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list currencies"})
 		return
 	}
 
+	logger.Debug("Currencies listed successfully", slog.Int("count", len(currencies)))
 	c.JSON(http.StatusOK, dto.ToListCurrencyResponse(currencies))
 }

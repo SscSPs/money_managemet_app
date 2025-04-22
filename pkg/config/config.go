@@ -4,16 +4,19 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/joho/godotenv"
 )
 
 // Config holds application configuration.
 type Config struct {
-	DatabaseURL   string
-	Port          string
-	IsProduction  bool
-	EnableDBCheck bool
+	DatabaseURL       string
+	Port              string
+	IsProduction      bool
+	EnableDBCheck     bool
+	JWTSecret         string
+	JWTExpiryDuration time.Duration
 }
 
 // LoadConfig loads configuration from environment variables.
@@ -54,10 +57,29 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
+	// Load JWT Secret
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "a-very-secret-key-should-be-longer-and-random" // !! CHANGE IN PRODUCTION !!
+		log.Println("Warning: JWT_SECRET environment variable not set. Using default insecure key.")
+	}
+
+	// Load JWT Expiry Duration (e.g., "60m", "1h")
+	jwtExpiryStr := os.Getenv("JWT_EXPIRY_DURATION")
+	jwtExpiryDuration, err := time.ParseDuration(jwtExpiryStr)
+	if err != nil {
+		jwtExpiryDuration = time.Hour * 1 // Default to 1 hour
+		if jwtExpiryStr != "" {
+			log.Printf("Warning: Invalid value for JWT_EXPIRY_DURATION ('%s'). Defaulting to %s.\n", jwtExpiryStr, jwtExpiryDuration.String())
+		}
+	}
+
 	return &Config{
-		DatabaseURL:   dbURL,
-		Port:          port,
-		IsProduction:  isProd,
-		EnableDBCheck: enableDBCheck,
+		DatabaseURL:       dbURL,
+		Port:              port,
+		IsProduction:      isProd,
+		EnableDBCheck:     enableDBCheck,
+		JWTSecret:         jwtSecret,
+		JWTExpiryDuration: jwtExpiryDuration,
 	}, nil
 }

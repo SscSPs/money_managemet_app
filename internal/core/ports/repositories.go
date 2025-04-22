@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/models"
 )
@@ -44,5 +45,8 @@ type ExchangeRateRepository interface {
 type UserRepository interface {
 	SaveUser(ctx context.Context, user models.User) error
 	FindUserByID(ctx context.Context, userID string) (*models.User, error)
-	// SaveUser might be needed if users are managed within the app later
+	// Added methods for List, Update, Delete
+	FindUsers(ctx context.Context, limit int, offset int) ([]models.User, error)
+	UpdateUser(ctx context.Context, user models.User) error
+	MarkUserDeleted(ctx context.Context, userID string, deletedAt time.Time, deletedBy string) error // Using soft delete
 }
