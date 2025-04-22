@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/SscSPs/money_managemet_app/internal/middleware" // For GetLoggerFromContext
+	"github.com/SscSPs/money_managemet_app/internal/middleware" // For GetLoggerFromCtx
 	"github.com/SscSPs/money_managemet_app/pkg/config"          // For JWT config
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -44,48 +44,49 @@ type LoginResponse struct {
 // @Failure 500 {object} string "Internal server error (token generation failed)"
 // @Router /auth/login [post]
 func (h *AuthHandler) login(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 	var req LoginRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Error("Failed to bind JSON for Login", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input format"})
+		logger.Warn("Failed to bind JSON for Login", "error", err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
-	// --- Dummy Authentication ---
-	// In a real app, verify req.Username and req.Password against the database.
-	// For now, we'll just check for a specific username and issue a token.
-	dummyUserID := "41181354-419f-4847-8405-b10dfd04ccdf" // Hardcoded user ID
-	if req.Username != "testuser" || req.Password != "password" {
+	// Dummy authentication - replace with actual user lookup and password check
+	// IMPORTANT: Never log passwords in production!
+	if req.Username != "user" || req.Password != "password" {
 		logger.Warn("Invalid login attempt", "username", req.Username)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 		return
 	}
-	// --- End Dummy Authentication ---
+
+	// --- Dummy User Info (Replace with actual user ID from DB lookup) ---
+	dummyUserID := "user-123" // Example user ID
+	// ----------------------------------------------------------------------
 
 	// Create JWT claims
-	expirationTime := time.Now().Add(h.cfg.JWTExpiryDuration)
-	claims := &jwt.RegisteredClaims{
+	claims := jwt.RegisteredClaims{
+		Issuer:    "mma-backend",
 		Subject:   dummyUserID,
-		ExpiresAt: jwt.NewNumericDate(expirationTime),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(h.cfg.JWTExpiryDuration)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
-		Issuer:    "mma-backend", // Optional: identify the issuer
+		NotBefore: jwt.NewNumericDate(time.Now()),
 	}
 
-	// Create token with claims
+	// Create token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	// Sign the token with the secret
-	tokenString, err := token.SignedString([]byte(h.cfg.JWTSecret))
+	// Sign token
+	tsignedString, err := token.SignedString([]byte(h.cfg.JWTSecret))
 	if err != nil {
-		logger.Error("Failed to sign JWT token", "error", err)
+		logger.Error("Failed to sign JWT token", "error", err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
 
 	logger.Info("User logged in successfully", "user_id", dummyUserID)
-	c.JSON(http.StatusOK, LoginResponse{Token: tokenString})
+	c.JSON(http.StatusOK, LoginResponse{Token: tsignedString})
 }
 
 // registerAuthRoutes registers authentication related routes (/auth)

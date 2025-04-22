@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -13,7 +14,8 @@ import (
 // AuthMiddleware creates a Gin middleware handler that validates JWT tokens.
 func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		logger := GetLoggerFromContext(c) // Use request-scoped logger
+		// Retrieve logger from the standard context
+		logger := GetLoggerFromCtx(c.Request.Context())
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			logger.Warn("Authorization header missing")
@@ -60,12 +62,20 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 				return
 			}
 
-			// Store the user ID in the context
-			c.Set(string(userIDKey), userID)
+			// Store the user ID in the context (using standard context)
+			ctxWithUser := context.WithValue(c.Request.Context(), userIDKey, userID)
 
-			// Add user ID to the logger for subsequent logs in this request
-			requestLogger := logger.With(slog.String("user_id", userID))
-			c.Set(string(loggerKey), requestLogger) // Overwrite logger in context with the enriched one
+			// Add user ID to the logger
+			enrichedLogger := logger.With(slog.String("user_id", userID))
+
+			// Store the *enriched* logger back into the standard context
+			ctxWithLoggerAndUser := context.WithValue(ctxWithUser, loggerCtxKey, enrichedLogger)
+
+			// Update the request context
+			c.Request = c.Request.WithContext(ctxWithLoggerAndUser)
+
+			// Remove setting logger in Gin context map (legacy)
+			// c.Set(string(loggerKey), enrichedLogger)
 
 			c.Next() // Proceed to the next handler
 		} else {

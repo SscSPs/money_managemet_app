@@ -2,27 +2,29 @@ package pgsql
 
 import (
 	"context"
-	"fmt"  // For error wrapping
-	"time" // Added for MarkUserDeleted
+	"errors" // Import errors
+	"fmt"    // For error wrapping
+	"time"   // Added for MarkUserDeleted
 
+	"github.com/SscSPs/money_managemet_app/internal/apperrors" // Import apperrors
 	"github.com/SscSPs/money_managemet_app/internal/core/ports"
 	"github.com/SscSPs/money_managemet_app/internal/models"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type UserRepository struct {
+type PgxUserRepository struct {
 	db *pgxpool.Pool
 }
 
-func NewUserRepository(db *pgxpool.Pool) *UserRepository {
-	return &UserRepository{db: db}
+func NewPgxUserRepository(db *pgxpool.Pool) *PgxUserRepository {
+	return &PgxUserRepository{db: db}
 }
 
-// Ensure UserRepository implements ports.UserRepository
-var _ ports.UserRepository = (*UserRepository)(nil)
+// Ensure PgxUserRepository implements ports.UserRepository
+var _ ports.UserRepository = (*PgxUserRepository)(nil)
 
-func (r *UserRepository) SaveUser(ctx context.Context, user models.User) error {
+func (r *PgxUserRepository) SaveUser(ctx context.Context, user models.User) error {
 	query := `
         INSERT INTO users (user_id, name, created_at, created_by, last_updated_at, last_updated_by)
         VALUES ($1, $2, $3, $4, $5, $6)
@@ -45,12 +47,12 @@ func (r *UserRepository) SaveUser(ctx context.Context, user models.User) error {
 	return nil
 }
 
-func (r *UserRepository) FindUserByID(ctx context.Context, userID string) (*models.User, error) {
+func (r *PgxUserRepository) FindUserByID(ctx context.Context, userID string) (*models.User, error) {
 	query := `
-        SELECT user_id, name, created_at, created_by, last_updated_at, last_updated_by
-        FROM users
-        WHERE user_id = $1;
-    `
+		SELECT user_id, name, created_at, created_by, last_updated_at, last_updated_by
+		FROM users
+		WHERE user_id = $1 AND deleted_at IS NULL;
+	`
 	var user models.User
 	err := r.db.QueryRow(ctx, query, userID).Scan(
 		&user.UserID,
@@ -60,16 +62,20 @@ func (r *UserRepository) FindUserByID(ctx context.Context, userID string) (*mode
 		&user.LastUpdatedAt,
 		&user.LastUpdatedBy,
 	)
+
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil // Indicate not found explicitly
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Map db not found error to application specific error
+			return nil, apperrors.ErrNotFound
 		}
-		return nil, fmt.Errorf("failed to find user by ID: %w", err)
+		// Wrap other potential errors
+		return nil, fmt.Errorf("failed to find user by ID %s: %w", userID, err)
 	}
+
 	return &user, nil
 }
 
-func (r *UserRepository) FindUsers(ctx context.Context, limit int, offset int) ([]models.User, error) {
+func (r *PgxUserRepository) FindUsers(ctx context.Context, limit int, offset int) ([]models.User, error) {
 	// Default limit if not specified or invalid
 	if limit <= 0 {
 		limit = 20
@@ -117,7 +123,7 @@ func (r *UserRepository) FindUsers(ctx context.Context, limit int, offset int) (
 	return users, nil
 }
 
-func (r *UserRepository) UpdateUser(ctx context.Context, user models.User) error {
+func (r *PgxUserRepository) UpdateUser(ctx context.Context, user models.User) error {
 	query := `
         UPDATE users
         SET name = $1, last_updated_at = $2, last_updated_by = $3
@@ -140,7 +146,7 @@ func (r *UserRepository) UpdateUser(ctx context.Context, user models.User) error
 	return nil
 }
 
-func (r *UserRepository) MarkUserDeleted(ctx context.Context, userID string, deletedAt time.Time, deletedBy string) error {
+func (r *PgxUserRepository) MarkUserDeleted(ctx context.Context, userID string, deletedAt time.Time, deletedBy string) error {
 	query := `
         UPDATE users
         SET deleted_at = $1, last_updated_at = $1, last_updated_by = $2

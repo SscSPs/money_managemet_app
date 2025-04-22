@@ -2,28 +2,31 @@ package pgsql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/ports"
 	"github.com/SscSPs/money_managemet_app/internal/models"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	// Import pgx specifically for error handling like ErrNoRows if needed
 	// "github.com/jackc/pgx/v5"
 )
 
-type accountRepository struct {
+type PgxAccountRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewAccountRepository creates a new repository for account data.
-func NewAccountRepository(pool *pgxpool.Pool) ports.AccountRepository {
-	return &accountRepository{pool: pool}
+// NewPgxAccountRepository creates a new repository for account data.
+func NewPgxAccountRepository(pool *pgxpool.Pool) ports.AccountRepository {
+	return &PgxAccountRepository{pool: pool}
 }
 
 // SaveAccount inserts a new account.
 // Note: Update/Inactivate logic will be added in later milestones/methods.
-func (r *accountRepository) SaveAccount(ctx context.Context, account models.Account) error {
+func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account models.Account) error {
 	// Use actual UserID when available
 	creatorUserID := account.CreatedBy
 	now := time.Now().UTC()
@@ -60,14 +63,13 @@ func (r *accountRepository) SaveAccount(ctx context.Context, account models.Acco
 }
 
 // FindAccountByID retrieves an account by its ID.
-func (r *accountRepository) FindAccountByID(ctx context.Context, accountID string) (*models.Account, error) {
+func (r *PgxAccountRepository) FindAccountByID(ctx context.Context, accountID string) (*models.Account, error) {
 	query := `
 		SELECT account_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by
 		FROM accounts
 		WHERE account_id = $1;
 	`
 	var acc models.Account
-	// Need to handle potential NULL parent_account_id from DB
 	var parentID *string
 
 	err := r.pool.QueryRow(ctx, query, accountID).Scan(
@@ -84,16 +86,21 @@ func (r *accountRepository) FindAccountByID(ctx context.Context, accountID strin
 		&acc.LastUpdatedBy,
 	)
 
-	if parentID != nil {
-		acc.ParentAccountID = *parentID // Assign if not NULL
-	} else {
-		acc.ParentAccountID = "" // Or keep as empty string
-	}
-
 	if err != nil {
-		// TODO: Handle pgx.ErrNoRows specifically if needed
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Map db not found error to application specific error
+			return nil, apperrors.ErrNotFound
+		}
+		// Wrap other potential errors
 		return nil, fmt.Errorf("failed to find account by ID %s: %w", accountID, err)
 	}
+
+	if parentID != nil {
+		acc.ParentAccountID = *parentID
+	} else {
+		acc.ParentAccountID = ""
+	}
+
 	return &acc, nil
 }
 

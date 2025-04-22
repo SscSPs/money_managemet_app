@@ -13,7 +13,6 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
-	// TODO: Add logging import
 )
 
 type CurrencyHandler struct {
@@ -38,38 +37,39 @@ func newCurrencyHandler(currencyService *services.CurrencyService) *CurrencyHand
 // @Failure 500 {object} string "Internal server error"
 // @Router /currencies [post]
 func (h *CurrencyHandler) createCurrency(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c) // Get logger from context
+	logger := middleware.GetLoggerFromCtx(c.Request.Context()) // Use GetLoggerFromCtx
 
 	var createReq dto.CreateCurrencyRequest
 	if err := c.ShouldBindJSON(&createReq); err != nil {
 		logger.Error("Failed to bind JSON for CreateCurrency", slog.String("error", err.Error()))
-		// Use generic error message
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
-	// Validate currency code format
 	if len(createReq.CurrencyCode) != 3 || createReq.CurrencyCode != strings.ToUpper(createReq.CurrencyCode) {
 		logger.Warn("Invalid currency code format in request body", slog.String("code", createReq.CurrencyCode))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Currency code must be 3 uppercase letters"})
 		return
 	}
 
-	// Get creator user ID from context
 	creatorUserID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		logger.Error("Creator user ID not found in context")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	logger = logger.With(slog.String("creator_user_id", creatorUserID))
 
 	currency, err := h.currencyService.CreateCurrency(c.Request.Context(), createReq, creatorUserID)
 	if err != nil {
-		// TODO: Check for specific errors (e.g., duplicate currency code)
-		logger.Error("Failed to create currency in service", slog.String("error", err.Error()), slog.String("code", createReq.CurrencyCode))
-		// Use generic error message
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create currency"})
+		// Check for potential validation errors from service (e.g., duplicate code if implemented)
+		if errors.Is(err, apperrors.ErrValidation) {
+			logger.Warn("Validation error creating currency", slog.String("error", err.Error()), slog.String("code", createReq.CurrencyCode))
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		} else {
+			// Log other unexpected errors
+			logger.Error("Failed to create currency in service", slog.String("error", err.Error()), slog.String("code", createReq.CurrencyCode))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create currency"})
+		}
 		return
 	}
 
@@ -90,10 +90,10 @@ func (h *CurrencyHandler) createCurrency(c *gin.Context) {
 // @Failure 500 {object} string "Internal server error"
 // @Router /currencies/{currencyCode} [get]
 func (h *CurrencyHandler) getCurrency(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c) // Get logger from context
+	logger := middleware.GetLoggerFromCtx(c.Request.Context()) // Use GetLoggerFromCtx
 	currencyCode := strings.ToUpper(c.Param("currencyCode"))
 
-	if len(currencyCode) != 3 { // Basic validation
+	if len(currencyCode) != 3 {
 		logger.Warn("Invalid currency code format requested in path", slog.String("code", c.Param("currencyCode")))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Currency code must be 3 letters"})
 		return
@@ -130,7 +130,7 @@ func (h *CurrencyHandler) getCurrency(c *gin.Context) {
 // @Failure 500 {object} string "Internal server error"
 // @Router /currencies [get]
 func (h *CurrencyHandler) listCurrencies(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c) // Get logger from context
+	logger := middleware.GetLoggerFromCtx(c.Request.Context()) // Use GetLoggerFromCtx
 
 	currencies, err := h.currencyService.ListCurrencies(c.Request.Context())
 	if err != nil {
@@ -147,7 +147,7 @@ func (h *CurrencyHandler) listCurrencies(c *gin.Context) {
 // registerCurrencyRoutes registers currency specific routes
 func registerCurrencyRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	// Instantiate dependencies
-	currencyRepo := pgsql.NewCurrencyRepository(dbPool)
+	currencyRepo := pgsql.NewPgxCurrencyRepository(dbPool)
 	currencyService := services.NewCurrencyService(currencyRepo)
 	currencyHandler := newCurrencyHandler(currencyService)
 

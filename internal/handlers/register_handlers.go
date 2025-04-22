@@ -28,7 +28,6 @@ func setupAPIV1Routes(r *gin.Engine, cfg *config.Config, dbPool *pgxpool.Pool) {
 	v1 := r.Group("/api/v1", middleware.AuthMiddleware(cfg.JWTSecret))
 
 	// Delegate route registration to specific handlers
-	registerExampleRoutes(v1)
 	registerJournalRoutes(v1, dbPool)
 	registerAccountRoutes(v1, dbPool)
 	registerUserRoutes(v1, dbPool)

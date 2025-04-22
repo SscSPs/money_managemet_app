@@ -500,22 +500,6 @@ paths:
       summary: Get a currency by code
       tags:
       - currencies
-  /example/helloworld:
-    get:
-      consumes:
-      - '*/*'
-      description: get the status of server.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-      summary: Show the status of server.
-      tags:
-      - helloworld
   /exchange-rates:
     get:
       consumes:

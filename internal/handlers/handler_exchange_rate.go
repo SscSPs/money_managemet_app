@@ -43,7 +43,7 @@ func newExchangeRateHandler(exchangeRateService *services.ExchangeRateService) *
 // @Router /exchange-rates [post]
 // @Security BearerAuth
 func (h *ExchangeRateHandler) createExchangeRate(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 
 	var createReq dto.CreateExchangeRateRequest
 	if err := c.ShouldBindJSON(&createReq); err != nil {
@@ -97,7 +97,7 @@ func (h *ExchangeRateHandler) createExchangeRate(c *gin.Context) {
 // @Router /exchange-rates [get]
 // @Security BearerAuth
 func (h *ExchangeRateHandler) getExchangeRate(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 
 	fromCode := c.Query(queryParamFrom)
 	toCode := c.Query(queryParamTo)
@@ -133,7 +133,7 @@ func (h *ExchangeRateHandler) getExchangeRate(c *gin.Context) {
 func registerExchangeRateRoutes(rg *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	// Instantiate dependencies
 	// Need CurrencyService for validation, which requires CurrencyRepository
-	currencyRepo := pgsql.NewCurrencyRepository(dbPool)
+	currencyRepo := pgsql.NewPgxCurrencyRepository(dbPool)
 	currencyService := services.NewCurrencyService(currencyRepo)
 
 	exchangeRateRepo := pgsql.NewExchangeRateRepository(dbPool)

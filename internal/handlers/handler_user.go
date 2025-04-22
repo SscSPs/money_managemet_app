@@ -37,7 +37,7 @@ func newUserHandler(userService *services.UserService) *userHandler {
 // @Failure 500 {object} string "Internal server error"
 // @Router /users [post]
 func (h *userHandler) createUser(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 
 	var createReq dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&createReq); err != nil {
@@ -46,22 +46,22 @@ func (h *userHandler) createUser(c *gin.Context) {
 		return
 	}
 
-	// Get the ID of the user *performing* the action from the context
 	creatorUserID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
-		// This indicates an issue with auth middleware or unauthenticated request
 		logger.Error("Creator user ID not found in context")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	// Log the creator performing the action
-	logger = logger.With(slog.String("creator_user_id", creatorUserID))
-
 	user, err := h.userService.CreateUser(c.Request.Context(), createReq, creatorUserID)
 	if err != nil {
-		logger.Error("Failed to create user in service", slog.String("error", err.Error()), slog.String("requested_name", createReq.Name))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		if errors.Is(err, apperrors.ErrValidation) {
+			logger.Warn("Validation error creating user", slog.String("error", err.Error()))
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		} else {
+			logger.Error("Failed to create user in service", slog.String("error", err.Error()), slog.String("requested_name", createReq.Name))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		}
 		return
 	}
 
@@ -81,7 +81,7 @@ func (h *userHandler) createUser(c *gin.Context) {
 // @Failure 500 {object} string "Internal server error"
 // @Router /users/{userID} [get]
 func (h *userHandler) getUser(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c) // Get logger from context
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 	userID := c.Param("userID")
 
 	user, err := h.userService.GetUserByID(c.Request.Context(), userID)
@@ -97,7 +97,7 @@ func (h *userHandler) getUser(c *gin.Context) {
 		return
 	}
 
-	logger.Debug("User retrieved successfully", slog.String("user_id", user.UserID)) // Example debug log
+	logger.Debug("User retrieved successfully", slog.String("user_id", user.UserID))
 	c.JSON(http.StatusOK, dto.ToUserResponse(user))
 }
 
@@ -113,36 +113,24 @@ func (h *userHandler) getUser(c *gin.Context) {
 // @Failure 500 {object} string "Internal server error"
 // @Router /users [get]
 func (h *userHandler) listUsers(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 
-	// Bind query parameters for pagination
 	var params dto.ListUsersParams
 	if err := c.ShouldBindQuery(&params); err != nil {
 		logger.Warn("Failed to bind query parameters for ListUsers", slog.String("error", err.Error()))
-		// Use defaults if binding fails, perhaps?
-		// Or return bad request? For now, let service use defaults.
-		// Resetting to 0 to let service layer apply defaults cleanly
-		params.Limit = 0
-		params.Offset = 0
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid query parameters: " + err.Error()})
+		return
 	}
 
-	// Sanitize/Validate params (optional, service/repo can also handle defaults)
-	if params.Limit <= 0 {
-		params.Limit = 20 // Default limit
-	}
-	if params.Offset < 0 {
-		params.Offset = 0 // Default offset
-	}
-
-	users, err := h.userService.ListUsers(c.Request.Context(), params.Limit, params.Offset)
+	resp, err := h.userService.ListUsers(c.Request.Context(), params)
 	if err != nil {
 		logger.Error("Failed to list users from service", slog.String("error", err.Error()))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve users"})
 		return
 	}
 
-	logger.Debug("Users listed successfully", slog.Int("count", len(users)), slog.Int("limit", params.Limit), slog.Int("offset", params.Offset))
-	c.JSON(http.StatusOK, dto.ToListUserResponse(users))
+	logger.Debug("Users listed successfully")
+	c.JSON(http.StatusOK, resp)
 }
 
 // updateUser godoc
@@ -160,7 +148,7 @@ func (h *userHandler) listUsers(c *gin.Context) {
 // @Failure 500 {object} string "Internal server error"
 // @Router /users/{userID} [put]
 func (h *userHandler) updateUser(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 	userID := c.Param("userID")
 
 	var updateReq dto.UpdateUserRequest
@@ -170,19 +158,20 @@ func (h *userHandler) updateUser(c *gin.Context) {
 		return
 	}
 
-	// Get the ID of the user *performing* the action from the context
 	updaterUserID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		logger.Error("Updater user ID not found in context")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	logger = logger.With(slog.String("updater_user_id", updaterUserID))
 
-	// TODO: Authorization check - does updaterUserID have permission to update userID?
-	// For now, allow any authenticated user to update any other user.
+	if userID != updaterUserID {
+		logger.Warn("Authorization failed: User attempted to update another user", slog.String("target_user_id", userID), slog.String("updater_user_id", updaterUserID))
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		return
+	}
 
-	user, err := h.userService.UpdateUser(c.Request.Context(), userID, updateReq, updaterUserID)
+	updatedUser, err := h.userService.UpdateUser(c.Request.Context(), userID, updateReq, updaterUserID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNotFound) {
 			logger.Warn("User not found for update", slog.String("user_id", userID))
@@ -194,8 +183,8 @@ func (h *userHandler) updateUser(c *gin.Context) {
 		return
 	}
 
-	logger.Info("User updated successfully", slog.String("user_id", userID))
-	c.JSON(http.StatusOK, dto.ToUserResponse(user))
+	logger.Info("User updated successfully", slog.String("user_id", updatedUser.UserID))
+	c.JSON(http.StatusOK, dto.ToUserResponse(updatedUser))
 }
 
 // deleteUser godoc
@@ -211,20 +200,21 @@ func (h *userHandler) updateUser(c *gin.Context) {
 // @Failure 500 {object} string "Internal server error"
 // @Router /users/{userID} [delete]
 func (h *userHandler) deleteUser(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 	userID := c.Param("userID")
 
-	// Get the ID of the user *performing* the action from the context
 	deleterUserID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		logger.Error("Deleter user ID not found in context")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	logger = logger.With(slog.String("deleter_user_id", deleterUserID))
 
-	// TODO: Authorization check - does deleterUserID have permission to delete userID?
-	// Cannot delete self? Requires admin role? etc.
+	if userID != deleterUserID {
+		logger.Warn("Authorization failed: User attempted to delete another user", slog.String("target_user_id", userID), slog.String("deleter_user_id", deleterUserID))
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		return
+	}
 
 	err := h.userService.DeleteUser(c.Request.Context(), userID, deleterUserID)
 	if err != nil {
@@ -245,7 +235,7 @@ func (h *userHandler) deleteUser(c *gin.Context) {
 // registerUserRoutes registers user CRUD routes
 func registerUserRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	// Instantiate dependencies
-	userRepo := pgsql.NewUserRepository(dbPool)
+	userRepo := pgsql.NewPgxUserRepository(dbPool)
 	userService := services.NewUserService(userRepo)
 	userHandler := newUserHandler(userService)
 

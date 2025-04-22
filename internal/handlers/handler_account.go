@@ -14,13 +14,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type accountHandler struct {
+type AccountHandler struct {
 	accountService *services.AccountService
 	journalService *services.JournalService
 }
 
-func newAccountHandler(accountService *services.AccountService, journalService *services.JournalService) *accountHandler {
-	return &accountHandler{
+func NewAccountHandler(accountService *services.AccountService, journalService *services.JournalService) *AccountHandler {
+	return &AccountHandler{
 		accountService: accountService,
 		journalService: journalService,
 	}
@@ -38,8 +38,8 @@ func newAccountHandler(accountService *services.AccountService, journalService *
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /accounts [post]
-func (h *accountHandler) createAccount(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+func (h *AccountHandler) createAccount(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 
 	var createReq dto.CreateAccountRequest
 	if err := c.ShouldBindJSON(&createReq); err != nil {
@@ -48,7 +48,6 @@ func (h *accountHandler) createAccount(c *gin.Context) {
 		return
 	}
 
-	// Get the ID of the user *performing* the action from the context
 	creatorUserID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		logger.Error("Creator user ID not found in context")
@@ -56,19 +55,21 @@ func (h *accountHandler) createAccount(c *gin.Context) {
 		return
 	}
 
-	// Log the creator performing the action
-	logger = logger.With(slog.String("creator_user_id", creatorUserID))
-
-	// Call the service to create the account
 	account, err := h.accountService.CreateAccount(c.Request.Context(), createReq, creatorUserID)
 	if err != nil {
-		// TODO: Differentiate between validation errors (4xx) and server errors (5xx) if service returns specific errors
-		logger.Error("Failed to create account in service", slog.String("error", err.Error()), slog.String("requested_name", createReq.Name), slog.String("account_owner_id", createReq.UserID))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create account"})
+		// Check for specific errors from the service
+		if errors.Is(err, apperrors.ErrValidation) {
+			logger.Warn("Validation error creating account", slog.String("error", err.Error()))
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		} else {
+			// Log unexpected errors
+			logger.Error("Failed to create account in service", slog.String("error", err.Error()), slog.String("requested_name", createReq.Name), slog.String("account_owner_id", createReq.UserID))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create account"})
+		}
 		return
 	}
 	logger.Info("Account created successfully", slog.String("account_id", account.AccountID))
-	c.JSON(http.StatusCreated, dto.ToAccountResponse(account)) // Use DTO for response
+	c.JSON(http.StatusCreated, dto.ToAccountResponse(account))
 }
 
 // getAccount godoc
@@ -82,8 +83,8 @@ func (h *accountHandler) createAccount(c *gin.Context) {
 // @Failure 404 {object} map[string]string "Account not found"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /accounts/{accountID} [get]
-func (h *accountHandler) getAccount(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+func (h *AccountHandler) getAccount(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 	accountID := c.Param("accountID")
 
 	account, err := h.accountService.GetAccountByID(c.Request.Context(), accountID)
@@ -115,21 +116,19 @@ func (h *accountHandler) getAccount(c *gin.Context) {
 // @Failure 404 {object} map[string]string "Account not found"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /accounts/{accountID}/balance [get]
-func (h *accountHandler) getAccountBalance(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+func (h *AccountHandler) getAccountBalance(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 	accountID := c.Param("accountID")
-	logger = logger.With(slog.String("account_id", accountID))
 
-	// Use h.journalService
 	balance, err := h.journalService.CalculateAccountBalance(c.Request.Context(), accountID)
 	if err != nil {
-		// Check for specific ErrAccountNotFound from the service layer
-		if errors.Is(err, services.ErrAccountNotFound) {
-			logger.Warn("Account not found when calculating balance")
+		// Check for specific ErrNotFound (assuming service returns this)
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Account not found when calculating balance", slog.String("account_id", accountID))
 			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
 		} else {
 			// Log other errors from calculation or repository
-			logger.Error("Failed to calculate account balance", slog.String("error", err.Error()))
+			logger.Error("Failed to calculate account balance", slog.String("error", err.Error()), slog.String("account_id", accountID))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate account balance"})
 		}
 		return
@@ -147,11 +146,11 @@ func (h *accountHandler) getAccountBalance(c *gin.Context) {
 // registerAccountRoutes registers account specific routes
 func registerAccountRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	// Instantiate dependencies
-	accountRepo := pgsql.NewAccountRepository(dbPool)
-	journalRepo := pgsql.NewJournalRepository(dbPool)
+	accountRepo := pgsql.NewPgxAccountRepository(dbPool)
+	journalRepo := pgsql.NewPgxJournalRepository(dbPool)
 	accountService := services.NewAccountService(accountRepo)
 	journalService := services.NewJournalService(accountRepo, journalRepo)
-	accountHandler := newAccountHandler(accountService, journalService)
+	accountHandler := NewAccountHandler(accountService, journalService)
 
 	// Define routes
 	accounts := group.Group("/accounts")

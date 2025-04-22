@@ -2,8 +2,10 @@ package pgsql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/ports"
 	"github.com/SscSPs/money_managemet_app/internal/models"
 	"github.com/jackc/pgx/v5"
@@ -11,17 +13,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-type journalRepository struct {
+type PgxJournalRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewJournalRepository creates a new repository for journal and transaction data.
-func NewJournalRepository(pool *pgxpool.Pool) ports.JournalRepository {
-	return &journalRepository{pool: pool}
+// NewPgxJournalRepository creates a new repository for journal and transaction data.
+func NewPgxJournalRepository(pool *pgxpool.Pool) ports.JournalRepository {
+	return &PgxJournalRepository{pool: pool}
 }
 
 // SaveJournal saves a journal and its associated transactions within a DB transaction.
-func (r *journalRepository) SaveJournal(ctx context.Context, journal models.Journal, transactions []models.Transaction) error {
+func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal models.Journal, transactions []models.Transaction) error {
 	// Start a database transaction
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -90,34 +92,39 @@ func (r *journalRepository) SaveJournal(ctx context.Context, journal models.Jour
 }
 
 // FindJournalByID retrieves a journal by its ID.
-func (r *journalRepository) FindJournalByID(ctx context.Context, journalID string) (*models.Journal, error) {
+func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID string) (*models.Journal, error) {
 	query := `
 		SELECT journal_id, journal_date, description, currency_code, status, created_at, created_by, last_updated_at, last_updated_by
 		FROM journals
 		WHERE journal_id = $1;
 	`
-	var j models.Journal
+	var journal models.Journal
 	err := r.pool.QueryRow(ctx, query, journalID).Scan(
-		&j.JournalID,
-		&j.JournalDate,
-		&j.Description,
-		&j.CurrencyCode,
-		&j.Status,
-		&j.CreatedAt,
-		&j.CreatedBy,
-		&j.LastUpdatedAt,
-		&j.LastUpdatedBy,
+		&journal.JournalID,
+		&journal.JournalDate,
+		&journal.Description,
+		&journal.CurrencyCode,
+		&journal.Status,
+		&journal.CreatedAt,
+		&journal.CreatedBy,
+		&journal.LastUpdatedAt,
+		&journal.LastUpdatedBy,
 	)
 
 	if err != nil {
-		// TODO: Handle pgx.ErrNoRows specifically if needed
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Map db not found error to application specific error
+			return nil, apperrors.ErrNotFound
+		}
+		// Wrap other potential errors
 		return nil, fmt.Errorf("failed to find journal by ID %s: %w", journalID, err)
 	}
-	return &j, nil
+
+	return &journal, nil
 }
 
 // FindTransactionsByJournalID retrieves all transactions associated with a specific journal.
-func (r *journalRepository) FindTransactionsByJournalID(ctx context.Context, journalID string) ([]models.Transaction, error) {
+func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, journalID string) ([]models.Transaction, error) {
 	query := `
 		SELECT transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by
 		FROM transactions
@@ -163,7 +170,7 @@ func (r *journalRepository) FindTransactionsByJournalID(ctx context.Context, jou
 }
 
 // FindTransactionsByAccountID retrieves all transactions associated with a specific account.
-func (r *journalRepository) FindTransactionsByAccountID(ctx context.Context, accountID string) ([]models.Transaction, error) {
+func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, accountID string) ([]models.Transaction, error) {
 	query := `
 		SELECT transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by
 		FROM transactions

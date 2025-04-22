@@ -351,30 +351,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/example/helloworld": {
-            "get": {
-                "description": "get the status of server.",
-                "consumes": [
-                    "*/*"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "helloworld"
-                ],
-                "summary": "Show the status of server.",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
         "/exchange-rates": {
             "get": {
                 "security": [

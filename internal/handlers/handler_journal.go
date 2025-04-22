@@ -39,7 +39,7 @@ func newJournalHandler(journalService *services.JournalService) *journalHandler 
 // @Failure 500 {object} map[string]string "Failed to persist journal"
 // @Router /journals/ [post]
 func (h *journalHandler) persistJournal(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 
 	createReq := dto.CreateJournalAndTxn{}
 	if err := c.ShouldBindJSON(&createReq); err != nil {
@@ -59,8 +59,13 @@ func (h *journalHandler) persistJournal(c *gin.Context) {
 
 	journal, err := h.journalService.PersistJournal(c.Request.Context(), createReq.Journal, createReq.Transactions, creatorUserID)
 	if err != nil {
-		logger.Error("Failed to persist journal in service", slog.String("error", err.Error()))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist journal"})
+		if errors.Is(err, apperrors.ErrValidation) {
+			logger.Warn("Validation error persisting journal", slog.String("error", err.Error()))
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		} else {
+			logger.Error("Failed to persist journal in service", slog.String("error", err.Error()))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist journal"})
+		}
 		return
 	}
 
@@ -80,7 +85,7 @@ func (h *journalHandler) persistJournal(c *gin.Context) {
 // @Failure 500 {object} map[string]string "Failed to retrieve journal"
 // @Router /journals/{journalID} [get]
 func (h *journalHandler) getJournal(c *gin.Context) {
-	logger := middleware.GetLoggerFromContext(c)
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 	journalID := c.Param("journalID")
 
 	journal, txns, err := h.journalService.GetJournalWithTransactions(c.Request.Context(), journalID)
@@ -101,8 +106,8 @@ func (h *journalHandler) getJournal(c *gin.Context) {
 
 // registerJournalRoutes registers journal specific routes
 func registerJournalRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
-	journalRepo := pgsql.NewJournalRepository(dbPool)
-	accountRepo := pgsql.NewAccountRepository(dbPool)
+	journalRepo := pgsql.NewPgxJournalRepository(dbPool)
+	accountRepo := pgsql.NewPgxAccountRepository(dbPool)
 	journalService := services.NewJournalService(accountRepo, journalRepo)
 
 	journalHandler := newJournalHandler(journalService)

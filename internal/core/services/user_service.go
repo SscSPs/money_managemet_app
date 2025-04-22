@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/ports"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
+	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/SscSPs/money_managemet_app/internal/models"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type UserService struct {
@@ -23,130 +24,116 @@ func NewUserService(userRepo ports.UserRepository) *UserService {
 }
 
 func (s *UserService) CreateUser(ctx context.Context, req dto.CreateUserRequest, creatorUserID string) (*models.User, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
 	now := time.Now()
-	newUserID := uuid.NewString() // Generate a new UUID for the user
+	newUserID := uuid.NewString()
 
 	user := models.User{
 		UserID: newUserID,
 		Name:   req.Name,
 		AuditFields: models.AuditFields{
 			CreatedAt:     now,
-			CreatedBy:     creatorUserID, // The user performing the creation
+			CreatedBy:     creatorUserID,
 			LastUpdatedAt: now,
-			LastUpdatedBy: creatorUserID, // Initially same as creator
+			LastUpdatedBy: creatorUserID,
 		},
 	}
 
 	err := s.userRepo.SaveUser(ctx, user)
 	if err != nil {
-		// TODO: Add structured logging
+		logger.Error("Failed to save user in repository", slog.String("error", err.Error()), slog.String("user_name", req.Name))
 		return nil, fmt.Errorf("failed to create user in service: %w", err)
 	}
 
+	logger.Info("User created successfully in service", slog.String("user_id", user.UserID))
 	return &user, nil
 }
 
 func (s *UserService) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
 	user, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil {
-		// TODO: Add structured logging
-		// TODO: Consider if the repo should return a specific error for not found too
-		// If the repo itself returns a specific ErrNotFound, we might just return that directly.
-		// For now, assume repo returns (nil, nil) or (nil, otherError)
-		if user == nil && err == nil { // Explicitly check if repo returned nil, nil (meaning not found by convention)
-			return nil, apperrors.ErrNotFound
+		if !errors.Is(err, apperrors.ErrNotFound) {
+			logger.Error("Failed to find user by ID in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
 		}
-		// Handle other potential errors from the repository
-		return nil, fmt.Errorf("failed to get user by ID from repository: %w", err)
+		return nil, err
 	}
-	// Original check for nil user when no error occurred.
-	// This handles the case where the repo explicitly returns (nil, nil).
-	if user == nil {
-		return nil, apperrors.ErrNotFound // Return the specific not found error
-	}
+	logger.Debug("User retrieved successfully by ID from service", slog.String("user_id", user.UserID))
 	return user, nil
 }
 
 // ListUsers retrieves a paginated list of non-deleted users.
-func (s *UserService) ListUsers(ctx context.Context, limit int, offset int) ([]models.User, error) {
+func (s *UserService) ListUsers(ctx context.Context, req dto.ListUsersParams) (*dto.ListUsersResponse, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+	limit := 10
+	if req.Limit > 0 {
+		limit = req.Limit
+	}
+	offset := 0
+	if req.Offset > 0 {
+		offset = req.Offset
+	}
+
 	users, err := s.userRepo.FindUsers(ctx, limit, offset)
 	if err != nil {
-		// TODO: Add structured logging
-		return nil, fmt.Errorf("failed to list users from repository: %w", err)
+		logger.Error("Failed to find users in repository", slog.String("error", err.Error()), slog.Int("limit", limit), slog.Int("offset", offset))
+		return nil, fmt.Errorf("failed to list users: %w", err)
 	}
-	return users, nil
+
+	logger.Debug("Users listed successfully from service", slog.Int("count", len(users)), slog.Int("limit", limit), slog.Int("offset", offset))
+	response := dto.ToListUserResponse(users)
+	return &response, nil
 }
 
-// UpdateUser updates an existing user's details.
-// It only allows updating certain fields (e.g., Name).
 func (s *UserService) UpdateUser(ctx context.Context, userID string, req dto.UpdateUserRequest, updaterUserID string) (*models.User, error) {
-	// 1. Fetch the existing user to ensure it exists and is not deleted
-	//    We fetch it anyway to return the updated object.
+	logger := middleware.GetLoggerFromCtx(ctx)
 	existingUser, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil {
-		// Check if the find error is pgx.ErrNoRows, map to apperrors.ErrNotFound
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.ErrNotFound
+		if !errors.Is(err, apperrors.ErrNotFound) {
+			logger.Error("Failed to find user by ID for update", slog.String("error", err.Error()), slog.String("user_id", userID))
 		}
-		// TODO: Add structured logging
-		return nil, fmt.Errorf("failed to find user for update: %w", err)
-	}
-	if existingUser == nil { // Should be caught by the error check above, but belt-and-suspenders
-		return nil, apperrors.ErrNotFound
-	}
-	// Check if user is already deleted (FindUserByID should ideally filter this, but double check)
-	if existingUser.DeletedAt != nil {
-		return nil, apperrors.ErrNotFound // Treat deleted users as not found for updates
+		return nil, err
 	}
 
-	// 2. Update fields (only Name in this case)
-	now := time.Now()
-	updateNeeded := false
+	updateOccurred := false
 	if req.Name != nil && *req.Name != existingUser.Name {
 		existingUser.Name = *req.Name
-		updateNeeded = true
+		updateOccurred = true
 	}
 
-	// If no fields were actually changed, we can optionally return early.
-	if !updateNeeded {
-		return existingUser, nil // Return the unchanged user
+	if !updateOccurred {
+		logger.Debug("No update needed for user", slog.String("user_id", userID))
+		return existingUser, nil
 	}
 
-	// 3. Set audit fields
-	existingUser.LastUpdatedAt = now
+	existingUser.LastUpdatedAt = time.Now()
 	existingUser.LastUpdatedBy = updaterUserID
 
-	// 4. Save updated user
 	err = s.userRepo.UpdateUser(ctx, *existingUser)
 	if err != nil {
-		// Check if the update error is pgx.ErrNoRows (e.g., race condition where user was deleted)
-		if errors.Is(err, pgx.ErrNoRows) {
+		logger.Error("Failed to update user in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Update failed because user was not found (possibly deleted concurrently)", slog.String("user_id", userID))
 			return nil, apperrors.ErrNotFound
 		}
-		// TODO: Add structured logging
-		return nil, fmt.Errorf("failed to update user in repository: %w", err)
+		return nil, fmt.Errorf("failed to update user: %w", err)
 	}
 
+	logger.Info("User updated successfully in service", slog.String("user_id", userID))
 	return existingUser, nil
 }
 
-// DeleteUser performs a soft delete on a user.
 func (s *UserService) DeleteUser(ctx context.Context, userID string, deleterUserID string) error {
-	// Optionally, check if user exists and is not deleted first using FindUserByID.
-	// This prevents an unnecessary update call but adds a read query.
-	// For simplicity here, we rely on the MarkUserDeleted repo method to handle non-existent/already-deleted cases.
-
+	logger := middleware.GetLoggerFromCtx(ctx)
 	now := time.Now()
 	err := s.userRepo.MarkUserDeleted(ctx, userID, now, deleterUserID)
 	if err != nil {
-		// Check if the error is pgx.ErrNoRows, map to apperrors.ErrNotFound
-		if errors.Is(err, pgx.ErrNoRows) {
-			return apperrors.ErrNotFound
+		if !errors.Is(err, apperrors.ErrNotFound) {
+			logger.Error("Failed to mark user deleted in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
 		}
-		// TODO: Add structured logging
-		return fmt.Errorf("failed to mark user deleted in repository: %w", err)
+		return err
 	}
-
+	logger.Info("User marked as deleted successfully in service", slog.String("user_id", userID))
 	return nil
 }
 
