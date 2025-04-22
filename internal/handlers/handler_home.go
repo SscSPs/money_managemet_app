@@ -9,13 +9,13 @@ import (
 // getHome godoc
 // @Summary Show the status of server.
 // @Description get the status of server.
-// @Tags root
+// @Tags helloworld
 // @Accept */*
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router / [get]
+// @Router /example/helloworld [get]
 func getHome(ctx *gin.Context) {
-	ctx.JSON(http.StatusOK, gin.H{"message": "Hello World From MMA Backend API v1"})
+	ctx.JSON(http.StatusOK, gin.H{"message": "Hello World From MMA Backend API v1. You are authenticated."})
 }
 
 // registerExampleRoutes registers the example '/helloworld' route

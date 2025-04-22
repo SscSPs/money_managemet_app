@@ -16,11 +16,13 @@ import (
 
 type accountHandler struct {
 	accountService *services.AccountService
+	journalService *services.JournalService
 }
 
-func newAccountHandler(accountService *services.AccountService) *accountHandler {
+func newAccountHandler(accountService *services.AccountService, journalService *services.JournalService) *accountHandler {
 	return &accountHandler{
 		accountService: accountService,
+		journalService: journalService,
 	}
 }
 
@@ -103,18 +105,60 @@ func (h *accountHandler) getAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.ToAccountResponse(account)) // Use DTO for response
 }
 
+// getAccountBalance godoc
+// @Summary Get account balance
+// @Description Retrieves the current calculated balance for a specific account
+// @Tags accounts
+// @Produce json
+// @Param accountID path string true "Account ID"
+// @Success 200 {object} dto.AccountBalanceResponse
+// @Failure 404 {object} map[string]string "Account not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /accounts/{accountID}/balance [get]
+func (h *accountHandler) getAccountBalance(c *gin.Context) {
+	logger := middleware.GetLoggerFromContext(c)
+	accountID := c.Param("accountID")
+	logger = logger.With(slog.String("account_id", accountID))
+
+	// Use h.journalService
+	balance, err := h.journalService.CalculateAccountBalance(c.Request.Context(), accountID)
+	if err != nil {
+		// Check for specific ErrAccountNotFound from the service layer
+		if errors.Is(err, services.ErrAccountNotFound) {
+			logger.Warn("Account not found when calculating balance")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+		} else {
+			// Log other errors from calculation or repository
+			logger.Error("Failed to calculate account balance", slog.String("error", err.Error()))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate account balance"})
+		}
+		return
+	}
+
+	logger.Info("Account balance retrieved successfully")
+	// Return the balance
+	resp := dto.AccountBalanceResponse{
+		AccountID: accountID,
+		Balance:   balance,
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // registerAccountRoutes registers account specific routes
 func registerAccountRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	// Instantiate dependencies
 	accountRepo := pgsql.NewAccountRepository(dbPool)
+	journalRepo := pgsql.NewJournalRepository(dbPool)
 	accountService := services.NewAccountService(accountRepo)
-	accountHandler := newAccountHandler(accountService)
+	journalService := services.NewJournalService(accountRepo, journalRepo)
+	accountHandler := newAccountHandler(accountService, journalService)
 
 	// Define routes
 	accounts := group.Group("/accounts")
 	{
 		accounts.POST("/", accountHandler.createAccount)
 		accounts.GET("/:accountID", accountHandler.getAccount)
+		accounts.GET("/:accountID/balance", accountHandler.getAccountBalance)
 	}
 }
 

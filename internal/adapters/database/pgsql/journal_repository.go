@@ -162,4 +162,54 @@ func (r *journalRepository) FindTransactionsByJournalID(ctx context.Context, jou
 	return transactions, nil
 }
 
+// FindTransactionsByAccountID retrieves all transactions associated with a specific account.
+func (r *journalRepository) FindTransactionsByAccountID(ctx context.Context, accountID string) ([]models.Transaction, error) {
+	query := `
+		SELECT transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by
+		FROM transactions
+		WHERE account_id = $1
+		ORDER BY created_at; -- Consistent ordering
+	`
+	rows, err := r.pool.Query(ctx, query, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query transactions for account %s: %w", accountID, err)
+	}
+	defer rows.Close()
+
+	transactions := []models.Transaction{}
+	for rows.Next() {
+		var txn models.Transaction
+		var amount decimal.Decimal // Use decimal for scanning
+
+		if err := rows.Scan(
+			&txn.TransactionID,
+			&txn.JournalID,
+			&txn.AccountID,
+			&amount, // Scan into decimal variable
+			&txn.TransactionType,
+			&txn.CurrencyCode,
+			&txn.Notes,
+			&txn.CreatedAt,
+			&txn.CreatedBy,
+			&txn.LastUpdatedAt,
+			&txn.LastUpdatedBy,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan transaction row for account %s: %w", accountID, err)
+		}
+		txn.Amount = amount // Assign scanned decimal to model field
+		transactions = append(transactions, txn)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating transaction rows for account %s: %w", accountID, err)
+	}
+
+	// Return empty slice if no transactions found, not nil
+	if transactions == nil {
+		return []models.Transaction{}, nil
+	}
+
+	return transactions, nil
+}
+
 // TODO: Implement UpdateJournalStatus for M4 (Reversals).

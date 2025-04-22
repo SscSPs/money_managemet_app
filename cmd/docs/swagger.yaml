@@ -1,5 +1,12 @@
 basePath: /
 definitions:
+  dto.AccountBalanceResponse:
+    properties:
+      accountID:
+        type: string
+      balance:
+        type: number
+    type: object
   dto.AccountResponse:
     properties:
       accountID:
@@ -242,22 +249,6 @@ info:
   title: MMA Backend API
   version: "1.0"
 paths:
-  /:
-    get:
-      consumes:
-      - '*/*'
-      description: get the status of server.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-      summary: Show the status of server.
-      tags:
-      - root
   /accounts:
     post:
       consumes:
@@ -329,6 +320,37 @@ paths:
               type: string
             type: object
       summary: Get an account by ID
+      tags:
+      - accounts
+  /accounts/{accountID}/balance:
+    get:
+      description: Retrieves the current calculated balance for a specific account
+      parameters:
+      - description: Account ID
+        in: path
+        name: accountID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AccountBalanceResponse'
+        "404":
+          description: Account not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get account balance
       tags:
       - accounts
   /auth/login:
@@ -448,7 +470,23 @@ paths:
       summary: Get a currency by code
       tags:
       - currencies
-  /ledger/:
+  /example/helloworld:
+    get:
+      consumes:
+      - '*/*'
+      description: get the status of server.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Show the status of server.
+      tags:
+      - helloworld
+  /journals/:
     post:
       consumes:
       - application/json
@@ -489,8 +527,8 @@ paths:
             type: object
       summary: Persist a journal entry with its transactions
       tags:
-      - ledger
-  /ledger/{journalID}:
+      - journals
+  /journals/{journalID}:
     get:
       consumes:
       - application/json
@@ -523,7 +561,7 @@ paths:
             type: object
       summary: Get a journal entry and its transactions
       tags:
-      - ledger
+      - journals
   /users:
     get:
       consumes:

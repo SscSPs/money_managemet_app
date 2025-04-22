@@ -29,7 +29,7 @@ func setupAPIV1Routes(r *gin.Engine, cfg *config.Config, dbPool *pgxpool.Pool) {
 
 	// Delegate route registration to specific handlers
 	registerExampleRoutes(v1)
-	registerLedgerRoutes(v1, dbPool)
+	registerJournalRoutes(v1, dbPool)
 	registerAccountRoutes(v1, dbPool)
 	registerUserRoutes(v1, dbPool)
 	registerCurrencyRoutes(v1, dbPool)

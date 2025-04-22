@@ -24,6 +24,7 @@ type JournalRepository interface {
 	SaveJournal(ctx context.Context, journal models.Journal, transactions []models.Transaction) error
 	FindJournalByID(ctx context.Context, journalID string) (*models.Journal, error)
 	FindTransactionsByJournalID(ctx context.Context, journalID string) ([]models.Transaction, error)
+	FindTransactionsByAccountID(ctx context.Context, accountID string) ([]models.Transaction, error)
 	// UpdateJournalStatus(ctx context.Context, journalID string, status models.JournalStatus) error // Needed for Reversals in M4
 }
 

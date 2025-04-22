@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/models"
+	"github.com/shopspring/decimal"
 )
 
 // CreateAccountRequest defines the data needed to create a new account.
@@ -56,4 +57,11 @@ func ToListAccountResponse(accounts []models.Account) []AccountResponse {
 		res[i] = ToAccountResponse(&acc) // Reuse the single converter
 	}
 	return res
+}
+
+// AccountBalanceResponse defines the data returned for an account balance query.
+type AccountBalanceResponse struct {
+	AccountID string          `json:"accountID"`
+	Balance   decimal.Decimal `json:"balance"`
+	// Could add currency code here if needed
 }

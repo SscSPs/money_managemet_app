@@ -14,20 +14,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type ledgerHandler struct {
-	ledgerService *services.LedgerService
+// journalHandler handles HTTP requests related to journals.
+type journalHandler struct {
+	journalService *services.JournalService
 }
 
-func newLedgerHandler(ledgerService *services.LedgerService) *ledgerHandler {
-	return &ledgerHandler{
-		ledgerService: ledgerService,
+// newJournalHandler creates a new journalHandler.
+func newJournalHandler(journalService *services.JournalService) *journalHandler {
+	return &journalHandler{
+		journalService: journalService,
 	}
 }
 
 // persistJournal godoc
 // @Summary Persist a journal entry with its transactions
 // @Description Creates a new journal and associated transactions
-// @Tags ledger
+// @Tags journals
 // @Accept  json
 // @Produce  json
 // @Param   journal body dto.CreateJournalAndTxn true "Journal and Transactions"
@@ -35,8 +37,8 @@ func newLedgerHandler(ledgerService *services.LedgerService) *ledgerHandler {
 // @Failure 400 {object} map[string]string "Invalid request format"
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Failure 500 {object} map[string]string "Failed to persist journal"
-// @Router /ledger/ [post]
-func (h *ledgerHandler) persistJournal(c *gin.Context) {
+// @Router /journals/ [post]
+func (h *journalHandler) persistJournal(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c)
 
 	createReq := dto.CreateJournalAndTxn{}
@@ -55,7 +57,7 @@ func (h *ledgerHandler) persistJournal(c *gin.Context) {
 
 	logger = logger.With(slog.String("creator_user_id", creatorUserID))
 
-	journal, err := h.ledgerService.PersistJournal(c.Request.Context(), createReq.Journal, createReq.Transactions, creatorUserID)
+	journal, err := h.journalService.PersistJournal(c.Request.Context(), createReq.Journal, createReq.Transactions, creatorUserID)
 	if err != nil {
 		logger.Error("Failed to persist journal in service", slog.String("error", err.Error()))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist journal"})
@@ -69,19 +71,19 @@ func (h *ledgerHandler) persistJournal(c *gin.Context) {
 // getJournal godoc
 // @Summary Get a journal entry and its transactions
 // @Description Retrieves a journal and its associated transactions by journal ID
-// @Tags ledger
+// @Tags journals
 // @Accept  json
 // @Produce  json
 // @Param   journalID path string true "Journal ID"
 // @Success 200 {object} dto.CreateJournalAndTxn "Journal and its transactions"
 // @Failure 404 {object} map[string]string "Journal not found"
 // @Failure 500 {object} map[string]string "Failed to retrieve journal"
-// @Router /ledger/{journalID} [get]
-func (h *ledgerHandler) getJournal(c *gin.Context) {
+// @Router /journals/{journalID} [get]
+func (h *journalHandler) getJournal(c *gin.Context) {
 	logger := middleware.GetLoggerFromContext(c)
 	journalID := c.Param("journalID")
 
-	journal, txns, err := h.ledgerService.GetJournalWithTransactions(c.Request.Context(), journalID)
+	journal, txns, err := h.journalService.GetJournalWithTransactions(c.Request.Context(), journalID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNotFound) {
 			logger.Warn("Journal not found", slog.String("journal_id", journalID))
@@ -97,17 +99,17 @@ func (h *ledgerHandler) getJournal(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.CreateJournalAndTxn{Journal: *journal, Transactions: txns})
 }
 
-// registerLedgerRoutes registers ledger specific routes
-func registerLedgerRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
+// registerJournalRoutes registers journal specific routes
+func registerJournalRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	journalRepo := pgsql.NewJournalRepository(dbPool)
 	accountRepo := pgsql.NewAccountRepository(dbPool)
-	ledgerService := services.NewLedgerService(accountRepo, journalRepo)
+	journalService := services.NewJournalService(accountRepo, journalRepo)
 
-	ledgerHandler := newLedgerHandler(ledgerService)
+	journalHandler := newJournalHandler(journalService)
 
-	ledger := group.Group("/ledger")
+	journals := group.Group("/journals")
 	{
-		ledger.POST("/", ledgerHandler.persistJournal)
-		ledger.GET("/:journalID", ledgerHandler.getJournal)
+		journals.POST("/", journalHandler.persistJournal)
+		journals.GET("/:journalID", journalHandler.getJournal)
 	}
 }

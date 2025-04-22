@@ -15,30 +15,6 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/": {
-            "get": {
-                "description": "get the status of server.",
-                "consumes": [
-                    "*/*"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "root"
-                ],
-                "summary": "Show the status of server.",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
         "/accounts": {
             "post": {
                 "description": "Creates a new account (Asset, Liability, Equity, Income, Expense)",
@@ -127,6 +103,53 @@ const docTemplate = `{
                         "description": "The requested account",
                         "schema": {
                             "$ref": "#/definitions/dto.AccountResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Account not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/accounts/{accountID}/balance": {
+            "get": {
+                "description": "Retrieves the current calculated balance for a specific account",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Get account balance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Account ID",
+                        "name": "accountID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AccountBalanceResponse"
                         }
                     },
                     "404": {
@@ -328,7 +351,31 @@ const docTemplate = `{
                 }
             }
         },
-        "/ledger/": {
+        "/example/helloworld": {
+            "get": {
+                "description": "get the status of server.",
+                "consumes": [
+                    "*/*"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "helloworld"
+                ],
+                "summary": "Show the status of server.",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/journals/": {
             "post": {
                 "description": "Creates a new journal and associated transactions",
                 "consumes": [
@@ -338,7 +385,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "ledger"
+                    "journals"
                 ],
                 "summary": "Persist a journal entry with its transactions",
                 "parameters": [
@@ -392,7 +439,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/ledger/{journalID}": {
+        "/journals/{journalID}": {
             "get": {
                 "description": "Retrieves a journal and its associated transactions by journal ID",
                 "consumes": [
@@ -402,7 +449,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "ledger"
+                    "journals"
                 ],
                 "summary": "Get a journal entry and its transactions",
                 "parameters": [
@@ -685,6 +732,17 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "dto.AccountBalanceResponse": {
+            "type": "object",
+            "properties": {
+                "accountID": {
+                    "type": "string"
+                },
+                "balance": {
+                    "type": "number"
+                }
+            }
+        },
         "dto.AccountResponse": {
             "type": "object",
             "properties": {
