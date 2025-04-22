@@ -78,6 +78,23 @@ definitions:
     - symbol
     - userID
     type: object
+  dto.CreateExchangeRateRequest:
+    properties:
+      dateEffective:
+        type: string
+      fromCurrencyCode:
+        type: string
+      rate:
+        description: Consider adding validation for > 0
+        type: number
+      toCurrencyCode:
+        type: string
+    required:
+    - dateEffective
+    - fromCurrencyCode
+    - rate
+    - toCurrencyCode
+    type: object
   dto.CreateJournalAndTxn:
     properties:
       journal:
@@ -103,6 +120,19 @@ definitions:
       name:
         type: string
       symbol:
+        type: string
+    type: object
+  dto.ExchangeRateResponse:
+    properties:
+      dateEffective:
+        type: string
+      exchangeRateID:
+        type: string
+      fromCurrencyCode:
+        type: string
+      rate:
+        type: number
+      toCurrencyCode:
         type: string
     type: object
   dto.ListUsersResponse:
@@ -486,6 +516,99 @@ paths:
       summary: Show the status of server.
       tags:
       - helloworld
+  /exchange-rates:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a specific exchange rate based on from/to currencies
+        and effective date.
+      parameters:
+      - description: From Currency Code (3 uppercase letters)
+        example: USD
+        format: string
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: To Currency Code (3 uppercase letters)
+        example: EUR
+        format: string
+        in: query
+        name: to
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ExchangeRateResponse'
+        "400":
+          description: Invalid query parameter format or value
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Exchange rate not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get an exchange rate
+      tags:
+      - exchange-rates
+    post:
+      consumes:
+      - application/json
+      description: Adds a new conversion rate between two currencies for a specific
+        date.
+      parameters:
+      - description: Exchange Rate details
+        in: body
+        name: rate
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateExchangeRateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ExchangeRateResponse'
+        "400":
+          description: Invalid input format or validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized - User ID not found in context
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new exchange rate
+      tags:
+      - exchange-rates
   /journals/:
     post:
       consumes:

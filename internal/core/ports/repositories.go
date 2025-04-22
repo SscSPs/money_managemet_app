@@ -35,7 +35,7 @@ type CurrencyRepository interface {
 	ListCurrencies(ctx context.Context) ([]models.Currency, error)
 }
 
-// ExchangeRateRepository defines persistence operations for ExchangeRates.
+// ExchangeRateRepository2 defines persistence operations for ExchangeRates.
 type ExchangeRateRepository interface {
 	SaveExchangeRate(ctx context.Context, rate models.ExchangeRate) error                                        // Primarily for initial setup
 	FindExchangeRate(ctx context.Context, fromCurrencyCode, toCurrencyCode string) (*models.ExchangeRate, error) // Find latest effective?

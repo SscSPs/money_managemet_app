@@ -13,7 +13,7 @@ import (
 // RegisterRoutes sets up all application routes
 func RegisterRoutes(r *gin.Engine, cfg *config.Config, dbPool *pgxpool.Pool) {
 	// Register public authentication routes
-	RegisterAuthRoutes(r, cfg)
+	registerAuthRoutes(r, cfg)
 
 	// Setup API v1 routes with Auth Middleware
 	setupAPIV1Routes(r, cfg, dbPool)
@@ -33,6 +33,7 @@ func setupAPIV1Routes(r *gin.Engine, cfg *config.Config, dbPool *pgxpool.Pool) {
 	registerAccountRoutes(v1, dbPool)
 	registerUserRoutes(v1, dbPool)
 	registerCurrencyRoutes(v1, dbPool)
+	registerExchangeRateRoutes(v1, dbPool)
 }
 
 // setupSwaggerRoutes configures the swagger documentation routes

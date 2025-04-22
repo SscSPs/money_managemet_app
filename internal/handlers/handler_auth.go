@@ -88,8 +88,8 @@ func (h *AuthHandler) login(c *gin.Context) {
 	c.JSON(http.StatusOK, LoginResponse{Token: tokenString})
 }
 
-// RegisterAuthRoutes registers authentication related routes (/auth)
-func RegisterAuthRoutes(engine *gin.Engine, cfg *config.Config) {
+// registerAuthRoutes registers authentication related routes (/auth)
+func registerAuthRoutes(engine *gin.Engine, cfg *config.Config) {
 	authHandler := newAuthHandler(cfg)
 
 	authRoutes := engine.Group("/auth")

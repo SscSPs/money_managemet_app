@@ -375,6 +375,145 @@ const docTemplate = `{
                 }
             }
         },
+        "/exchange-rates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves a specific exchange rate based on from/to currencies and effective date.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exchange-rates"
+                ],
+                "summary": "Get an exchange rate",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "string",
+                        "example": "USD",
+                        "description": "From Currency Code (3 uppercase letters)",
+                        "name": "from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "format": "string",
+                        "example": "EUR",
+                        "description": "To Currency Code (3 uppercase letters)",
+                        "name": "to",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ExchangeRateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameter format or value",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Exchange rate not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a new conversion rate between two currencies for a specific date.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exchange-rates"
+                ],
+                "summary": "Create a new exchange rate",
+                "parameters": [
+                    {
+                        "description": "Exchange Rate details",
+                        "name": "rate",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateExchangeRateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ExchangeRateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input format or validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized - User ID not found in context",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/journals/": {
             "post": {
                 "description": "Creates a new journal and associated transactions",
@@ -847,6 +986,30 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CreateExchangeRateRequest": {
+            "type": "object",
+            "required": [
+                "dateEffective",
+                "fromCurrencyCode",
+                "rate",
+                "toCurrencyCode"
+            ],
+            "properties": {
+                "dateEffective": {
+                    "type": "string"
+                },
+                "fromCurrencyCode": {
+                    "type": "string"
+                },
+                "rate": {
+                    "description": "Consider adding validation for \u003e 0",
+                    "type": "number"
+                },
+                "toCurrencyCode": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.CreateJournalAndTxn": {
             "type": "object",
             "properties": {
@@ -885,6 +1048,26 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ExchangeRateResponse": {
+            "type": "object",
+            "properties": {
+                "dateEffective": {
+                    "type": "string"
+                },
+                "exchangeRateID": {
+                    "type": "string"
+                },
+                "fromCurrencyCode": {
+                    "type": "string"
+                },
+                "rate": {
+                    "type": "number"
+                },
+                "toCurrencyCode": {
                     "type": "string"
                 }
             }
