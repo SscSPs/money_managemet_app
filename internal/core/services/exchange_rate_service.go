@@ -24,8 +24,11 @@ type ExchangeRateService struct {
 }
 
 // NewExchangeRateService creates a new ExchangeRateService.
-func NewExchangeRateService(repo portsrepo.ExchangeRateRepository) *ExchangeRateService {
-	return &ExchangeRateService{rateRepo: repo}
+func NewExchangeRateService(repo portsrepo.ExchangeRateRepository, currencyService *CurrencyService) *ExchangeRateService {
+	return &ExchangeRateService{
+		rateRepo:        repo,
+		currencyService: currencyService, // Initialize currencyService
+	}
 }
 
 // CreateExchangeRate handles the creation of a new exchange rate.

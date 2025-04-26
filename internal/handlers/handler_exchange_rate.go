@@ -137,8 +137,10 @@ func registerExchangeRateRoutes(rg *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	// They will be needed inside ExchangeRateService if it performs currency validation.
 
 	exchangeRateRepo := pgsql.NewExchangeRateRepository(dbPool)
+	currencyRepo := pgsql.NewPgxCurrencyRepository(dbPool)
+	currService := services.NewCurrencyService(currencyRepo)
 	// Pass only the ExchangeRateRepository to NewExchangeRateService based on its current signature
-	exchangeRateService := services.NewExchangeRateService(exchangeRateRepo)
+	exchangeRateService := services.NewExchangeRateService(exchangeRateRepo, currService)
 	// The ExchangeRateService might need CurrencyService injected separately or passed to methods requiring currency validation.
 	// For now, fix the constructor call.
 	exchangeRateHandler := newExchangeRateHandler(exchangeRateService)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
@@ -257,64 +258,59 @@ func (s *JournalService) GetJournalWithTransactions(ctx context.Context, journal
 	return journal, transactions, nil
 }
 
-// Helper function (consider moving to a utils package)
+// uniqueStrings returns a slice containing only the unique strings from the input.
 func uniqueStrings(input []string) []string {
 	seen := make(map[string]struct{}, len(input))
-	j := 0
-	for _, v := range input {
-		if _, ok := seen[v]; ok {
-			continue
+	result := make([]string, 0, len(input))
+	for _, str := range input {
+		if _, ok := seen[str]; !ok {
+			seen[str] = struct{}{}
+			result = append(result, str)
 		}
-		seen[v] = struct{}{}
-		input[j] = v
-		j++
 	}
-	return input[:j]
+	return result
 }
 
-// CalculateAccountBalance computes the current balance for a given account.
+// CalculateAccountBalance calculates the current balance of a given account.
 func (s *JournalService) CalculateAccountBalance(ctx context.Context, accountID string) (decimal.Decimal, error) {
-	// 1. Fetch the account details
+	// 1. Find the account to verify existence, activity, and get type
 	account, err := s.accountRepo.FindAccountByID(ctx, accountID)
 	if err != nil {
-		// Handle repository errors, potentially mapping specific ones like 'not found'
-		// For now, return a generic error
+		if errors.Is(err, apperrors.ErrNotFound) {
+			return decimal.Zero, fmt.Errorf("%w: ID %s", ErrAccountNotFound, accountID)
+		}
 		return decimal.Zero, fmt.Errorf("failed to find account %s: %w", accountID, err)
 	}
-	if account == nil {
-		// If repo returns (nil, nil) for not found
-		return decimal.Zero, fmt.Errorf("%w: ID %s", ErrAccountNotFound, accountID)
+	if !account.IsActive {
+		return decimal.Zero, fmt.Errorf("account %s is inactive", accountID)
 	}
-	// Optionally check if account is inactive? PRD doesn't specify for balance calc.
 
 	// 2. Fetch all transactions for this account
 	transactions, err := s.journalRepo.FindTransactionsByAccountID(ctx, accountID)
 	if err != nil {
-		// Handle repository errors
-		return decimal.Zero, fmt.Errorf("failed to find transactions for account %s: %w", accountID, err)
+		// Handle potential repository error during transaction fetch
+		return decimal.Zero, fmt.Errorf("failed to fetch transactions for account %s: %w", accountID, err)
 	}
 
-	// 3. Calculate the balance by summing signed transaction amounts
-	balance := decimal.NewFromInt(0)
+	// 3. Calculate the balance by summing signed amounts
+	balance := decimal.Zero
 	for _, txn := range transactions {
-		// Ensure the transaction amount itself is valid before processing
-		// (Note: validateJournalBalance already checks this for *new* transactions)
+		// Ensure transaction amount is positive (should be guaranteed by PersistJournal, but double-check)
 		if txn.Amount.LessThanOrEqual(decimal.Zero) {
-			// Log this potential data issue?
-			// For now, skip this transaction in the balance calculation
-			// Or return an error? Let's skip for now.
-			fmt.Printf("Warning: Skipping transaction %s for account %s due to non-positive amount: %s\\n", txn.TransactionID, accountID, txn.Amount.String())
-			continue
+			// Log this inconsistency, but potentially continue calculation?
+			// For now, return an error as it indicates a data issue.
+			return decimal.Zero, fmt.Errorf("invalid non-positive transaction amount found (ID: %s) for account %s", txn.TransactionID, accountID)
 		}
 
-		// Use the refactored helper to get the signed amount
+		// Transaction currency should ideally match account currency, though the current
+		// service doesn't explicitly enforce/handle multi-currency aggregation here.
+		// Assuming all fetched transactions are in the account's currency for now.
+
 		signedAmount, err := s.getSignedAmount(txn, account.AccountType)
 		if err != nil {
-			// This indicates a problem (e.g., unknown account type was stored)
-			// Log the error and potentially continue or return? Returning error seems safer.
-			return decimal.Zero, fmt.Errorf("error calculating balance for account %s due to transaction %s: %w", accountID, txn.TransactionID, err)
+			// Propagate error from getSignedAmount (e.g., unknown account type)
+			return decimal.Zero, fmt.Errorf("error calculating signed amount for transaction %s: %w", txn.TransactionID, err)
 		}
-
 		balance = balance.Add(signedAmount)
 	}
 
