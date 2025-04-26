@@ -1,5 +1,19 @@
 basePath: /
 definitions:
+  domain.AccountType:
+    enum:
+    - ASSET
+    - LIABILITY
+    - EQUITY
+    - INCOME
+    - EXPENSE
+    type: string
+    x-enum-varnames:
+    - Asset
+    - Liability
+    - Equity
+    - Income
+    - Expense
   dto.AccountBalanceResponse:
     properties:
       accountID:
@@ -12,7 +26,7 @@ definitions:
       accountID:
         type: string
       accountType:
-        $ref: '#/definitions/models.AccountType'
+        $ref: '#/definitions/domain.AccountType'
       createdAt:
         type: string
       createdBy:
@@ -37,7 +51,7 @@ definitions:
     properties:
       accountType:
         allOf:
-        - $ref: '#/definitions/models.AccountType'
+        - $ref: '#/definitions/domain.AccountType'
         enum:
         - ASSET
         - LIABILITY
@@ -124,16 +138,31 @@ definitions:
     type: object
   dto.ExchangeRateResponse:
     properties:
+      createdAt:
+        type: string
+      createdBy:
+        type: string
       dateEffective:
         type: string
       exchangeRateID:
         type: string
       fromCurrencyCode:
         type: string
+      lastUpdatedAt:
+        type: string
+      lastUpdatedBy:
+        type: string
       rate:
         type: number
       toCurrencyCode:
         type: string
+    type: object
+  dto.ListAccountsResponse:
+    properties:
+      accounts:
+        items:
+          $ref: '#/definitions/dto.AccountResponse'
+        type: array
     type: object
   dto.ListUsersResponse:
     properties:
@@ -178,20 +207,6 @@ definitions:
       token:
         type: string
     type: object
-  models.AccountType:
-    enum:
-    - ASSET
-    - LIABILITY
-    - EQUITY
-    - INCOME
-    - EXPENSE
-    type: string
-    x-enum-varnames:
-    - Asset
-    - Liability
-    - Equity
-    - Income
-    - Expense
   models.Journal:
     properties:
       createdAt:
@@ -280,6 +295,43 @@ info:
   version: "1.0"
 paths:
   /accounts:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of active financial accounts
+      parameters:
+      - default: 20
+        description: Limit number of results
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset for pagination
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ListAccountsResponse'
+        "400":
+          description: Invalid query parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List accounts
+      tags:
+      - accounts
     post:
       consumes:
       - application/json
@@ -320,6 +372,48 @@ paths:
       tags:
       - accounts
   /accounts/{accountID}:
+    delete:
+      consumes:
+      - application/json
+      description: Marks a financial account as inactive
+      parameters:
+      - description: Account ID to deactivate
+        in: path
+        name: accountID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Account already inactive or other validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Account not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Deactivate an account
+      tags:
+      - accounts
     get:
       consumes:
       - application/json

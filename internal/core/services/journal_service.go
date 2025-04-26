@@ -8,7 +8,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/SscSPs/money_managemet_app/internal/core/ports"
+	"github.com/SscSPs/money_managemet_app/internal/core/domain"
+	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
+	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/models"
 	"github.com/shopspring/decimal"
 	// We might need a UUID library later, e.g., "github.com/google/uuid"
@@ -23,16 +25,13 @@ var (
 
 // JournalService provides core journal and transaction operations.
 type JournalService struct {
-	accountRepo ports.AccountRepository
-	journalRepo ports.JournalRepository
-	// userRepo ports.UserRepository // Needed later for CreatedBy/UpdatedBy
+	accountRepo portsrepo.AccountRepository
+	journalRepo portsrepo.JournalRepository
+	// userRepo portsrepo.UserRepository // Needed later for CreatedBy/UpdatedBy
 }
 
 // NewJournalService creates a new JournalService.
-func NewJournalService(
-	accountRepo ports.AccountRepository,
-	journalRepo ports.JournalRepository,
-) *JournalService {
+func NewJournalService(accountRepo portsrepo.AccountRepository, journalRepo portsrepo.JournalRepository) *JournalService {
 	return &JournalService{
 		accountRepo: accountRepo,
 		journalRepo: journalRepo,
@@ -40,9 +39,9 @@ func NewJournalService(
 }
 
 // getSignedAmount applies the correct sign to a transaction amount based on account type and transaction type.
-func (s *JournalService) getSignedAmount(txn models.Transaction, accountType models.AccountType) (decimal.Decimal, error) {
+func (s *JournalService) getSignedAmount(txn domain.Transaction, accountType domain.AccountType) (decimal.Decimal, error) {
 	signedAmount := txn.Amount
-	isDebit := txn.TransactionType == models.Debit
+	isDebit := txn.TransactionType == domain.Debit
 
 	// Determine sign based on convention (PRD FR-M1-03)
 	// DEBIT to ASSET/EXPENSE -> Positive (+)
@@ -50,11 +49,11 @@ func (s *JournalService) getSignedAmount(txn models.Transaction, accountType mod
 	// DEBIT to LIABILITY/EQUITY/INCOME -> Negative (-)
 	// CREDIT to LIABILITY/EQUITY/INCOME -> Positive (+)
 	switch accountType {
-	case models.Asset, models.Expense:
+	case domain.Asset, domain.Expense:
 		if !isDebit { // Credit to Asset/Expense
 			signedAmount = signedAmount.Neg()
 		}
-	case models.Liability, models.Equity, models.Income:
+	case domain.Liability, domain.Equity, domain.Income:
 		if isDebit { // Debit to Liability/Equity/Income
 			signedAmount = signedAmount.Neg()
 		}
@@ -66,8 +65,7 @@ func (s *JournalService) getSignedAmount(txn models.Transaction, accountType mod
 }
 
 // validateJournalBalance checks if the transactions for a journal balance to zero.
-// It requires a map of account IDs to their AccountType for determining debit/credit signs.
-func (s *JournalService) validateJournalBalance(transactions []models.Transaction, accountTypes map[string]models.AccountType) error {
+func (s *JournalService) validateJournalBalance(transactions []domain.Transaction, accountTypes map[string]domain.AccountType) error {
 	if len(transactions) < 2 {
 		return ErrJournalMinEntries
 	}
@@ -103,35 +101,88 @@ func (s *JournalService) validateJournalBalance(transactions []models.Transactio
 	return nil
 }
 
+// Helper to convert []models.Transaction to []domain.Transaction
+func modelToDomainTransactions(ms []models.Transaction) []domain.Transaction {
+	ds := make([]domain.Transaction, len(ms))
+	for i, m := range ms {
+		ds[i] = domain.Transaction{
+			TransactionID:   m.TransactionID,
+			JournalID:       m.JournalID,
+			AccountID:       m.AccountID,
+			Amount:          m.Amount,
+			TransactionType: domain.TransactionType(m.TransactionType),
+			CurrencyCode:    m.CurrencyCode,
+			Notes:           m.Notes,
+			AuditFields: domain.AuditFields{
+				CreatedAt:     m.CreatedAt,
+				CreatedBy:     m.CreatedBy,
+				LastUpdatedAt: m.LastUpdatedAt,
+				LastUpdatedBy: m.LastUpdatedBy,
+			},
+		}
+	}
+	return ds
+}
+
+// Helper to convert models.Journal to domain.Journal
+func modelToDomainJournal(m models.Journal) domain.Journal {
+	return domain.Journal{
+		JournalID:    m.JournalID,
+		JournalDate:  m.JournalDate,
+		Description:  m.Description,
+		CurrencyCode: m.CurrencyCode,
+		Status:       domain.JournalStatus(m.Status),
+		AuditFields: domain.AuditFields{
+			CreatedAt:     m.CreatedAt,
+			CreatedBy:     m.CreatedBy,
+			LastUpdatedAt: m.LastUpdatedAt,
+			LastUpdatedBy: m.LastUpdatedBy,
+		},
+	}
+}
+
 // PersistJournal creates a new journal entry with its transactions after validation.
-// It ensures the journal balances and adheres to other M1 rules.
-// TODO: Add UserID parameter for audit fields once user context is available.
-func (s *JournalService) PersistJournal(ctx context.Context, journal models.Journal, transactions []models.Transaction, userID string) (*models.Journal, error) {
+func (s *JournalService) PersistJournal(ctx context.Context, req dto.CreateJournalAndTxn, userID string) (*domain.Journal, error) {
+	// --- Use models from DTO ---
+	modelJournal := req.Journal
+	modelTransactions := req.Transactions
+
 	// --- Validation ---
-	// 1. Check minimum entries
-	if len(transactions) < 2 {
+	if len(modelTransactions) < 2 { // Validate against original DTO models
 		return nil, ErrJournalMinEntries
 	}
 
-	// 2. Fetch Account Types needed for balance validation
-	accountIDs := make([]string, 0, len(transactions))
-	accountTypes := make(map[string]models.AccountType)
-	for _, txn := range transactions {
-		accountIDs = append(accountIDs, txn.AccountID)
-		// 3. Validate Currency Match (MVP Constraint)
-		if txn.CurrencyCode != journal.CurrencyCode {
-			return nil, fmt.Errorf("%w: journal is %s, transaction %s is %s",
-				ErrCurrencyMismatch, journal.CurrencyCode, txn.TransactionID, txn.CurrencyCode)
+	// --- Currency Validation ---
+	for _, txn := range modelTransactions {
+		if txn.CurrencyCode != modelJournal.CurrencyCode {
+			// TODO: Log this validation failure
+			return nil, fmt.Errorf("%w: journal is %s, transaction involves %s",
+				ErrCurrencyMismatch, modelJournal.CurrencyCode, txn.CurrencyCode)
 		}
 	}
-	// TODO: Ideally fetch accounts in a single query if repository supports FindAccountsByIDs
-	for _, id := range uniqueStrings(accountIDs) {
-		acc, err := s.accountRepo.FindAccountByID(ctx, id)
-		if err != nil {
-			// Handle specific errors if repo provides them (e.g., ErrNotFound)
-			return nil, fmt.Errorf("failed to find account %s: %w", id, err)
-		}
-		if acc == nil {
+
+	// --- Convert models to domain for further validation ---
+	domainTransactions := modelToDomainTransactions(modelTransactions)
+
+	// --- Fetch Account Types and Validate Accounts ---
+	accountIDs := make([]string, 0, len(domainTransactions))
+	for _, txn := range domainTransactions { // Iterate domain transactions
+		accountIDs = append(accountIDs, txn.AccountID)
+	}
+	uniqueAccountIDs := uniqueStrings(accountIDs)
+
+	// Fetch accounts in batch
+	accountsMap, err := s.accountRepo.FindAccountsByIDs(ctx, uniqueAccountIDs)
+	if err != nil {
+		// Handle potential repository error during batch fetch
+		return nil, fmt.Errorf("failed to fetch accounts: %w", err)
+	}
+
+	// Check if all required accounts were found and active, and gather types
+	accountTypes := make(map[string]domain.AccountType)
+	for _, id := range uniqueAccountIDs {
+		acc, found := accountsMap[id]
+		if !found {
 			return nil, fmt.Errorf("%w: ID %s", ErrAccountNotFound, id)
 		}
 		if !acc.IsActive {
@@ -140,50 +191,55 @@ func (s *JournalService) PersistJournal(ctx context.Context, journal models.Jour
 		accountTypes[id] = acc.AccountType
 	}
 
-	// 4. Validate Balance
-	if err := s.validateJournalBalance(transactions, accountTypes); err != nil {
+	// Validate Balance (Uses domain transactions now)
+	if err = s.validateJournalBalance(domainTransactions, accountTypes); err != nil { // Assign err to existing var
 		return nil, err
 	}
 
-	// --- Persistence ---
-	// Populate Audit Fields & Defaults
-	// TODO: Get actual UserID
+	// --- Persistence --- (Prepare domain objects for saving)
 	creatorUserID := userID
 	now := time.Now().UTC()
 
-	journal.JournalID = uuid.NewString() // Example if using UUIDs
-	journal.Status = models.Posted       // Ensure default status
-	journal.CreatedAt = now
-	journal.CreatedBy = creatorUserID
-	journal.LastUpdatedAt = now
-	journal.LastUpdatedBy = creatorUserID
-
-	for i := range transactions {
-		// Assign Transaction ID if not provided
-		transactions[i].TransactionID = uuid.NewString()
-		// Link transaction to journal
-		transactions[i].JournalID = journal.JournalID
-		// Ensure currency matches journal (already validated, but good practice)
-		transactions[i].CurrencyCode = journal.CurrencyCode
-		// Set audit fields
-		transactions[i].CreatedAt = now
-		transactions[i].CreatedBy = creatorUserID
-		transactions[i].LastUpdatedAt = now
-		transactions[i].LastUpdatedBy = creatorUserID
+	// Create final domain journal object
+	domainJournal := domain.Journal{
+		JournalID:    uuid.NewString(),
+		JournalDate:  modelJournal.JournalDate,
+		Description:  modelJournal.Description,
+		CurrencyCode: modelJournal.CurrencyCode,
+		Status:       domain.Posted,
+		AuditFields: domain.AuditFields{
+			CreatedAt:     now,
+			CreatedBy:     creatorUserID,
+			LastUpdatedAt: now,
+			LastUpdatedBy: creatorUserID,
+		},
 	}
 
-	// Save atomically via repository
-	err := s.journalRepo.SaveJournal(ctx, journal, transactions)
+	// Populate remaining fields in domain transactions
+	for i := range domainTransactions {
+		domainTransactions[i].TransactionID = uuid.NewString()
+		domainTransactions[i].JournalID = domainJournal.JournalID
+		domainTransactions[i].CurrencyCode = domainJournal.CurrencyCode // Assign journal currency
+		// Assign AuditFields to transactions
+		domainTransactions[i].AuditFields = domain.AuditFields{
+			CreatedAt:     now,
+			CreatedBy:     creatorUserID,
+			LastUpdatedAt: now,
+			LastUpdatedBy: creatorUserID,
+		}
+	}
+
+	// Save atomically via repository (Repo expects domain types)
+	err = s.journalRepo.SaveJournal(ctx, domainJournal, domainTransactions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save journal: %w", err)
 	}
 
-	// Return the potentially updated journal (e.g., with generated ID)
-	return &journal, nil
+	return &domainJournal, nil // Return the created domain journal
 }
 
 // GetJournalWithTransactions retrieves a specific journal and its associated transaction lines.
-func (s *JournalService) GetJournalWithTransactions(ctx context.Context, journalID string) (*models.Journal, []models.Transaction, error) {
+func (s *JournalService) GetJournalWithTransactions(ctx context.Context, journalID string) (*domain.Journal, []domain.Transaction, error) {
 	journal, err := s.journalRepo.FindJournalByID(ctx, journalID)
 	if err != nil {
 		// TODO: Handle specific 'not found' errors from repo if available

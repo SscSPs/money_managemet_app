@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/SscSPs/money_managemet_app/internal/middleware" // For GetLoggerFromCtx
-	"github.com/SscSPs/money_managemet_app/pkg/config"          // For JWT config
+	"github.com/SscSPs/money_managemet_app/internal/middleware"
+	"github.com/SscSPs/money_managemet_app/internal/platform/config" // For JWT config
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -55,14 +55,14 @@ func (h *AuthHandler) login(c *gin.Context) {
 
 	// Dummy authentication - replace with actual user lookup and password check
 	// IMPORTANT: Never log passwords in production!
-	if req.Username != "user" || req.Password != "password" {
+	if req.Username != "testuser" || req.Password != "password" {
 		logger.Warn("Invalid login attempt", "username", req.Username)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 		return
 	}
 
 	// --- Dummy User Info (Replace with actual user ID from DB lookup) ---
-	dummyUserID := "user-123" // Example user ID
+	dummyUserID := "41181354-419f-4847-8405-b10dfd04ccdf" // Example user ID
 	// ----------------------------------------------------------------------
 
 	// Create JWT claims

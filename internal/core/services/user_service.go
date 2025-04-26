@@ -8,30 +8,32 @@ import (
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
-	"github.com/SscSPs/money_managemet_app/internal/core/ports"
+	"github.com/SscSPs/money_managemet_app/internal/core/domain"
+	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
-	"github.com/SscSPs/money_managemet_app/internal/models"
 	"github.com/google/uuid"
 )
 
+// UserService provides business logic for user operations.
 type UserService struct {
-	userRepo ports.UserRepository
+	UserRepository portsrepo.UserRepository
 }
 
-func NewUserService(userRepo ports.UserRepository) *UserService {
-	return &UserService{userRepo: userRepo}
+// NewUserService creates a new UserService.
+func NewUserService(repo portsrepo.UserRepository) *UserService {
+	return &UserService{UserRepository: repo}
 }
 
-func (s *UserService) CreateUser(ctx context.Context, req dto.CreateUserRequest, creatorUserID string) (*models.User, error) {
+func (s *UserService) CreateUser(ctx context.Context, req dto.CreateUserRequest, creatorUserID string) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	now := time.Now()
 	newUserID := uuid.NewString()
 
-	user := models.User{
+	user := domain.User{
 		UserID: newUserID,
 		Name:   req.Name,
-		AuditFields: models.AuditFields{
+		AuditFields: domain.AuditFields{
 			CreatedAt:     now,
 			CreatedBy:     creatorUserID,
 			LastUpdatedAt: now,
@@ -39,7 +41,7 @@ func (s *UserService) CreateUser(ctx context.Context, req dto.CreateUserRequest,
 		},
 	}
 
-	err := s.userRepo.SaveUser(ctx, user)
+	err := s.UserRepository.SaveUser(ctx, user)
 	if err != nil {
 		logger.Error("Failed to save user in repository", slog.String("error", err.Error()), slog.String("user_name", req.Name))
 		return nil, fmt.Errorf("failed to create user in service: %w", err)
@@ -49,9 +51,9 @@ func (s *UserService) CreateUser(ctx context.Context, req dto.CreateUserRequest,
 	return &user, nil
 }
 
-func (s *UserService) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
+func (s *UserService) GetUserByID(ctx context.Context, userID string) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	user, err := s.userRepo.FindUserByID(ctx, userID)
+	user, err := s.UserRepository.FindUserByID(ctx, userID)
 	if err != nil {
 		if !errors.Is(err, apperrors.ErrNotFound) {
 			logger.Error("Failed to find user by ID in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
@@ -74,7 +76,7 @@ func (s *UserService) ListUsers(ctx context.Context, req dto.ListUsersParams) (*
 		offset = req.Offset
 	}
 
-	users, err := s.userRepo.FindUsers(ctx, limit, offset)
+	users, err := s.UserRepository.FindUsers(ctx, limit, offset)
 	if err != nil {
 		logger.Error("Failed to find users in repository", slog.String("error", err.Error()), slog.Int("limit", limit), slog.Int("offset", offset))
 		return nil, fmt.Errorf("failed to list users: %w", err)
@@ -85,9 +87,9 @@ func (s *UserService) ListUsers(ctx context.Context, req dto.ListUsersParams) (*
 	return &response, nil
 }
 
-func (s *UserService) UpdateUser(ctx context.Context, userID string, req dto.UpdateUserRequest, updaterUserID string) (*models.User, error) {
+func (s *UserService) UpdateUser(ctx context.Context, userID string, req dto.UpdateUserRequest, updaterUserID string) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	existingUser, err := s.userRepo.FindUserByID(ctx, userID)
+	existingUser, err := s.UserRepository.FindUserByID(ctx, userID)
 	if err != nil {
 		if !errors.Is(err, apperrors.ErrNotFound) {
 			logger.Error("Failed to find user by ID for update", slog.String("error", err.Error()), slog.String("user_id", userID))
@@ -109,7 +111,7 @@ func (s *UserService) UpdateUser(ctx context.Context, userID string, req dto.Upd
 	existingUser.LastUpdatedAt = time.Now()
 	existingUser.LastUpdatedBy = updaterUserID
 
-	err = s.userRepo.UpdateUser(ctx, *existingUser)
+	err = s.UserRepository.UpdateUser(ctx, *existingUser)
 	if err != nil {
 		logger.Error("Failed to update user in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
 		if errors.Is(err, apperrors.ErrNotFound) {
@@ -126,7 +128,7 @@ func (s *UserService) UpdateUser(ctx context.Context, userID string, req dto.Upd
 func (s *UserService) DeleteUser(ctx context.Context, userID string, deleterUserID string) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	now := time.Now()
-	err := s.userRepo.MarkUserDeleted(ctx, userID, now, deleterUserID)
+	err := s.UserRepository.MarkUserDeleted(ctx, userID, now, deleterUserID)
 	if err != nil {
 		if !errors.Is(err, apperrors.ErrNotFound) {
 			logger.Error("Failed to mark user deleted in repository", slog.String("error", err.Error()), slog.String("user_id", userID))

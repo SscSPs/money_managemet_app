@@ -8,29 +8,29 @@ import (
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
-	"github.com/SscSPs/money_managemet_app/internal/core/ports"
+	"github.com/SscSPs/money_managemet_app/internal/core/domain"
+	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware" // Import middleware
-	"github.com/SscSPs/money_managemet_app/internal/models"
 )
 
 type CurrencyService struct {
-	currencyRepo ports.CurrencyRepository
+	currencyRepo portsrepo.CurrencyRepository
 }
 
-func NewCurrencyService(currencyRepo ports.CurrencyRepository) *CurrencyService {
-	return &CurrencyService{currencyRepo: currencyRepo}
+func NewCurrencyService(repo portsrepo.CurrencyRepository) *CurrencyService {
+	return &CurrencyService{currencyRepo: repo}
 }
 
-func (s *CurrencyService) CreateCurrency(ctx context.Context, req dto.CreateCurrencyRequest, creatorUserID string) (*models.Currency, error) {
+func (s *CurrencyService) CreateCurrency(ctx context.Context, req dto.CreateCurrencyRequest, creatorUserID string) (*domain.Currency, error) {
 	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
 	now := time.Now()
 
-	currency := models.Currency{
+	currency := domain.Currency{
 		CurrencyCode: req.CurrencyCode,
 		Symbol:       req.Symbol,
 		Name:         req.Name,
-		AuditFields: models.AuditFields{
+		AuditFields: domain.AuditFields{
 			CreatedAt:     now,
 			CreatedBy:     creatorUserID,
 			LastUpdatedAt: now,
@@ -48,7 +48,7 @@ func (s *CurrencyService) CreateCurrency(ctx context.Context, req dto.CreateCurr
 	return &currency, nil
 }
 
-func (s *CurrencyService) GetCurrencyByCode(ctx context.Context, currencyCode string) (*models.Currency, error) {
+func (s *CurrencyService) GetCurrencyByCode(ctx context.Context, currencyCode string) (*domain.Currency, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	currency, err := s.currencyRepo.FindCurrencyByCode(ctx, currencyCode)
 	if err != nil {
@@ -62,7 +62,7 @@ func (s *CurrencyService) GetCurrencyByCode(ctx context.Context, currencyCode st
 	return currency, nil
 }
 
-func (s *CurrencyService) ListCurrencies(ctx context.Context) ([]models.Currency, error) {
+func (s *CurrencyService) ListCurrencies(ctx context.Context) ([]domain.Currency, error) {
 	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
 	currencies, err := s.currencyRepo.ListCurrencies(ctx)
 	if err != nil {
@@ -72,7 +72,7 @@ func (s *CurrencyService) ListCurrencies(ctx context.Context) ([]models.Currency
 
 	if currencies == nil {
 		logger.Debug("No currencies found, returning empty list.")
-		return []models.Currency{}, nil
+		return []domain.Currency{}, nil
 	}
 
 	logger.Debug("Currencies listed successfully from service", slog.Int("count", len(currencies)))

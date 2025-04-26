@@ -16,6 +16,61 @@ const docTemplate = `{
     "basePath": "{{.BasePath}}",
     "paths": {
         "/accounts": {
+            "get": {
+                "description": "Retrieves a paginated list of active financial accounts",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "List accounts",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Limit number of results",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Offset for pagination",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ListAccountsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
             "post": {
                 "description": "Creates a new account (Asset, Liability, Equity, Income, Expense)",
                 "consumes": [
@@ -103,6 +158,69 @@ const docTemplate = `{
                         "description": "The requested account",
                         "schema": {
                             "$ref": "#/definitions/dto.AccountResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Account not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Marks a financial account as inactive",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Deactivate an account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Account ID to deactivate",
+                        "name": "accountID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Account already inactive or other validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
@@ -847,6 +965,23 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "domain.AccountType": {
+            "type": "string",
+            "enum": [
+                "ASSET",
+                "LIABILITY",
+                "EQUITY",
+                "INCOME",
+                "EXPENSE"
+            ],
+            "x-enum-varnames": [
+                "Asset",
+                "Liability",
+                "Equity",
+                "Income",
+                "Expense"
+            ]
+        },
         "dto.AccountBalanceResponse": {
             "type": "object",
             "properties": {
@@ -865,7 +1000,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "accountType": {
-                    "$ref": "#/definitions/models.AccountType"
+                    "$ref": "#/definitions/domain.AccountType"
                 },
                 "createdAt": {
                     "type": "string"
@@ -915,7 +1050,7 @@ const docTemplate = `{
                     ],
                     "allOf": [
                         {
-                            "$ref": "#/definitions/models.AccountType"
+                            "$ref": "#/definitions/domain.AccountType"
                         }
                     ]
                 },
@@ -1031,6 +1166,12 @@ const docTemplate = `{
         "dto.ExchangeRateResponse": {
             "type": "object",
             "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
                 "dateEffective": {
                     "type": "string"
                 },
@@ -1040,11 +1181,28 @@ const docTemplate = `{
                 "fromCurrencyCode": {
                     "type": "string"
                 },
+                "lastUpdatedAt": {
+                    "type": "string"
+                },
+                "lastUpdatedBy": {
+                    "type": "string"
+                },
                 "rate": {
                     "type": "number"
                 },
                 "toCurrencyCode": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.ListAccountsResponse": {
+            "type": "object",
+            "properties": {
+                "accounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AccountResponse"
+                    }
                 }
             }
         },
@@ -1113,23 +1271,6 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
-        },
-        "models.AccountType": {
-            "type": "string",
-            "enum": [
-                "ASSET",
-                "LIABILITY",
-                "EQUITY",
-                "INCOME",
-                "EXPENSE"
-            ],
-            "x-enum-varnames": [
-                "Asset",
-                "Liability",
-                "Equity",
-                "Income",
-                "Expense"
-            ]
         },
         "models.Journal": {
             "type": "object",

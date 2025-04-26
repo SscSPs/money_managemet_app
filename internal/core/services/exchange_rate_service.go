@@ -9,30 +9,27 @@ import (
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
-	"github.com/SscSPs/money_managemet_app/internal/core/ports"
+	"github.com/SscSPs/money_managemet_app/internal/core/domain" // Use domain
+	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware" // Import middleware
-	"github.com/SscSPs/money_managemet_app/internal/models"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
 // ExchangeRateService provides business logic for exchange rates.
 type ExchangeRateService struct {
-	rateRepo        ports.ExchangeRateRepository
+	rateRepo        portsrepo.ExchangeRateRepository
 	currencyService *CurrencyService // Added CurrencyService dependency
 }
 
 // NewExchangeRateService creates a new ExchangeRateService.
-func NewExchangeRateService(rateRepo ports.ExchangeRateRepository, currencyService *CurrencyService) *ExchangeRateService {
-	return &ExchangeRateService{
-		rateRepo:        rateRepo,
-		currencyService: currencyService, // Store CurrencyService
-	}
+func NewExchangeRateService(repo portsrepo.ExchangeRateRepository) *ExchangeRateService {
+	return &ExchangeRateService{rateRepo: repo}
 }
 
 // CreateExchangeRate handles the creation of a new exchange rate.
-func (s *ExchangeRateService) CreateExchangeRate(ctx context.Context, req dto.CreateExchangeRateRequest, creatorUserID string) (*models.ExchangeRate, error) {
+func (s *ExchangeRateService) CreateExchangeRate(ctx context.Context, req dto.CreateExchangeRateRequest, creatorUserID string) (*domain.ExchangeRate, error) {
 	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
 
 	// Input validation (basic format) is handled by DTO binding tags.
@@ -71,13 +68,13 @@ func (s *ExchangeRateService) CreateExchangeRate(ctx context.Context, req dto.Cr
 	now := time.Now()
 	newRateID := uuid.NewString()
 
-	rate := models.ExchangeRate{
+	rate := domain.ExchangeRate{
 		ExchangeRateID:   newRateID,
 		FromCurrencyCode: req.FromCurrencyCode,
 		ToCurrencyCode:   req.ToCurrencyCode,
 		Rate:             req.Rate,
 		DateEffective:    req.DateEffective,
-		AuditFields: models.AuditFields{
+		AuditFields: domain.AuditFields{
 			CreatedAt:     now,
 			CreatedBy:     creatorUserID,
 			LastUpdatedAt: now,
@@ -87,6 +84,16 @@ func (s *ExchangeRateService) CreateExchangeRate(ctx context.Context, req dto.Cr
 
 	err := s.rateRepo.SaveExchangeRate(ctx, rate)
 	if err != nil {
+		// Check for duplicate error from repository
+		if errors.Is(err, apperrors.ErrDuplicate) {
+			logger.Warn("Attempted to create duplicate exchange rate",
+				slog.String("from", rate.FromCurrencyCode),
+				slog.String("to", rate.ToCurrencyCode),
+				slog.Time("date", rate.DateEffective),
+			)
+			// Map to a validation error for the client
+			return nil, fmt.Errorf("%w: exchange rate for this pair and date already exists", apperrors.ErrValidation)
+		}
 		logger.Error("Failed to save exchange rate in repository", slog.String("error", err.Error()), slog.String("rate_id", rate.ExchangeRateID))
 		return nil, fmt.Errorf("failed to create exchange rate in service: %w", err)
 	}
@@ -96,7 +103,7 @@ func (s *ExchangeRateService) CreateExchangeRate(ctx context.Context, req dto.Cr
 }
 
 // GetExchangeRate retrieves a specific exchange rate for a given currency pair and date.
-func (s *ExchangeRateService) GetExchangeRate(ctx context.Context, fromCode, toCode string) (*models.ExchangeRate, error) {
+func (s *ExchangeRateService) GetExchangeRate(ctx context.Context, fromCode, toCode string) (*domain.ExchangeRate, error) {
 	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
 
 	fromCode = strings.ToUpper(fromCode)

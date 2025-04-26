@@ -3,7 +3,7 @@ package dto
 import (
 	"time"
 
-	"github.com/SscSPs/money_managemet_app/internal/models"
+	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 )
 
 // CreateUserRequest defines the data needed to create a new user.
@@ -24,8 +24,8 @@ type UserResponse struct {
 	// Add other fields if needed later
 }
 
-// ToUserResponse converts a models.User to UserResponse DTO
-func ToUserResponse(user *models.User) UserResponse {
+// ToUserResponse converts a domain.User to UserResponse DTO
+func ToUserResponse(user *domain.User) UserResponse {
 	return UserResponse{
 		UserID:        user.UserID,
 		Name:          user.Name,
@@ -54,8 +54,8 @@ type ListUsersResponse struct {
 	// TODO: Add pagination metadata (total count, limit, offset) later
 }
 
-// ToListUserResponse converts a slice of models.User to ListUsersResponse DTO
-func ToListUserResponse(users []models.User) ListUsersResponse {
+// ToListUserResponse converts a slice of domain.User to ListUsersResponse DTO
+func ToListUserResponse(users []domain.User) ListUsersResponse {
 	userResponses := make([]UserResponse, len(users))
 	for i, user := range users {
 		userResponses[i] = ToUserResponse(&user)

@@ -9,8 +9,8 @@ import (
 
 	"github.com/SscSPs/money_managemet_app/internal/handlers"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
-	"github.com/SscSPs/money_managemet_app/pkg/config"
-	"github.com/SscSPs/money_managemet_app/pkg/database"
+	"github.com/SscSPs/money_managemet_app/internal/platform/config"
+	"github.com/SscSPs/money_managemet_app/internal/platform/database"
 	"github.com/gin-gonic/gin"
 
 	migrate "github.com/golang-migrate/migrate/v4"

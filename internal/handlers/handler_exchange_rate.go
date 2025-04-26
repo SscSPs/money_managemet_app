@@ -5,11 +5,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/SscSPs/money_managemet_app/internal/adapters/database/pgsql"
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
+	"github.com/SscSPs/money_managemet_app/internal/repositories/database/pgsql"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -133,12 +133,14 @@ func (h *ExchangeRateHandler) getExchangeRate(c *gin.Context) {
 func registerExchangeRateRoutes(rg *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	// Instantiate dependencies
 	// Need CurrencyService for validation, which requires CurrencyRepository
-	currencyRepo := pgsql.NewPgxCurrencyRepository(dbPool)
-	currencyService := services.NewCurrencyService(currencyRepo)
+	// Removed currencyRepo and currencyService instantiation as they are currently unused here.
+	// They will be needed inside ExchangeRateService if it performs currency validation.
 
 	exchangeRateRepo := pgsql.NewExchangeRateRepository(dbPool)
-	// Pass CurrencyService to ExchangeRateService constructor
-	exchangeRateService := services.NewExchangeRateService(exchangeRateRepo, currencyService)
+	// Pass only the ExchangeRateRepository to NewExchangeRateService based on its current signature
+	exchangeRateService := services.NewExchangeRateService(exchangeRateRepo)
+	// The ExchangeRateService might need CurrencyService injected separately or passed to methods requiring currency validation.
+	// For now, fix the constructor call.
 	exchangeRateHandler := newExchangeRateHandler(exchangeRateService)
 
 	// Define routes under /exchange-rates group

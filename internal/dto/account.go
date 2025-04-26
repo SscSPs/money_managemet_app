@@ -3,14 +3,14 @@ package dto
 import (
 	"time"
 
-	"github.com/SscSPs/money_managemet_app/internal/models"
+	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	"github.com/shopspring/decimal"
 )
 
 // CreateAccountRequest defines the data needed to create a new account.
 type CreateAccountRequest struct {
 	Name            string             `json:"name" binding:"required"`
-	AccountType     models.AccountType `json:"accountType" binding:"required,oneof=ASSET LIABILITY EQUITY INCOME EXPENSE"`
+	AccountType     domain.AccountType `json:"accountType" binding:"required,oneof=ASSET LIABILITY EQUITY INCOME EXPENSE"`
 	CurrencyCode    string             `json:"currencyCode" binding:"required"`
 	ParentAccountID *string            `json:"parentAccountID"` // Optional, use pointer for nullability
 	Description     string             `json:"description"`     // Optional
@@ -18,11 +18,11 @@ type CreateAccountRequest struct {
 }
 
 // AccountResponse defines the data returned for an account.
-// It mirrors models.Account but ensures AuditFields are included.
+// Mirrors domain.Account.
 type AccountResponse struct {
 	AccountID       string             `json:"accountID"`
 	Name            string             `json:"name"`
-	AccountType     models.AccountType `json:"accountType"`
+	AccountType     domain.AccountType `json:"accountType"`
 	CurrencyCode    string             `json:"currencyCode"`
 	ParentAccountID string             `json:"parentAccountID"` // Note: Empty string if null in DB
 	Description     string             `json:"description"`
@@ -33,8 +33,8 @@ type AccountResponse struct {
 	LastUpdatedBy   string             `json:"lastUpdatedBy"`
 }
 
-// ToAccountResponse converts a models.Account to AccountResponse DTO
-func ToAccountResponse(acc *models.Account) AccountResponse {
+// ToAccountResponse converts a domain.Account to AccountResponse DTO
+func ToAccountResponse(acc *domain.Account) AccountResponse {
 	return AccountResponse{
 		AccountID:       acc.AccountID,
 		Name:            acc.Name,
@@ -50,8 +50,8 @@ func ToAccountResponse(acc *models.Account) AccountResponse {
 	}
 }
 
-// ToListAccountResponse converts a slice of models.Account to a slice of AccountResponse DTOs
-func ToListAccountResponse(accounts []models.Account) []AccountResponse {
+// ToListAccountResponse converts a slice of domain.Account to a slice of AccountResponse DTOs
+func ToListAccountResponse(accounts []domain.Account) []AccountResponse {
 	res := make([]AccountResponse, len(accounts))
 	for i, acc := range accounts {
 		res[i] = ToAccountResponse(&acc) // Reuse the single converter
@@ -64,4 +64,17 @@ type AccountBalanceResponse struct {
 	AccountID string          `json:"accountID"`
 	Balance   decimal.Decimal `json:"balance"`
 	// Could add currency code here if needed
+}
+
+// ListAccountsParams defines query parameters for listing accounts.
+type ListAccountsParams struct {
+	Limit  int `form:"limit,default=20"`
+	Offset int `form:"offset,default=0"`
+	// Add filters later (e.g., type, currency, name)?
+}
+
+// ListAccountsResponse wraps the list of accounts.
+type ListAccountsResponse struct {
+	Accounts []AccountResponse `json:"accounts"`
+	// TODO: Add pagination metadata (total count, limit, offset) later
 }

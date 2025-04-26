@@ -3,7 +3,7 @@ package handlers
 import (
 	"github.com/SscSPs/money_managemet_app/cmd/docs"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
-	"github.com/SscSPs/money_managemet_app/pkg/config"
+	"github.com/SscSPs/money_managemet_app/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	swaggerFiles "github.com/swaggo/files"

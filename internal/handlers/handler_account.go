@@ -5,11 +5,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/SscSPs/money_managemet_app/internal/adapters/database/pgsql"
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
+	"github.com/SscSPs/money_managemet_app/internal/repositories/database/pgsql"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -143,6 +143,89 @@ func (h *AccountHandler) getAccountBalance(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// listAccounts godoc
+// @Summary List accounts
+// @Description Retrieves a paginated list of active financial accounts
+// @Tags accounts
+// @Accept  json
+// @Produce  json
+// @Param   limit query int false "Limit number of results" default(20)
+// @Param   offset query int false "Offset for pagination" default(0)
+// @Success 200 {object} dto.ListAccountsResponse
+// @Failure 400 {object} map[string]string "Invalid query parameters"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /accounts [get]
+func (h *AccountHandler) listAccounts(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+
+	var params dto.ListAccountsParams
+	if err := c.ShouldBindQuery(&params); err != nil {
+		logger.Warn("Failed to bind query parameters for ListAccounts", slog.String("error", err.Error()))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid query parameters: " + err.Error()})
+		return
+	}
+
+	accounts, err := h.accountService.ListAccounts(c.Request.Context(), params.Limit, params.Offset)
+	if err != nil {
+		logger.Error("Failed to list accounts from service", slog.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve accounts"})
+		return
+	}
+
+	resp := dto.ListAccountsResponse{
+		Accounts: dto.ToListAccountResponse(accounts), // Use existing DTO converter
+	}
+
+	logger.Debug("Accounts listed successfully")
+	c.JSON(http.StatusOK, resp)
+}
+
+// deactivateAccount godoc
+// @Summary Deactivate an account
+// @Description Marks a financial account as inactive
+// @Tags accounts
+// @Accept  json
+// @Produce  json
+// @Param   accountID path string true "Account ID to deactivate"
+// @Success 204 "No Content"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 404 {object} map[string]string "Account not found"
+// @Failure 400 {object} map[string]string "Account already inactive or other validation error"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /accounts/{accountID} [delete]
+func (h *AccountHandler) deactivateAccount(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	accountID := c.Param("accountID")
+
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		logger.Error("User ID not found in context for DeactivateAccount")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	// TODO: Add authorization check if only specific users can deactivate specific accounts
+
+	err := h.accountService.DeactivateAccount(c.Request.Context(), accountID, userID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Account not found for deactivation", slog.String("account_id", accountID))
+			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+		} else if errors.Is(err, apperrors.ErrValidation) {
+			// This likely means the account was already inactive
+			logger.Warn("Validation error deactivating account (likely already inactive)", slog.String("account_id", accountID), slog.String("error", err.Error()))
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		} else {
+			logger.Error("Failed to deactivate account in service", slog.String("error", err.Error()), slog.String("account_id", accountID))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to deactivate account"})
+		}
+		return
+	}
+
+	logger.Info("Account deactivated successfully", slog.String("account_id", accountID))
+	c.Status(http.StatusNoContent)
+}
+
 // registerAccountRoutes registers account specific routes
 func registerAccountRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	// Instantiate dependencies
@@ -156,11 +239,12 @@ func registerAccountRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	accounts := group.Group("/accounts")
 	{
 		accounts.POST("/", accountHandler.createAccount)
+		accounts.GET("/", accountHandler.listAccounts)
 		accounts.GET("/:accountID", accountHandler.getAccount)
 		accounts.GET("/:accountID/balance", accountHandler.getAccountBalance)
+		accounts.DELETE("/:accountID", accountHandler.deactivateAccount)
 	}
 }
 
-// TODO: Add ListAccounts handler later
 // TODO: Add UpdateAccount handler later
 // TODO: Add DeleteAccount (or Deactivate) handler later

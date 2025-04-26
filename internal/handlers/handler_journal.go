@@ -5,11 +5,12 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/SscSPs/money_managemet_app/internal/adapters/database/pgsql"
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
+	"github.com/SscSPs/money_managemet_app/internal/models"
+	"github.com/SscSPs/money_managemet_app/internal/repositories/database/pgsql"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -57,7 +58,7 @@ func (h *journalHandler) persistJournal(c *gin.Context) {
 
 	logger = logger.With(slog.String("creator_user_id", creatorUserID))
 
-	journal, err := h.journalService.PersistJournal(c.Request.Context(), createReq.Journal, createReq.Transactions, creatorUserID)
+	journal, err := h.journalService.PersistJournal(c.Request.Context(), createReq, creatorUserID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrValidation) {
 			logger.Warn("Validation error persisting journal", slog.String("error", err.Error()))
@@ -101,12 +102,46 @@ func (h *journalHandler) getJournal(c *gin.Context) {
 	}
 
 	logger.Debug("Journal retrieved successfully", slog.String("journal_id", journalID))
-	c.JSON(http.StatusOK, dto.CreateJournalAndTxn{Journal: *journal, Transactions: txns})
+
+	modelJournal := models.Journal{
+		JournalID:    journal.JournalID,
+		JournalDate:  journal.JournalDate,
+		Description:  journal.Description,
+		CurrencyCode: journal.CurrencyCode,
+		Status:       models.JournalStatus(journal.Status),
+		AuditFields: models.AuditFields{
+			CreatedAt:     journal.CreatedAt,
+			CreatedBy:     journal.CreatedBy,
+			LastUpdatedAt: journal.LastUpdatedAt,
+			LastUpdatedBy: journal.LastUpdatedBy,
+		},
+	}
+	modelTxns := make([]models.Transaction, len(txns))
+	for i, dTxn := range txns {
+		modelTxns[i] = models.Transaction{
+			TransactionID:   dTxn.TransactionID,
+			JournalID:       dTxn.JournalID,
+			AccountID:       dTxn.AccountID,
+			Amount:          dTxn.Amount,
+			TransactionType: models.TransactionType(dTxn.TransactionType),
+			CurrencyCode:    dTxn.CurrencyCode,
+			Notes:           dTxn.Notes,
+			AuditFields: models.AuditFields{
+				CreatedAt:     dTxn.CreatedAt,
+				CreatedBy:     dTxn.CreatedBy,
+				LastUpdatedAt: dTxn.LastUpdatedAt,
+				LastUpdatedBy: dTxn.LastUpdatedBy,
+			},
+		}
+	}
+
+	c.JSON(http.StatusOK, dto.CreateJournalAndTxn{Journal: modelJournal, Transactions: modelTxns})
 }
 
 // registerJournalRoutes registers journal specific routes
 func registerJournalRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
 	journalRepo := pgsql.NewPgxJournalRepository(dbPool)
+	// Instantiate accountRepo as it's needed by JournalService
 	accountRepo := pgsql.NewPgxAccountRepository(dbPool)
 	journalService := services.NewJournalService(accountRepo, journalRepo)
 

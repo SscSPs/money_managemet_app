@@ -1,7 +1,7 @@
 package dto
 
 import (
-	"github.com/SscSPs/money_managemet_app/internal/models"
+	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 )
 
 // CreateCurrencyRequest defines the data needed to create a new currency.
@@ -19,8 +19,8 @@ type CurrencyResponse struct {
 	Name         string `json:"name"`
 }
 
-// ToCurrencyResponse converts a models.Currency to CurrencyResponse DTO
-func ToCurrencyResponse(curr *models.Currency) CurrencyResponse {
+// ToCurrencyResponse converts a domain.Currency to CurrencyResponse DTO
+func ToCurrencyResponse(curr *domain.Currency) CurrencyResponse {
 	return CurrencyResponse{
 		CurrencyCode: curr.CurrencyCode,
 		Symbol:       curr.Symbol,
@@ -28,8 +28,8 @@ func ToCurrencyResponse(curr *models.Currency) CurrencyResponse {
 	}
 }
 
-// ToListCurrencyResponse converts a slice of models.Currency to a slice of CurrencyResponse DTOs
-func ToListCurrencyResponse(currencies []models.Currency) []CurrencyResponse {
+// ToListCurrencyResponse converts a slice of domain.Currency to a slice of CurrencyResponse DTOs
+func ToListCurrencyResponse(currencies []domain.Currency) []CurrencyResponse {
 	res := make([]CurrencyResponse, len(currencies))
 	for i, curr := range currencies {
 		res[i] = ToCurrencyResponse(&curr) // Reuse the single converter
