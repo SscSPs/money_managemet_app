@@ -31,6 +31,13 @@ This is the backend service for the Money Management Application (MMA). It provi
 *   `makefile`: Contains common development tasks (build, run, test, etc.).
 *   `go.mod`, `go.sum`: Go module dependency files.
 
+## Database Schema
+
+The database schema is managed using SQL migrations located in the `migrations/` directory.
+Key identifiers (like `user_id`, `workplace_id`, `account_id`, etc.) primarily use `VARCHAR(255)` as their data type.
+
+Refer to the migration files for the most up-to-date and detailed schema definition.
+
 ## Getting Started
 
 ### Prerequisites
