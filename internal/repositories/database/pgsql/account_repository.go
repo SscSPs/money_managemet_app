@@ -32,13 +32,14 @@ var _ portsrepo.AccountRepository = (*PgxAccountRepository)(nil)
 func toModelAccount(d domain.Account) models.Account {
 	return models.Account{
 		AccountID:       d.AccountID,
+		WorkplaceID:     d.WorkplaceID,
 		Name:            d.Name,
-		AccountType:     models.AccountType(d.AccountType), // Conversion
+		AccountType:     models.AccountType(d.AccountType),
 		CurrencyCode:    d.CurrencyCode,
 		ParentAccountID: d.ParentAccountID,
 		Description:     d.Description,
 		IsActive:        d.IsActive,
-		AuditFields: models.AuditFields{ // Conversion
+		AuditFields: models.AuditFields{
 			CreatedAt:     d.CreatedAt,
 			CreatedBy:     d.CreatedBy,
 			LastUpdatedAt: d.LastUpdatedAt,
@@ -51,13 +52,14 @@ func toModelAccount(d domain.Account) models.Account {
 func toDomainAccount(m models.Account) domain.Account {
 	return domain.Account{
 		AccountID:       m.AccountID,
+		WorkplaceID:     m.WorkplaceID,
 		Name:            m.Name,
-		AccountType:     domain.AccountType(m.AccountType), // Conversion
+		AccountType:     domain.AccountType(m.AccountType),
 		CurrencyCode:    m.CurrencyCode,
 		ParentAccountID: m.ParentAccountID,
 		Description:     m.Description,
 		IsActive:        m.IsActive,
-		AuditFields: domain.AuditFields{ // Conversion
+		AuditFields: domain.AuditFields{
 			CreatedAt:     m.CreatedAt,
 			CreatedBy:     m.CreatedBy,
 			LastUpdatedAt: m.LastUpdatedAt,
@@ -74,8 +76,8 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 	creatorUserID := modelAcc.CreatedBy
 
 	query := `
-		INSERT INTO accounts (account_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+		INSERT INTO accounts (account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
 	`
 	// Handle potential nil parentAccountID if DB requires NULL explicitly
 	var parentID *string
@@ -84,21 +86,22 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 	}
 
 	_, err := r.pool.Exec(ctx, query,
-		modelAcc.AccountID, // Assuming ID is generated beforehand or use DB default
+		modelAcc.AccountID,
+		modelAcc.WorkplaceID,
 		modelAcc.Name,
 		modelAcc.AccountType,
 		modelAcc.CurrencyCode,
 		parentID,
 		modelAcc.Description,
-		modelAcc.IsActive,      // Should default to true
-		modelAcc.CreatedAt,     // Use time from domain object
-		creatorUserID,          // created_by
-		modelAcc.LastUpdatedAt, // Use time from domain object
-		creatorUserID,          // last_updated_by
+		modelAcc.IsActive,
+		modelAcc.CreatedAt,
+		creatorUserID,
+		modelAcc.LastUpdatedAt,
+		creatorUserID,
 	)
 
 	if err != nil {
-		// TODO: Check for specific errors like unique constraint violation
+		// TODO: Check for specific errors like unique constraint violation or FK violation (workplace_id)
 		return fmt.Errorf("failed to save account %s: %w", modelAcc.AccountID, err)
 	}
 	return nil
@@ -107,7 +110,7 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 // FindAccountByID retrieves an account by its ID.
 func (r *PgxAccountRepository) FindAccountByID(ctx context.Context, accountID string) (*domain.Account, error) {
 	query := `
-		SELECT account_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by
+		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by
 		FROM accounts
 		WHERE account_id = $1;
 	`
@@ -116,10 +119,11 @@ func (r *PgxAccountRepository) FindAccountByID(ctx context.Context, accountID st
 
 	err := r.pool.QueryRow(ctx, query, accountID).Scan(
 		&modelAcc.AccountID,
+		&modelAcc.WorkplaceID,
 		&modelAcc.Name,
 		&modelAcc.AccountType,
 		&modelAcc.CurrencyCode,
-		&parentID, // Scan into nullable pointer
+		&parentID,
 		&modelAcc.Description,
 		&modelAcc.IsActive,
 		&modelAcc.CreatedAt,
@@ -157,7 +161,7 @@ func (r *PgxAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs
 	}
 
 	query := `
-		SELECT account_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by
+		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by
 		FROM accounts
 		WHERE account_id = ANY($1);
 	` // Use ANY for array matching
@@ -174,6 +178,7 @@ func (r *PgxAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs
 		var parentID *string
 		err := rows.Scan(
 			&modelAcc.AccountID,
+			&modelAcc.WorkplaceID,
 			&modelAcc.Name,
 			&modelAcc.AccountType,
 			&modelAcc.CurrencyCode,
@@ -208,8 +213,8 @@ func (r *PgxAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs
 	return accountsMap, nil
 }
 
-// ListAccounts retrieves a paginated list of active accounts.
-func (r *PgxAccountRepository) ListAccounts(ctx context.Context, limit int, offset int) ([]domain.Account, error) {
+// ListAccounts retrieves a paginated list of active accounts FOR A SPECIFIC WORKPLACE.
+func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
 	// Default limit if not specified or invalid
 	if limit <= 0 {
 		limit = 20 // Or a configurable default
@@ -220,16 +225,16 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, limit int, offs
 	}
 
 	query := `
-		SELECT account_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by
+		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by
 		FROM accounts
-		WHERE is_active = TRUE -- Only list active accounts by default
-		ORDER BY name -- Or account_type, name; Or created_at
-		LIMIT $1 OFFSET $2;
+		WHERE is_active = TRUE AND workplace_id = $1 -- Filter by workplace
+		ORDER BY name
+		LIMIT $2 OFFSET $3;
 	`
 
-	rows, err := r.pool.Query(ctx, query, limit, offset)
+	rows, err := r.pool.Query(ctx, query, workplaceID, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query accounts: %w", err)
+		return nil, fmt.Errorf("failed to query accounts for workplace %s: %w", workplaceID, err)
 	}
 	defer rows.Close()
 
@@ -239,6 +244,7 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, limit int, offs
 		var parentID *string
 		err := rows.Scan(
 			&modelAcc.AccountID,
+			&modelAcc.WorkplaceID,
 			&modelAcc.Name,
 			&modelAcc.AccountType,
 			&modelAcc.CurrencyCode,
@@ -251,7 +257,7 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, limit int, offs
 			&modelAcc.LastUpdatedBy,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan account row during list: %w", err)
+			return nil, fmt.Errorf("failed to scan account row during list for workplace %s: %w", workplaceID, err)
 		}
 
 		if parentID != nil {
@@ -263,7 +269,7 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, limit int, offs
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating account rows during list: %w", err)
+		return nil, fmt.Errorf("error iterating account rows during list for workplace %s: %w", workplaceID, err)
 	}
 
 	return toDomainAccountSlice(modelAccounts), nil // Use mapping helper

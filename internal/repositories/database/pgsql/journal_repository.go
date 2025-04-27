@@ -31,6 +31,7 @@ var _ portsrepo.JournalRepository = (*PgxJournalRepository)(nil)
 func toModelJournal(d domain.Journal) models.Journal {
 	return models.Journal{
 		JournalID:    d.JournalID,
+		WorkplaceID:  d.WorkplaceID,
 		JournalDate:  d.JournalDate,
 		Description:  d.Description,
 		CurrencyCode: d.CurrencyCode,
@@ -47,6 +48,7 @@ func toModelJournal(d domain.Journal) models.Journal {
 func toDomainJournal(m models.Journal) domain.Journal {
 	return domain.Journal{
 		JournalID:    m.JournalID,
+		WorkplaceID:  m.WorkplaceID,
 		JournalDate:  m.JournalDate,
 		Description:  m.Description,
 		CurrencyCode: m.CurrencyCode,
@@ -123,11 +125,12 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 
 	// 1. Insert the Journal entry
 	journalQuery := `
-		INSERT INTO journals (journal_id, journal_date, description, currency_code, status, created_at, created_by, last_updated_at, last_updated_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+		INSERT INTO journals (journal_id, workplace_id, journal_date, description, currency_code, status, created_at, created_by, last_updated_at, last_updated_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 	`
 	_, err = tx.Exec(ctx, journalQuery,
 		modelJournal.JournalID,
+		modelJournal.WorkplaceID,
 		modelJournal.JournalDate,
 		modelJournal.Description,
 		modelJournal.CurrencyCode,
@@ -182,13 +185,14 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 // FindJournalByID retrieves a journal by its ID.
 func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID string) (*domain.Journal, error) {
 	query := `
-		SELECT journal_id, journal_date, description, currency_code, status, created_at, created_by, last_updated_at, last_updated_by
+		SELECT journal_id, workplace_id, journal_date, description, currency_code, status, created_at, created_by, last_updated_at, last_updated_by
 		FROM journals
 		WHERE journal_id = $1;
 	`
 	var modelJournal models.Journal
 	err := r.pool.QueryRow(ctx, query, journalID).Scan(
 		&modelJournal.JournalID,
+		&modelJournal.WorkplaceID,
 		&modelJournal.JournalDate,
 		&modelJournal.Description,
 		&modelJournal.CurrencyCode,
@@ -259,29 +263,33 @@ func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, 
 }
 
 // FindTransactionsByAccountID retrieves all transactions associated with a specific account.
-func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, accountID string) ([]domain.Transaction, error) {
+func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, workplaceID, accountID string) ([]domain.Transaction, error) {
+	// First, ensure the account itself belongs to the given workplace.
+	// This check might be better placed in the service layer.
+	// Optional check: _, err := r.pool.Exec(ctx, "SELECT 1 FROM accounts WHERE account_id = $1 AND workplace_id = $2", accountID, workplaceID)
+
 	query := `
-		SELECT transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by
-		FROM transactions
-		WHERE account_id = $1
-		ORDER BY created_at; -- Consistent ordering
-	`
-	rows, err := r.pool.Query(ctx, query, accountID)
+        SELECT t.transaction_id, t.journal_id, t.account_id, t.amount, t.transaction_type, t.currency_code, t.notes, t.created_at, t.created_by, t.last_updated_at, t.last_updated_by
+        FROM transactions t
+        JOIN journals j ON t.journal_id = j.journal_id
+        WHERE t.account_id = $1 AND j.workplace_id = $2
+        ORDER BY j.journal_date DESC, t.created_at DESC;
+    ` // Join with journals to filter by workplace
+	rows, err := r.pool.Query(ctx, query, accountID, workplaceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query transactions for account %s: %w", accountID, err)
+		return nil, fmt.Errorf("failed to query transactions for account %s in workplace %s: %w", accountID, workplaceID, err)
 	}
 	defer rows.Close()
 
 	modelTransactions := []models.Transaction{}
 	for rows.Next() {
 		var modelTxn models.Transaction
-		var amount decimal.Decimal // Use decimal for scanning
-
+		var amount decimal.Decimal
 		if err := rows.Scan(
 			&modelTxn.TransactionID,
 			&modelTxn.JournalID,
 			&modelTxn.AccountID,
-			&amount, // Scan into decimal variable
+			&amount,
 			&modelTxn.TransactionType,
 			&modelTxn.CurrencyCode,
 			&modelTxn.Notes,
@@ -292,7 +300,7 @@ func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, 
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan transaction row for account %s: %w", accountID, err)
 		}
-		modelTxn.Amount = amount // Assign scanned decimal to model field
+		modelTxn.Amount = amount
 		modelTransactions = append(modelTransactions, modelTxn)
 	}
 
@@ -300,12 +308,7 @@ func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, 
 		return nil, fmt.Errorf("error iterating transaction rows for account %s: %w", accountID, err)
 	}
 
-	// Return empty domain slice if no rows found
-	if len(modelTransactions) == 0 {
-		return []domain.Transaction{}, nil
-	}
-
-	return toDomainTransactionSlice(modelTransactions), nil // Use mapping func
+	return toDomainTransactionSlice(modelTransactions), nil
 }
 
 // TODO: Implement UpdateJournalStatus for M4 (Reversals).

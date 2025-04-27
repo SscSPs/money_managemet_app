@@ -11,14 +11,13 @@ const (
 	// Maybe DRAFT later?
 )
 
-// Journal represents a single, balanced financial event composed of multiple transactions.
+// Journal represents the database model for a journal entry.
 type Journal struct {
-	JournalID    string        `json:"journalID"`    // Primary Key (e.g., UUID)
-	JournalDate  time.Time     `json:"journalDate"`  // Date the event occurred
-	Description  string        `json:"description"`  // Nullable user description
-	CurrencyCode string        `json:"currencyCode"` // Primary currency of the Journal (Not Null)
-	Status       JournalStatus `json:"status"`       // Default: Posted
-	// Relationships - managed by Transaction
-	// Transactions []Transaction `json:"transactions"` // Often loaded separately
-	AuditFields
+	JournalID    string        `db:"journal_id"`
+	WorkplaceID  string        `db:"workplace_id"` // Added workplace_id
+	JournalDate  time.Time     `db:"journal_date"`
+	Description  string        `db:"description"`
+	CurrencyCode string        `db:"currency_code"`
+	Status       JournalStatus `db:"status"` // Use type from common.go
+	AuditFields                // Embed common audit fields
 }

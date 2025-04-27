@@ -21,5 +21,6 @@ type Account struct {
 	ParentAccountID string      `json:"parentAccountID"` // Nullable FK -> Account.accountID
 	Description     string      `json:"description"`     // Nullable
 	IsActive        bool        `json:"isActive"`        // Default: true
+	WorkplaceID     string      `json:"workplaceID"`     // Added workplace_id
 	AuditFields
 }

@@ -64,13 +64,15 @@ func main() {
 	exchangeRateRepo := pgsql.NewPgxExchangeRateRepository(dbPool)
 	userRepo := pgsql.NewPgxUserRepository(dbPool)
 	journalRepo := pgsql.NewPgxJournalRepository(dbPool)
+	workplaceRepo := pgsql.NewPgxWorkplaceRepository(dbPool)
 
 	// Services
 	accountService := services.NewAccountService(accountRepo)
 	currencyService := services.NewCurrencyService(currencyRepo)
 	exchangeRateService := services.NewExchangeRateService(exchangeRateRepo, currencyService)
 	userService := services.NewUserService(userRepo)
-	journalService := services.NewJournalService(accountRepo, journalRepo)
+	workplaceService := services.NewWorkplaceService(workplaceRepo)
+	journalService := services.NewJournalService(accountRepo, journalRepo, workplaceService)
 
 	logger.Info("Dependencies initialized.")
 	// --- End Dependency Injection Setup ---
@@ -79,7 +81,7 @@ func main() {
 	r := setupGinEngine(logger, cfg)
 
 	// Pass initialized services to route registration
-	handlers.RegisterRoutes(r, cfg, *userService, *accountService, *currencyService, *exchangeRateService, *journalService)
+	handlers.RegisterRoutes(r, cfg, *userService, *accountService, *currencyService, *exchangeRateService, *journalService, *workplaceService)
 
 	logger.Info("Server starting", slog.String("port", cfg.Port))
 	if err := r.Run(":" + cfg.Port); err != nil {

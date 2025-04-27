@@ -14,7 +14,7 @@ type AccountRepository interface {
 	SaveAccount(ctx context.Context, account domain.Account) error
 	FindAccountByID(ctx context.Context, accountID string) (*domain.Account, error)
 	FindAccountsByIDs(ctx context.Context, accountIDs []string) (map[string]domain.Account, error)
-	ListAccounts(ctx context.Context, limit int, offset int) ([]domain.Account, error)
+	ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error)
 	UpdateAccount(ctx context.Context, account domain.Account) error
 	// Add methods for updating (inactivation), listing etc. in later milestones
 	// ListAccounts(ctx context.Context) ([]domain.Account, error)
@@ -29,7 +29,7 @@ type JournalRepository interface {
 	SaveJournal(ctx context.Context, journal domain.Journal, transactions []domain.Transaction) error
 	FindJournalByID(ctx context.Context, journalID string) (*domain.Journal, error)
 	FindTransactionsByJournalID(ctx context.Context, journalID string) ([]domain.Transaction, error)
-	FindTransactionsByAccountID(ctx context.Context, accountID string) ([]domain.Transaction, error)
+	FindTransactionsByAccountID(ctx context.Context, workplaceID, accountID string) ([]domain.Transaction, error)
 	// UpdateJournalStatus(ctx context.Context, journalID string, status domain.JournalStatus) error
 }
 
@@ -55,4 +55,14 @@ type UserRepository interface {
 	FindUsers(ctx context.Context, limit int, offset int) ([]domain.User, error)
 	UpdateUser(ctx context.Context, user domain.User) error
 	MarkUserDeleted(ctx context.Context, userID string, deletedAt time.Time, deletedBy string) error // Using soft delete
+}
+
+// WorkplaceRepository defines persistence operations for Workplaces and UserWorkplace memberships.
+type WorkplaceRepository interface {
+	SaveWorkplace(ctx context.Context, workplace domain.Workplace) error
+	FindWorkplaceByID(ctx context.Context, workplaceID string) (*domain.Workplace, error)
+	AddUserToWorkplace(ctx context.Context, membership domain.UserWorkplace) error
+	FindUserWorkplaceRole(ctx context.Context, userID, workplaceID string) (*domain.UserWorkplace, error) // Returns membership details including role
+	ListWorkplacesByUserID(ctx context.Context, userID string) ([]domain.Workplace, error)                // List workplaces a user belongs to
+	// Potentially add methods like: FindUsersByWorkplaceID, RemoveUserFromWorkplace, UpdateUserRoleInWorkplace
 }

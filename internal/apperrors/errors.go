@@ -11,4 +11,7 @@ var ErrValidation = errors.New("validation error")
 // ErrDuplicate indicates that an attempt was made to create a resource that already exists.
 var ErrDuplicate = errors.New("resource already exists")
 
-// TODO: Add other specific error types as needed (e.g., ErrUnauthorized, ErrForbidden)
+// ErrForbidden indicates that the user is authenticated but does not have permission to perform the action.
+var ErrForbidden = errors.New("forbidden")
+
+// TODO: Add other specific error types as needed (e.g., ErrUnauthorized)

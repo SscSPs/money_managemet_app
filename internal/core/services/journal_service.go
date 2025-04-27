@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,7 +12,9 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
+	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/SscSPs/money_managemet_app/internal/models"
 	"github.com/shopspring/decimal"
 	// We might need a UUID library later, e.g., "github.com/google/uuid"
@@ -21,23 +24,28 @@ var (
 	ErrJournalUnbalanced = errors.New("journal entries do not balance to zero")
 	ErrJournalMinEntries = errors.New("journal must have at least two transaction entries")
 	ErrAccountNotFound   = errors.New("account not found")
-	ErrCurrencyMismatch  = errors.New("transactions must use the journal's currency")
+	ErrCurrencyMismatch  = errors.New("account currency does not match journal currency")
 )
 
 // JournalService provides core journal and transaction operations.
 type JournalService struct {
-	accountRepo portsrepo.AccountRepository
-	journalRepo portsrepo.JournalRepository
-	// userRepo portsrepo.UserRepository // Needed later for CreatedBy/UpdatedBy
+	accountRepo  portsrepo.AccountRepository
+	journalRepo  portsrepo.JournalRepository
+	workplaceSvc portssvc.WorkplaceService // Added for authorization checks
+	// userRepo portsrepo.UserRepository
 }
 
 // NewJournalService creates a new JournalService.
-func NewJournalService(accountRepo portsrepo.AccountRepository, journalRepo portsrepo.JournalRepository) *JournalService {
+func NewJournalService(accountRepo portsrepo.AccountRepository, journalRepo portsrepo.JournalRepository, workplaceSvc portssvc.WorkplaceService) *JournalService {
 	return &JournalService{
-		accountRepo: accountRepo,
-		journalRepo: journalRepo,
+		accountRepo:  accountRepo,
+		journalRepo:  journalRepo,
+		workplaceSvc: workplaceSvc,
 	}
 }
+
+// Ensure JournalService implements the portssvc.JournalService interface
+var _ portssvc.JournalService = (*JournalService)(nil)
 
 // getSignedAmount applies the correct sign to a transaction amount based on account type and transaction type.
 func (s *JournalService) getSignedAmount(txn domain.Transaction, accountType domain.AccountType) (decimal.Decimal, error) {
@@ -142,72 +150,96 @@ func modelToDomainJournal(m models.Journal) domain.Journal {
 	}
 }
 
-// PersistJournal creates a new journal entry with its transactions after validation.
-func (s *JournalService) PersistJournal(ctx context.Context, req dto.CreateJournalAndTxn, userID string) (*domain.Journal, error) {
-	// --- Use models from DTO ---
-	modelJournal := req.Journal
-	modelTransactions := req.Transactions
+// CreateJournal creates a new journal entry with its transactions after validation.
+// Implements portssvc.JournalService
+func (s *JournalService) CreateJournal(ctx context.Context, workplaceID string, req dto.CreateJournalRequest, creatorUserID string) (*domain.Journal, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
 
-	// --- Validation ---
-	if len(modelTransactions) < 2 { // Validate against original DTO models
+	// --- Authorization Check --- (Requires WorkplaceService injection)
+	if s.workplaceSvc != nil {
+		if err := s.workplaceSvc.AuthorizeUserAction(ctx, creatorUserID, workplaceID, domain.RoleMember); err != nil {
+			logger.Warn("Authorization failed for CreateJournal", slog.String("user_id", creatorUserID), slog.String("workplace_id", workplaceID), slog.String("error", err.Error()))
+			return nil, err // Propagate auth error (NotFound or Forbidden)
+		}
+	} else {
+		logger.Warn("WorkplaceService not available for authorization check in CreateJournal")
+	}
+
+	// --- Basic Validation ---
+	if len(req.Transactions) < 2 {
 		return nil, ErrJournalMinEntries
 	}
 
-	// --- Currency Validation ---
-	for _, txn := range modelTransactions {
-		if txn.CurrencyCode != modelJournal.CurrencyCode {
-			// TODO: Log this validation failure
-			return nil, fmt.Errorf("%w: journal is %s, transaction involves %s",
-				ErrCurrencyMismatch, modelJournal.CurrencyCode, txn.CurrencyCode)
+	now := time.Now().UTC()
+	journalID := uuid.NewString()
+
+	// Prepare domain transactions from DTO
+	domainTransactions := make([]domain.Transaction, len(req.Transactions))
+	accountIDs := make([]string, 0, len(req.Transactions))
+	for i, txnReq := range req.Transactions {
+		// Validate positive amount (already done by binding, but good practice)
+		if txnReq.Amount.LessThanOrEqual(decimal.Zero) {
+			return nil, fmt.Errorf("%w: transaction amount must be positive for account %s", apperrors.ErrValidation, txnReq.AccountID)
 		}
+		domainTransactions[i] = domain.Transaction{
+			TransactionID:   uuid.NewString(),
+			JournalID:       journalID, // Link to the new journal
+			AccountID:       txnReq.AccountID,
+			Amount:          txnReq.Amount,
+			TransactionType: txnReq.TransactionType,
+			CurrencyCode:    req.CurrencyCode, // Use journal's currency
+			Notes:           txnReq.Notes,
+			AuditFields: domain.AuditFields{
+				CreatedAt:     now,
+				CreatedBy:     creatorUserID,
+				LastUpdatedAt: now,
+				LastUpdatedBy: creatorUserID,
+			},
+		}
+		accountIDs = append(accountIDs, txnReq.AccountID)
 	}
 
-	// --- Convert models to domain for further validation ---
-	domainTransactions := modelToDomainTransactions(modelTransactions)
-
-	// --- Fetch Account Types and Validate Accounts ---
-	accountIDs := make([]string, 0, len(domainTransactions))
-	for _, txn := range domainTransactions { // Iterate domain transactions
-		accountIDs = append(accountIDs, txn.AccountID)
-	}
+	// --- Fetch Accounts and Validate Further ---
 	uniqueAccountIDs := uniqueStrings(accountIDs)
-
-	// Fetch accounts in batch
 	accountsMap, err := s.accountRepo.FindAccountsByIDs(ctx, uniqueAccountIDs)
 	if err != nil {
-		// Handle potential repository error during batch fetch
+		logger.Error("Failed to fetch accounts for journal creation", slog.String("error", err.Error()), slog.String("workplace_id", workplaceID))
 		return nil, fmt.Errorf("failed to fetch accounts: %w", err)
 	}
 
-	// Check if all required accounts were found and active, and gather types
 	accountTypes := make(map[string]domain.AccountType)
 	for _, id := range uniqueAccountIDs {
 		acc, found := accountsMap[id]
 		if !found {
 			return nil, fmt.Errorf("%w: ID %s", ErrAccountNotFound, id)
 		}
+		if acc.WorkplaceID != workplaceID {
+			logger.Warn("Account used in journal belongs to a different workplace", slog.String("journal_workplace", workplaceID), slog.String("account_id", id), slog.String("account_workplace", acc.WorkplaceID))
+			return nil, fmt.Errorf("%w: account %s does not belong to workplace %s", ErrAccountNotFound, id, workplaceID)
+		}
 		if !acc.IsActive {
-			return nil, fmt.Errorf("account %s is inactive", id)
+			return nil, fmt.Errorf("%w: account %s is inactive", apperrors.ErrValidation, id)
+		}
+		// Validate currency match
+		if acc.CurrencyCode != req.CurrencyCode {
+			return nil, fmt.Errorf("%w: account currency %s does not match journal currency %s for account %s", ErrCurrencyMismatch, acc.CurrencyCode, req.CurrencyCode, id)
 		}
 		accountTypes[id] = acc.AccountType
 	}
 
-	// Validate Balance (Uses domain transactions now)
-	if err = s.validateJournalBalance(domainTransactions, accountTypes); err != nil { // Assign err to existing var
+	// Validate Balance
+	if err = s.validateJournalBalance(domainTransactions, accountTypes); err != nil {
 		return nil, err
 	}
 
-	// --- Persistence --- (Prepare domain objects for saving)
-	creatorUserID := userID
-	now := time.Now().UTC()
-
-	// Create final domain journal object
+	// --- Persistence ---
 	domainJournal := domain.Journal{
-		JournalID:    uuid.NewString(),
-		JournalDate:  modelJournal.JournalDate,
-		Description:  modelJournal.Description,
-		CurrencyCode: modelJournal.CurrencyCode,
-		Status:       domain.Posted,
+		JournalID:    journalID,
+		WorkplaceID:  workplaceID,
+		JournalDate:  req.Date,
+		Description:  req.Description,
+		CurrencyCode: req.CurrencyCode,
+		Status:       domain.Posted, // Default status
 		AuditFields: domain.AuditFields{
 			CreatedAt:     now,
 			CreatedBy:     creatorUserID,
@@ -216,46 +248,189 @@ func (s *JournalService) PersistJournal(ctx context.Context, req dto.CreateJourn
 		},
 	}
 
-	// Populate remaining fields in domain transactions
-	for i := range domainTransactions {
-		domainTransactions[i].TransactionID = uuid.NewString()
-		domainTransactions[i].JournalID = domainJournal.JournalID
-		domainTransactions[i].CurrencyCode = domainJournal.CurrencyCode // Assign journal currency
-		// Assign AuditFields to transactions
-		domainTransactions[i].AuditFields = domain.AuditFields{
-			CreatedAt:     now,
-			CreatedBy:     creatorUserID,
-			LastUpdatedAt: now,
-			LastUpdatedBy: creatorUserID,
-		}
-	}
-
-	// Save atomically via repository (Repo expects domain types)
 	err = s.journalRepo.SaveJournal(ctx, domainJournal, domainTransactions)
 	if err != nil {
+		logger.Error("Failed to save journal", slog.String("error", err.Error()), slog.String("workplace_id", workplaceID))
 		return nil, fmt.Errorf("failed to save journal: %w", err)
 	}
 
-	return &domainJournal, nil // Return the created domain journal
+	logger.Info("Journal created successfully", slog.String("journal_id", domainJournal.JournalID), slog.String("workplace_id", workplaceID))
+	return &domainJournal, nil
 }
 
-// GetJournalWithTransactions retrieves a specific journal and its associated transaction lines.
-func (s *JournalService) GetJournalWithTransactions(ctx context.Context, journalID string) (*domain.Journal, []domain.Transaction, error) {
+// GetJournalByID retrieves a specific journal entry (without transactions).
+// Implements portssvc.JournalService
+func (s *JournalService) GetJournalByID(ctx context.Context, workplaceID string, journalID string, requestingUserID string) (*domain.Journal, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+
+	// --- Authorization Check --- (Requires WorkplaceService injection)
+	// Check if the requesting user is a member of the target workplace.
+	if s.workplaceSvc != nil {
+		if err := s.workplaceSvc.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleMember); err != nil {
+			logger.Warn("Authorization failed for GetJournalByID", slog.String("user_id", requestingUserID), slog.String("workplace_id", workplaceID), slog.String("journal_id", journalID), slog.String("error", err.Error()))
+			return nil, err // Return NotFound or Forbidden
+		}
+	} else {
+		logger.Warn("WorkplaceService not available for authorization check in GetJournalByID")
+	}
+
+	// Fetch journal from repository
 	journal, err := s.journalRepo.FindJournalByID(ctx, journalID)
 	if err != nil {
-		// TODO: Handle specific 'not found' errors from repo if available
-		return nil, nil, fmt.Errorf("failed to find journal by ID %s: %w", journalID, err)
-	}
-	if journal == nil { // Explicit check if repo returns nil on not found
-		return nil, nil, fmt.Errorf("journal with ID %s not found", journalID)
+		if !errors.Is(err, apperrors.ErrNotFound) {
+			logger.Error("Failed to find journal by ID", slog.String("error", err.Error()), slog.String("journal_id", journalID))
+		}
+		// Propagate NotFound
+		return nil, fmt.Errorf("failed to find journal by ID %s: %w", journalID, err)
 	}
 
-	transactions, err := s.journalRepo.FindTransactionsByJournalID(ctx, journalID)
+	// Final check: Ensure the found journal actually belongs to the requested workplace
+	if journal.WorkplaceID != workplaceID {
+		logger.Warn("Journal found but belongs to different workplace", slog.String("journal_id", journalID), slog.String("journal_workplace", journal.WorkplaceID), slog.String("requested_workplace", workplaceID))
+		return nil, apperrors.ErrNotFound // Obscure existence
+	}
+
+	logger.Debug("Journal retrieved successfully", slog.String("journal_id", journalID), slog.String("workplace_id", workplaceID))
+	return journal, nil
+}
+
+// ListJournals retrieves a paginated list of journals for a specific workplace.
+// Implements portssvc.JournalService
+func (s *JournalService) ListJournals(ctx context.Context, workplaceID string, limit int, offset int, requestingUserID string) ([]domain.Journal, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+
+	// --- Authorization Check --- (Requires WorkplaceService injection)
+	if s.workplaceSvc != nil {
+		if err := s.workplaceSvc.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleMember); err != nil {
+			logger.Warn("Authorization failed for ListJournals", slog.String("user_id", requestingUserID), slog.String("workplace_id", workplaceID), slog.String("error", err.Error()))
+			return nil, err // Return NotFound or Forbidden
+		}
+	} else {
+		logger.Warn("WorkplaceService not available for authorization check in ListJournals")
+	}
+
+	// TODO: Implement the repository call
+	// journals, err := s.journalRepo.ListJournalsByWorkplace(ctx, workplaceID, limit, offset)
+	// if err != nil { ... }
+	// return journals, nil
+
+	logger.Warn("ListJournals service method not fully implemented")
+	return []domain.Journal{}, fmt.Errorf("ListJournals not implemented") // Placeholder
+}
+
+// UpdateJournal updates details of a specific journal entry.
+// Implements portssvc.JournalService
+func (s *JournalService) UpdateJournal(ctx context.Context, workplaceID string, journalID string, req dto.UpdateJournalRequest, requestingUserID string) (*domain.Journal, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+
+	// --- Authorization Check --- (Requires WorkplaceService injection)
+	if s.workplaceSvc != nil {
+		// Check if user is at least a member (maybe admin required? TBD)
+		if err := s.workplaceSvc.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleMember); err != nil {
+			logger.Warn("Authorization failed for UpdateJournal", slog.String("user_id", requestingUserID), slog.String("workplace_id", workplaceID), slog.String("journal_id", journalID), slog.String("error", err.Error()))
+			return nil, err
+		}
+	} else {
+		logger.Warn("WorkplaceService not available for authorization check in UpdateJournal")
+	}
+
+	// Fetch the journal
+	journal, err := s.journalRepo.FindJournalByID(ctx, journalID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to find transactions for journal ID %s: %w", journalID, err)
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Journal not found for update", slog.String("journal_id", journalID), slog.String("workplace_id", workplaceID))
+		} else {
+			logger.Error("Failed to find journal for update", slog.String("error", err.Error()), slog.String("journal_id", journalID))
+		}
+		return nil, err // Propagate NotFound or other find errors
 	}
 
-	return journal, transactions, nil
+	// Verify workplace ID match
+	if journal.WorkplaceID != workplaceID {
+		logger.Warn("Attempt to update journal from wrong workplace", slog.String("journal_id", journalID), slog.String("journal_workplace", journal.WorkplaceID), slog.String("requested_workplace", workplaceID))
+		return nil, apperrors.ErrNotFound
+	}
+
+	// TODO: Add check: Can only update journals with status 'Posted'?
+	// if journal.Status != domain.Posted { ... return apperrors.ErrValidation(...) }
+
+	// Apply updates from request DTO
+	updated := false
+	if req.Date != nil {
+		journal.JournalDate = *req.Date
+		updated = true
+	}
+	if req.Description != nil {
+		journal.Description = *req.Description
+		updated = true
+	}
+
+	if !updated {
+		logger.Debug("No fields provided for journal update", slog.String("journal_id", journalID))
+		return journal, nil // Return unmodified journal if no changes
+	}
+
+	now := time.Now()
+	journal.LastUpdatedAt = now
+	journal.LastUpdatedBy = requestingUserID
+
+	// TODO: Add and call s.journalRepo.UpdateJournal(ctx, *journal)
+	// err = s.journalRepo.UpdateJournal(ctx, *journal)
+	// if err != nil { ... }
+
+	logger.Warn("UpdateJournal service method not fully implemented - repo call missing")
+	// Return the potentially modified journal for now, but indicate it's not saved
+	// return journal, nil // Incorrect - should return error until repo call implemented
+	return nil, fmt.Errorf("UpdateJournal repository call not implemented") // Placeholder Error
+}
+
+// DeactivateJournal marks a journal as inactive (conceptually; might involve changing status).
+// Implements portssvc.JournalService
+func (s *JournalService) DeactivateJournal(ctx context.Context, workplaceID string, journalID string, requestingUserID string) error {
+	logger := middleware.GetLoggerFromCtx(ctx)
+
+	// --- Authorization Check --- (Requires WorkplaceService injection)
+	if s.workplaceSvc != nil {
+		// Typically requires Admin role for deactivation/reversal
+		if err := s.workplaceSvc.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleAdmin); err != nil {
+			logger.Warn("Authorization failed for DeactivateJournal", slog.String("user_id", requestingUserID), slog.String("workplace_id", workplaceID), slog.String("journal_id", journalID), slog.String("error", err.Error()))
+			return err
+		}
+	} else {
+		logger.Warn("WorkplaceService not available for authorization check in DeactivateJournal")
+	}
+
+	// Fetch journal
+	journal, err := s.journalRepo.FindJournalByID(ctx, journalID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Journal not found for deactivation", slog.String("journal_id", journalID), slog.String("workplace_id", workplaceID))
+		} else {
+			logger.Error("Failed to find journal for deactivation", slog.String("error", err.Error()), slog.String("journal_id", journalID))
+		}
+		return err // Propagate NotFound or other find errors
+	}
+
+	// Verify workplace ID match
+	if journal.WorkplaceID != workplaceID {
+		logger.Warn("Attempt to deactivate journal from wrong workplace", slog.String("journal_id", journalID), slog.String("journal_workplace", journal.WorkplaceID), slog.String("requested_workplace", workplaceID))
+		return apperrors.ErrNotFound
+	}
+
+	// Check if already inactive/reversed (prevents repeated action)
+	if journal.Status == domain.Reversed { // Assuming Reversed is the 'inactive' state
+		logger.Warn("Attempt to deactivate already reversed journal", slog.String("journal_id", journalID))
+		return fmt.Errorf("%w: journal %s is already reversed", apperrors.ErrValidation, journalID)
+	}
+
+	// TODO: Add check: Can only deactivate journals with status 'Posted'?
+
+	// TODO: Add and call s.journalRepo.UpdateJournalStatus(ctx, journalID, domain.Reversed, requestingUserID, time.Now())
+	// err = s.journalRepo.UpdateJournalStatus(ctx, journalID, domain.Reversed, requestingUserID, time.Now())
+	// if err != nil { ... }
+
+	logger.Warn("DeactivateJournal service method not fully implemented - repo call missing")
+	return fmt.Errorf("DeactivateJournal repository call not implemented") // Placeholder Error
 }
 
 // uniqueStrings returns a slice containing only the unique strings from the input.
@@ -271,9 +446,16 @@ func uniqueStrings(input []string) []string {
 	return result
 }
 
-// CalculateAccountBalance calculates the current balance of a given account.
-func (s *JournalService) CalculateAccountBalance(ctx context.Context, accountID string) (decimal.Decimal, error) {
-	// 1. Find the account to verify existence, activity, and get type
+// CalculateAccountBalance calculates the current balance of a given account within its workplace.
+// Note: This might be better placed in AccountService if it doesn't need journal specifics beyond transactions.
+func (s *JournalService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+
+	// --- Authorization Check? ---
+	// Should the caller (e.g., handler) already have verified user access to the workplace?
+	// Or should this service check it? Assume caller handles it for now.
+
+	// 1. Find the account to verify existence, activity, type, and workplace match
 	account, err := s.accountRepo.FindAccountByID(ctx, accountID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNotFound) {
@@ -281,39 +463,37 @@ func (s *JournalService) CalculateAccountBalance(ctx context.Context, accountID 
 		}
 		return decimal.Zero, fmt.Errorf("failed to find account %s: %w", accountID, err)
 	}
+	if account.WorkplaceID != workplaceID {
+		logger.Warn("CalculateAccountBalance requested for account in wrong workplace", slog.String("account_id", accountID), slog.String("account_workplace", account.WorkplaceID), slog.String("requested_workplace", workplaceID))
+		return decimal.Zero, fmt.Errorf("account %s not found in workplace %s", accountID, workplaceID)
+	}
 	if !account.IsActive {
 		return decimal.Zero, fmt.Errorf("account %s is inactive", accountID)
 	}
 
-	// 2. Fetch all transactions for this account
-	transactions, err := s.journalRepo.FindTransactionsByAccountID(ctx, accountID)
+	// 2. Fetch all transactions for this account within the workplace
+	transactions, err := s.journalRepo.FindTransactionsByAccountID(ctx, workplaceID, accountID)
 	if err != nil {
-		// Handle potential repository error during transaction fetch
-		return decimal.Zero, fmt.Errorf("failed to fetch transactions for account %s: %w", accountID, err)
+		logger.Error("Failed to fetch transactions for account balance", slog.String("error", err.Error()), slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
+		return decimal.Zero, fmt.Errorf("failed to fetch transactions for account %s in workplace %s: %w", accountID, workplaceID, err)
 	}
 
 	// 3. Calculate the balance by summing signed amounts
 	balance := decimal.Zero
 	for _, txn := range transactions {
-		// Ensure transaction amount is positive (should be guaranteed by PersistJournal, but double-check)
 		if txn.Amount.LessThanOrEqual(decimal.Zero) {
-			// Log this inconsistency, but potentially continue calculation?
-			// For now, return an error as it indicates a data issue.
+			logger.Error("Invalid non-positive transaction amount found during balance calculation", slog.String("transaction_id", txn.TransactionID), slog.String("account_id", accountID))
 			return decimal.Zero, fmt.Errorf("invalid non-positive transaction amount found (ID: %s) for account %s", txn.TransactionID, accountID)
 		}
 
-		// Transaction currency should ideally match account currency, though the current
-		// service doesn't explicitly enforce/handle multi-currency aggregation here.
-		// Assuming all fetched transactions are in the account's currency for now.
-
 		signedAmount, err := s.getSignedAmount(txn, account.AccountType)
 		if err != nil {
-			// Propagate error from getSignedAmount (e.g., unknown account type)
 			return decimal.Zero, fmt.Errorf("error calculating signed amount for transaction %s: %w", txn.TransactionID, err)
 		}
 		balance = balance.Add(signedAmount)
 	}
 
+	logger.Debug("Account balance calculated successfully", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID), slog.String("balance", balance.String()))
 	return balance, nil
 }
 

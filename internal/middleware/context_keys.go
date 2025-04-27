@@ -11,6 +11,11 @@ const userIDKey = contextKey("userID")
 func GetUserIDFromContext(c *gin.Context) (string, bool) {
 	userIDVal, exists := c.Get(string(userIDKey))
 	if !exists {
+		// check in the request context as well
+		userIdVal := c.Request.Context().Value(userIDKey)
+		if userIdVal != nil {
+			return userIdVal.(string), true
+		}
 		return "", false
 	}
 

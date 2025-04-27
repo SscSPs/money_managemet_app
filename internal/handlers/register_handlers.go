@@ -19,12 +19,13 @@ func RegisterRoutes(
 	currencyService services.CurrencyService,
 	exchangeRateService services.ExchangeRateService,
 	journalService services.JournalService,
+	workplaceService services.WorkplaceService,
 ) {
 	// Register public authentication routes (Auth might need its own service later)
 	registerAuthRoutes(r, cfg, userService) // Auth handler likely needs UserService
 
 	// Setup API v1 routes with Auth Middleware, passing services
-	setupAPIV1Routes(r, cfg, userService, accountService, currencyService, exchangeRateService, journalService)
+	setupAPIV1Routes(r, cfg, userService, accountService, currencyService, exchangeRateService, journalService, workplaceService)
 
 	// Swagger routes (typically public or conditionally available)
 	setupSwaggerRoutes(r, cfg)
@@ -39,6 +40,7 @@ func setupAPIV1Routes(
 	currencyService services.CurrencyService,
 	exchangeRateService services.ExchangeRateService,
 	journalService services.JournalService,
+	workplaceService services.WorkplaceService,
 ) {
 	// Apply AuthMiddleware to the entire v1 group
 	v1 := r.Group("/api/v1", middleware.AuthMiddleware(cfg.JWTSecret))
@@ -49,6 +51,7 @@ func setupAPIV1Routes(
 	registerUserRoutes(v1, userService)                 // Pass UserService
 	registerCurrencyRoutes(v1, currencyService)         // Pass CurrencyService
 	registerExchangeRateRoutes(v1, exchangeRateService) // Pass ExchangeRateService
+	registerWorkplaceRoutes(v1, workplaceService)       // pass WorkplaceService
 }
 
 // setupSwaggerRoutes configures the swagger documentation routes

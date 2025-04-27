@@ -2,6 +2,7 @@ package services_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -9,7 +10,6 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
-	"github.com/SscSPs/money_managemet_app/internal/models"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -43,8 +43,8 @@ func (m *MockJournalRepository) FindTransactionsByJournalID(ctx context.Context,
 	return args.Get(0).([]domain.Transaction), args.Error(1)
 }
 
-func (m *MockJournalRepository) FindTransactionsByAccountID(ctx context.Context, accountID string) ([]domain.Transaction, error) {
-	args := m.Called(ctx, accountID)
+func (m *MockJournalRepository) FindTransactionsByAccountID(ctx context.Context, workplaceID, accountID string) ([]domain.Transaction, error) {
+	args := m.Called(ctx, workplaceID, accountID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -92,77 +92,122 @@ func (m *MockAccountRepository) DeactivateAccount(ctx context.Context, accountID
 }
 */
 
+// --- Mock WorkplaceService ---
+type MockWorkplaceService struct {
+	mock.Mock
+}
+
+func (m *MockWorkplaceService) AuthorizeUserAction(ctx context.Context, userID, workplaceID string, requiredRole domain.UserWorkplaceRole) error {
+	args := m.Called(ctx, userID, workplaceID, requiredRole)
+	return args.Error(0)
+}
+
+// --- Placeholder implementations for other interface methods ---
+
+func (m *MockWorkplaceService) CreateWorkplace(ctx context.Context, name, description, creatorUserID string) (*domain.Workplace, error) {
+	args := m.Called(ctx, name, description, creatorUserID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Workplace), args.Error(1)
+}
+
+func (m *MockWorkplaceService) AddUserToWorkplace(ctx context.Context, addingUserID, targetUserID, workplaceID string, role domain.UserWorkplaceRole) error {
+	args := m.Called(ctx, addingUserID, targetUserID, workplaceID, role)
+	return args.Error(0)
+}
+
+func (m *MockWorkplaceService) ListUserWorkplaces(ctx context.Context, userID string) ([]domain.Workplace, error) {
+	args := m.Called(ctx, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.Workplace), args.Error(1)
+}
+
+func (m *MockWorkplaceService) FindWorkplaceByID(ctx context.Context, workplaceID string) (*domain.Workplace, error) {
+	args := m.Called(ctx, workplaceID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Workplace), args.Error(1)
+}
+
+// --- End Placeholder implementations ---
+
 // --- Test Suite ---
 type JournalServiceTestSuite struct {
 	suite.Suite
-	mockJournalRepo *MockJournalRepository
-	mockAccountRepo *MockAccountRepository // This will use the definition from the other file
-	service         *services.JournalService
+	mockJournalRepo  *MockJournalRepository
+	mockAccountRepo  *MockAccountRepository
+	mockWorkplaceSvc *MockWorkplaceService // Added mock workplace service
+	service          *services.JournalService
 }
 
 func (suite *JournalServiceTestSuite) SetupTest() {
 	suite.mockJournalRepo = new(MockJournalRepository)
 	suite.mockAccountRepo = new(MockAccountRepository)
-	suite.service = services.NewJournalService(suite.mockAccountRepo, suite.mockJournalRepo)
+	suite.mockWorkplaceSvc = new(MockWorkplaceService) // Initialize mock workplace service
+	// Pass all required mocks to the service constructor
+	suite.service = services.NewJournalService(suite.mockAccountRepo, suite.mockJournalRepo, suite.mockWorkplaceSvc)
 }
 
 // --- Test Cases ---
 
-// Helper function to create a basic valid DTO for PersistJournal tests
-func createValidJournalDTO(currency string, accID1, accID2 string, amount decimal.Decimal) dto.CreateJournalAndTxn {
-	return dto.CreateJournalAndTxn{
-		Journal: models.Journal{
-			JournalDate:  time.Now(),
-			Description:  "Test Journal",
-			CurrencyCode: currency,
-		},
-		Transactions: []models.Transaction{
+// Helper function to create a basic valid DTO for CreateJournal tests
+func createValidJournalCreateDTO(currency string, accID1, accID2 string, amount decimal.Decimal) dto.CreateJournalRequest {
+	return dto.CreateJournalRequest{
+		Date:         time.Now(),
+		Description:  "Test Journal Create",
+		CurrencyCode: currency,
+		Transactions: []dto.CreateTransactionRequest{
 			{
 				AccountID:       accID1,
 				Amount:          amount,
-				TransactionType: models.Debit,
-				CurrencyCode:    currency,
+				TransactionType: domain.Debit,
 			},
 			{
 				AccountID:       accID2,
 				Amount:          amount,
-				TransactionType: models.Credit,
-				CurrencyCode:    currency,
+				TransactionType: domain.Credit,
 			},
 		},
 	}
 }
 
-// --- PersistJournal Tests ---
-func (suite *JournalServiceTestSuite) TestPersistJournal_Success() {
+// --- CreateJournal Tests (renamed from PersistJournal) ---
+func (suite *JournalServiceTestSuite) TestCreateJournal_Success() {
 	ctx := context.Background()
 	userID := uuid.NewString()
-	accID1 := uuid.NewString() // Asset
-	accID2 := uuid.NewString() // << CHANGE: Make this an Asset too for balance
+	dummyWorkplaceID := uuid.NewString()
+	accID1 := uuid.NewString()
+	accID2 := uuid.NewString()
 	currency := "USD"
 	amount := decimal.NewFromInt(100)
-	req := createValidJournalDTO(currency, accID1, accID2, amount) // Debit acc1, Credit acc2
+	req := createValidJournalCreateDTO(currency, accID1, accID2, amount)
+
+	// >>> Added: Expect AuthorizeUserAction call (success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, userID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
 
 	// Mock account fetching
 	accountsMap := map[string]domain.Account{
-		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: currency},
-		accID2: {AccountID: accID2, AccountType: domain.Asset, IsActive: true, CurrencyCode: currency}, // << CHANGE: Type is Asset
+		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: currency, WorkplaceID: dummyWorkplaceID},
+		accID2: {AccountID: accID2, AccountType: domain.Asset, IsActive: true, CurrencyCode: currency, WorkplaceID: dummyWorkplaceID},
 	}
-	// Balance check: Debit Asset (+100), Credit Asset (-100) -> Sum = 0. OK.
-	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.AnythingOfType("[]string")).Return(accountsMap, nil).Once() // Adjusted mock expectation
+	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.AnythingOfType("[]string")).Return(accountsMap, nil).Once()
 
 	// Mock journal saving
 	suite.mockJournalRepo.On("SaveJournal", ctx, mock.AnythingOfType("domain.Journal"), mock.AnythingOfType("[]domain.Transaction")).Return(nil).Once().Run(func(args mock.Arguments) {
 		jnl := args.Get(1).(domain.Journal)
 		txns := args.Get(2).([]domain.Transaction)
 
-		suite.Equal(req.Journal.Description, jnl.Description)
-		suite.Equal(req.Journal.CurrencyCode, jnl.CurrencyCode)
+		suite.Equal(req.Description, jnl.Description)
+		suite.Equal(req.CurrencyCode, jnl.CurrencyCode)
 		suite.Equal(domain.Posted, jnl.Status)
 		suite.NotEmpty(jnl.JournalID)
 		suite.Equal(userID, jnl.CreatedBy)
+		suite.Equal(dummyWorkplaceID, jnl.WorkplaceID) // Check workplace ID
 		suite.Len(txns, 2)
-		// Basic checks on transactions
 		for _, txn := range txns {
 			suite.Equal(jnl.JournalID, txn.JournalID)
 			suite.NotEmpty(txn.TransactionID)
@@ -172,386 +217,585 @@ func (suite *JournalServiceTestSuite) TestPersistJournal_Success() {
 		}
 	})
 
-	journal, err := suite.service.PersistJournal(ctx, req, userID)
+	// Call CreateJournal
+	journal, err := suite.service.CreateJournal(ctx, dummyWorkplaceID, req, userID)
 
 	suite.Require().NoError(err)
 	suite.Require().NotNil(journal)
 	suite.NotEmpty(journal.JournalID)
-	suite.Equal(req.Journal.CurrencyCode, journal.CurrencyCode)
+	suite.Equal(dummyWorkplaceID, journal.WorkplaceID)
+	suite.Equal(req.CurrencyCode, journal.CurrencyCode)
 	suite.Equal(domain.Posted, journal.Status)
 
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
 }
 
-func (suite *JournalServiceTestSuite) TestPersistJournal_LessThanTwoTransactions() {
+func (suite *JournalServiceTestSuite) TestCreateJournal_LessThanTwoTransactions() {
 	ctx := context.Background()
 	userID := uuid.NewString()
-	req := createValidJournalDTO("USD", "acc1", "acc2", decimal.NewFromInt(10))
+	dummyWorkplaceID := uuid.NewString()
+	req := createValidJournalCreateDTO("USD", "acc1", "acc2", decimal.NewFromInt(10))
 	req.Transactions = req.Transactions[:1]
-	journal, err := suite.service.PersistJournal(ctx, req, userID)
+
+	// >>> Added: Expect AuthorizeUserAction call (success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, userID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
+
+	journal, err := suite.service.CreateJournal(ctx, dummyWorkplaceID, req, userID)
+
 	suite.Require().Error(err)
 	suite.Nil(journal)
 	suite.ErrorIs(err, services.ErrJournalMinEntries)
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
 	suite.mockAccountRepo.AssertNotCalled(suite.T(), "FindAccountsByIDs", mock.Anything, mock.Anything)
-	suite.mockJournalRepo.AssertNotCalled(suite.T(), "SaveJournal", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (suite *JournalServiceTestSuite) TestPersistJournal_CurrencyMismatch() {
+func (suite *JournalServiceTestSuite) TestCreateJournal_AccountCurrencyMismatch() {
 	ctx := context.Background()
 	userID := uuid.NewString()
-	req := createValidJournalDTO("USD", "acc1", "acc2", decimal.NewFromInt(10))
-	req.Transactions[1].CurrencyCode = "EUR"
-	journal, err := suite.service.PersistJournal(ctx, req, userID)
+	dummyWorkplaceID := uuid.NewString()
+	accID1 := uuid.NewString()
+	accID2 := uuid.NewString()
+	journalCurrency := "USD"
+	account2Currency := "EUR"
+	req := createValidJournalCreateDTO(journalCurrency, accID1, accID2, decimal.NewFromInt(10))
+
+	// >>> Added: Expect AuthorizeUserAction call (success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, userID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
+
+	accountsMap := map[string]domain.Account{
+		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: journalCurrency, WorkplaceID: dummyWorkplaceID},
+		accID2: {AccountID: accID2, AccountType: domain.Liability, IsActive: true, CurrencyCode: account2Currency, WorkplaceID: dummyWorkplaceID}, // Mismatched currency
+	}
+	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.AnythingOfType("[]string")).Return(accountsMap, nil).Once()
+
+	journal, err := suite.service.CreateJournal(ctx, dummyWorkplaceID, req, userID)
+
 	suite.Require().Error(err)
 	suite.Nil(journal)
 	suite.ErrorIs(err, services.ErrCurrencyMismatch)
-	suite.Contains(err.Error(), "journal is USD, transaction involves EUR")
-	suite.mockAccountRepo.AssertNotCalled(suite.T(), "FindAccountsByIDs", mock.Anything, mock.Anything)
-	suite.mockJournalRepo.AssertNotCalled(suite.T(), "SaveJournal", mock.Anything, mock.Anything, mock.Anything)
-}
-
-func (suite *JournalServiceTestSuite) TestPersistJournal_AccountNotFound() {
-	ctx := context.Background()
-	userID := uuid.NewString()
-	accID1 := uuid.NewString()
-	accID2 := uuid.NewString()
-	req := createValidJournalDTO("CAD", accID1, accID2, decimal.NewFromInt(50))
-	accountsMap := map[string]domain.Account{
-		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: "CAD"},
-	}
-	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.AnythingOfType("[]string")).Return(accountsMap, nil).Once()
-	journal, err := suite.service.PersistJournal(ctx, req, userID)
-	suite.Require().Error(err)
-	suite.Nil(journal)
-	suite.ErrorIs(err, services.ErrAccountNotFound)
-	suite.Contains(err.Error(), accID2)
+	suite.Contains(err.Error(), fmt.Sprintf("account currency %s does not match journal currency %s", account2Currency, journalCurrency))
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertNotCalled(suite.T(), "SaveJournal", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (suite *JournalServiceTestSuite) TestPersistJournal_AccountInactive() {
+func (suite *JournalServiceTestSuite) TestCreateJournal_AccountNotFound() {
 	ctx := context.Background()
 	userID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
 	accID1 := uuid.NewString()
 	accID2 := uuid.NewString()
-	req := createValidJournalDTO("EUR", accID1, accID2, decimal.NewFromInt(200))
+	req := createValidJournalCreateDTO("CAD", accID1, accID2, decimal.NewFromInt(50))
+
+	// >>> Added: Expect AuthorizeUserAction call (success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, userID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
+
 	accountsMap := map[string]domain.Account{
-		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: "EUR"},
-		accID2: {AccountID: accID2, AccountType: domain.Liability, IsActive: false, CurrencyCode: "EUR"},
+		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: "CAD", WorkplaceID: dummyWorkplaceID},
 	}
 	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.AnythingOfType("[]string")).Return(accountsMap, nil).Once()
-	journal, err := suite.service.PersistJournal(ctx, req, userID)
+
+	journal, err := suite.service.CreateJournal(ctx, dummyWorkplaceID, req, userID)
+
+	suite.Require().Error(err)
+	suite.Nil(journal)
+	suite.ErrorIs(err, services.ErrAccountNotFound)
+	suite.Contains(err.Error(), accID2)
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
+	suite.mockAccountRepo.AssertExpectations(suite.T())
+	suite.mockJournalRepo.AssertNotCalled(suite.T(), "SaveJournal", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *JournalServiceTestSuite) TestCreateJournal_AccountInactive() {
+	ctx := context.Background()
+	userID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
+	accID1 := uuid.NewString()
+	accID2 := uuid.NewString()
+	req := createValidJournalCreateDTO("EUR", accID1, accID2, decimal.NewFromInt(200))
+
+	// >>> Added: Expect AuthorizeUserAction call (success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, userID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
+
+	accountsMap := map[string]domain.Account{
+		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: "EUR", WorkplaceID: dummyWorkplaceID},
+		accID2: {AccountID: accID2, AccountType: domain.Liability, IsActive: false, CurrencyCode: "EUR", WorkplaceID: dummyWorkplaceID}, // Inactive account
+	}
+	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.AnythingOfType("[]string")).Return(accountsMap, nil).Once()
+
+	journal, err := suite.service.CreateJournal(ctx, dummyWorkplaceID, req, userID)
+
 	suite.Require().Error(err)
 	suite.Nil(journal)
 	suite.Contains(err.Error(), "account")
 	suite.Contains(err.Error(), accID2)
 	suite.Contains(err.Error(), "is inactive")
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertNotCalled(suite.T(), "SaveJournal", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (suite *JournalServiceTestSuite) TestPersistJournal_Unbalanced() {
+func (suite *JournalServiceTestSuite) TestCreateJournal_AccountWrongWorkplace() {
 	ctx := context.Background()
 	userID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
+	otherWorkplaceID := uuid.NewString()
 	accID1 := uuid.NewString()
 	accID2 := uuid.NewString()
-	req := createValidJournalDTO("USD", accID1, accID2, decimal.NewFromInt(100))
-	req.Transactions[1].Amount = decimal.NewFromInt(99)
+	req := createValidJournalCreateDTO("GBP", accID1, accID2, decimal.NewFromInt(300))
+
+	// >>> Added: Expect AuthorizeUserAction call (success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, userID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
+
 	accountsMap := map[string]domain.Account{
-		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: "USD"},
-		accID2: {AccountID: accID2, AccountType: domain.Liability, IsActive: true, CurrencyCode: "USD"},
+		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: "GBP", WorkplaceID: dummyWorkplaceID},
+		accID2: {AccountID: accID2, AccountType: domain.Expense, IsActive: true, CurrencyCode: "GBP", WorkplaceID: otherWorkplaceID}, // Wrong workplace
 	}
 	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.AnythingOfType("[]string")).Return(accountsMap, nil).Once()
-	journal, err := suite.service.PersistJournal(ctx, req, userID)
+
+	journal, err := suite.service.CreateJournal(ctx, dummyWorkplaceID, req, userID)
+
+	suite.Require().Error(err)
+	suite.Nil(journal)
+	suite.ErrorIs(err, services.ErrAccountNotFound) // Treat as not found for security
+	suite.Contains(err.Error(), accID2)
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
+	suite.mockAccountRepo.AssertExpectations(suite.T())
+	suite.mockJournalRepo.AssertNotCalled(suite.T(), "SaveJournal", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *JournalServiceTestSuite) TestCreateJournal_Unbalanced() {
+	ctx := context.Background()
+	userID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
+	accID1 := uuid.NewString()
+	accID2 := uuid.NewString()
+	req := createValidJournalCreateDTO("USD", accID1, accID2, decimal.NewFromInt(100))
+	req.Transactions[1].Amount = decimal.NewFromInt(99)
+
+	// >>> Added: Expect AuthorizeUserAction call (success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, userID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
+
+	accountsMap := map[string]domain.Account{
+		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: "USD", WorkplaceID: dummyWorkplaceID},
+		accID2: {AccountID: accID2, AccountType: domain.Liability, IsActive: true, CurrencyCode: "USD", WorkplaceID: dummyWorkplaceID},
+	}
+	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.AnythingOfType("[]string")).Return(accountsMap, nil).Once()
+
+	journal, err := suite.service.CreateJournal(ctx, dummyWorkplaceID, req, userID)
+
 	suite.Require().Error(err)
 	suite.Nil(journal)
 	suite.ErrorIs(err, services.ErrJournalUnbalanced)
 	suite.Contains(err.Error(), "sum is 1")
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertNotCalled(suite.T(), "SaveJournal", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (suite *JournalServiceTestSuite) TestPersistJournal_FindAccountsError() {
+func (suite *JournalServiceTestSuite) TestCreateJournal_FindAccountsError() {
 	ctx := context.Background()
 	userID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
 	accID1 := uuid.NewString()
 	accID2 := uuid.NewString()
-	req := createValidJournalDTO("USD", accID1, accID2, decimal.NewFromInt(100))
+	req := createValidJournalCreateDTO("USD", accID1, accID2, decimal.NewFromInt(100))
 	expectedErr := assert.AnError
+
+	// >>> Added: Expect AuthorizeUserAction call (success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, userID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
+
 	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.AnythingOfType("[]string")).Return(nil, expectedErr).Once()
-	journal, err := suite.service.PersistJournal(ctx, req, userID)
+
+	journal, err := suite.service.CreateJournal(ctx, dummyWorkplaceID, req, userID)
+
 	suite.Require().Error(err)
 	suite.Nil(journal)
 	suite.ErrorIs(err, expectedErr)
 	suite.Contains(err.Error(), "failed to fetch accounts")
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertNotCalled(suite.T(), "SaveJournal", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (suite *JournalServiceTestSuite) TestPersistJournal_SaveJournalError() {
+func (suite *JournalServiceTestSuite) TestCreateJournal_SaveJournalError() {
 	ctx := context.Background()
 	userID := uuid.NewString()
-	accID1 := uuid.NewString() // Asset
-	accID2 := uuid.NewString() // << CHANGE: Make this an Asset too for balance
-	req := createValidJournalDTO("USD", accID1, accID2, decimal.NewFromInt(100))
+	dummyWorkplaceID := uuid.NewString()
+	accID1 := uuid.NewString()
+	accID2 := uuid.NewString()
+	req := createValidJournalCreateDTO("USD", accID1, accID2, decimal.NewFromInt(100))
 	expectedErr := assert.AnError
 
-	// Mock account fetching (success)
-	accountsMap := map[string]domain.Account{
-		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: "USD"},
-		accID2: {AccountID: accID2, AccountType: domain.Asset, IsActive: true, CurrencyCode: "USD"}, // << CHANGE: Type is Asset
-	}
-	// Balance check: Debit Asset (+100), Credit Asset (-100) -> Sum = 0. OK.
-	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.AnythingOfType("[]string")).Return(accountsMap, nil).Once() // Adjusted mock expectation
+	// >>> Added: Expect AuthorizeUserAction call (success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, userID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
 
-	// Mock journal saving returning an error
+	accountsMap := map[string]domain.Account{
+		accID1: {AccountID: accID1, AccountType: domain.Asset, IsActive: true, CurrencyCode: "USD", WorkplaceID: dummyWorkplaceID},
+		accID2: {AccountID: accID2, AccountType: domain.Asset, IsActive: true, CurrencyCode: "USD", WorkplaceID: dummyWorkplaceID},
+	}
+	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.AnythingOfType("[]string")).Return(accountsMap, nil).Once()
+
 	suite.mockJournalRepo.On("SaveJournal", ctx, mock.AnythingOfType("domain.Journal"), mock.AnythingOfType("[]domain.Transaction")).Return(expectedErr).Once()
 
-	journal, err := suite.service.PersistJournal(ctx, req, userID)
+	journal, err := suite.service.CreateJournal(ctx, dummyWorkplaceID, req, userID)
 
 	suite.Require().Error(err)
 	suite.Nil(journal)
-	suite.ErrorIs(err, expectedErr) // Now we expect the save error
+	suite.ErrorIs(err, expectedErr)
 	suite.Contains(err.Error(), "failed to save journal")
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
 }
 
-// --- GetJournalWithTransactions Tests ---
-func (suite *JournalServiceTestSuite) TestGetJournalWithTransactions_Success() {
+// --- GetJournalByID Tests (renamed from GetJournalWithTransactions) ---
+func (suite *JournalServiceTestSuite) TestGetJournalByID_Success() {
 	ctx := context.Background()
 	journalID := uuid.NewString()
-	expectedJournal := &domain.Journal{JournalID: journalID, Description: "Found Journal"}
-	expectedTxns := []domain.Transaction{
-		{TransactionID: uuid.NewString(), JournalID: journalID, Amount: decimal.NewFromInt(50)},
-		{TransactionID: uuid.NewString(), JournalID: journalID, Amount: decimal.NewFromInt(50)},
+	dummyWorkplaceID := uuid.NewString()
+	dummyUserID := uuid.NewString() // Added requesting user ID
+	expectedJournal := &domain.Journal{
+		JournalID:   journalID,
+		WorkplaceID: dummyWorkplaceID,
+		Description: "Found Journal",
 	}
+
+	// Expect AuthorizeUserAction call (assuming success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, dummyUserID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
+
+	// Expect FindJournalByID repo call
 	suite.mockJournalRepo.On("FindJournalByID", ctx, journalID).Return(expectedJournal, nil).Once()
-	suite.mockJournalRepo.On("FindTransactionsByJournalID", ctx, journalID).Return(expectedTxns, nil).Once()
-	journal, txns, err := suite.service.GetJournalWithTransactions(ctx, journalID)
+
+	// Call GetJournalByID with workplaceID and requestingUserID
+	journal, err := suite.service.GetJournalByID(ctx, dummyWorkplaceID, journalID, dummyUserID)
+
 	suite.Require().NoError(err)
 	suite.Equal(expectedJournal, journal)
-	suite.Equal(expectedTxns, txns)
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
+	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByJournalID", mock.Anything, mock.Anything)
 }
 
-func (suite *JournalServiceTestSuite) TestGetJournalWithTransactions_JournalNotFound() {
+func (suite *JournalServiceTestSuite) TestGetJournalByID_AuthFailed() {
 	ctx := context.Background()
 	journalID := uuid.NewString()
-	suite.mockJournalRepo.On("FindJournalByID", ctx, journalID).Return(nil, nil).Once()
-	journal, txns, err := suite.service.GetJournalWithTransactions(ctx, journalID)
+	dummyWorkplaceID := uuid.NewString()
+	dummyUserID := uuid.NewString()
+	authErr := apperrors.ErrForbidden // Simulate auth failure
+
+	// Expect AuthorizeUserAction call returning an error
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, dummyUserID, dummyWorkplaceID, domain.RoleMember).Return(authErr).Once()
+
+	// Call GetJournalByID
+	journal, err := suite.service.GetJournalByID(ctx, dummyWorkplaceID, journalID, dummyUserID)
+
 	suite.Require().Error(err)
 	suite.Nil(journal)
-	suite.Nil(txns)
-	suite.Contains(err.Error(), "not found")
-	suite.mockJournalRepo.AssertExpectations(suite.T())
-	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByJournalID", mock.Anything)
+	suite.ErrorIs(err, authErr)
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
+	// JournalRepo should not be called if auth fails
+	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindJournalByID", mock.Anything, mock.Anything)
 }
 
-func (suite *JournalServiceTestSuite) TestGetJournalWithTransactions_FindJournalError() {
+func (suite *JournalServiceTestSuite) TestGetJournalByID_WrongWorkplace() {
 	ctx := context.Background()
 	journalID := uuid.NewString()
+	correctWorkplaceID := uuid.NewString()
+	incorrectWorkplaceID := uuid.NewString()
+	dummyUserID := uuid.NewString() // Added requesting user ID
+	journalFromRepo := &domain.Journal{
+		JournalID:   journalID,
+		WorkplaceID: incorrectWorkplaceID, // Belongs to wrong workplace
+		Description: "Found Journal, Wrong WP",
+	}
+
+	// Expect AuthorizeUserAction call (assuming success for the correct workplace ID)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, dummyUserID, correctWorkplaceID, domain.RoleMember).Return(nil).Once()
+
+	// Expect FindJournalByID repo call (returns journal from the *incorrect* workplace)
+	suite.mockJournalRepo.On("FindJournalByID", ctx, journalID).Return(journalFromRepo, nil).Once()
+
+	// Call GetJournalByID asking for the *correct* workplaceID and user
+	journal, err := suite.service.GetJournalByID(ctx, correctWorkplaceID, journalID, dummyUserID)
+
+	// Assertions: Expect ErrNotFound because the service should filter by workplace mismatch
+	suite.Require().Error(err)
+	suite.Nil(journal)
+	suite.ErrorIs(err, apperrors.ErrNotFound)
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
+	suite.mockJournalRepo.AssertExpectations(suite.T())
+	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByJournalID", mock.Anything, mock.Anything)
+}
+
+func (suite *JournalServiceTestSuite) TestGetJournalByID_NotFound() {
+	ctx := context.Background()
+	journalID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
+	dummyUserID := uuid.NewString() // Added requesting user ID
+
+	// Expect AuthorizeUserAction call (assuming success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, dummyUserID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
+
+	// Expect FindJournalByID repo call returning NotFound
+	suite.mockJournalRepo.On("FindJournalByID", ctx, journalID).Return(nil, apperrors.ErrNotFound).Once()
+
+	// Call GetJournalByID with workplaceID and requestingUserID
+	journal, err := suite.service.GetJournalByID(ctx, dummyWorkplaceID, journalID, dummyUserID)
+
+	suite.Require().Error(err)
+	suite.Nil(journal)
+	suite.ErrorIs(err, apperrors.ErrNotFound)
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
+	suite.mockJournalRepo.AssertExpectations(suite.T())
+	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByJournalID", mock.Anything, mock.Anything)
+}
+
+func (suite *JournalServiceTestSuite) TestGetJournalByID_FindJournalError() {
+	ctx := context.Background()
+	journalID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
+	dummyUserID := uuid.NewString() // Added requesting user ID
 	expectedErr := assert.AnError
+
+	// Expect AuthorizeUserAction call (assuming success)
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, dummyUserID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
+
+	// Expect FindJournalByID repo call returning a generic error
 	suite.mockJournalRepo.On("FindJournalByID", ctx, journalID).Return(nil, expectedErr).Once()
-	journal, txns, err := suite.service.GetJournalWithTransactions(ctx, journalID)
+
+	// Call GetJournalByID with workplaceID and requestingUserID
+	journal, err := suite.service.GetJournalByID(ctx, dummyWorkplaceID, journalID, dummyUserID)
+
 	suite.Require().Error(err)
 	suite.Nil(journal)
-	suite.Nil(txns)
 	suite.ErrorIs(err, expectedErr)
-	suite.Contains(err.Error(), "failed to find journal")
+	suite.Contains(err.Error(), "failed to find journal by ID")
+	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
-	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByJournalID", mock.Anything)
+	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByJournalID", mock.Anything, mock.Anything)
 }
 
-func (suite *JournalServiceTestSuite) TestGetJournalWithTransactions_FindTransactionsError() {
-	ctx := context.Background()
-	journalID := uuid.NewString()
-	expectedJournal := &domain.Journal{JournalID: journalID}
-	expectedErr := assert.AnError
-	suite.mockJournalRepo.On("FindJournalByID", ctx, journalID).Return(expectedJournal, nil).Once()
-	suite.mockJournalRepo.On("FindTransactionsByJournalID", ctx, journalID).Return(nil, expectedErr).Once()
-	journal, txns, err := suite.service.GetJournalWithTransactions(ctx, journalID)
-	suite.Require().Error(err)
-	suite.Nil(journal)
-	suite.Nil(txns)
-	suite.ErrorIs(err, expectedErr)
-	suite.Contains(err.Error(), "failed to find transactions")
-	suite.mockJournalRepo.AssertExpectations(suite.T())
-}
+// --- CalculateAccountBalance Tests (already used workplaceID) ---
+// ... (tests remain largely the same, just ensure FindAccountByID mocks include WorkplaceID)
 
-// --- CalculateAccountBalance Tests ---
 func (suite *JournalServiceTestSuite) TestCalculateAccountBalance_Success_Asset() {
 	ctx := context.Background()
-	accountID := uuid.NewString()
+	accID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
 	account := &domain.Account{
-		AccountID:   accountID,
+		AccountID:   accID,
 		AccountType: domain.Asset,
 		IsActive:    true,
+		WorkplaceID: dummyWorkplaceID, // Ensure WorkplaceID is set in mock
 	}
 	transactions := []domain.Transaction{
-		{AccountID: accountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit},
-		{AccountID: accountID, Amount: decimal.NewFromInt(30), TransactionType: domain.Credit},
-		{AccountID: accountID, Amount: decimal.NewFromInt(50), TransactionType: domain.Debit},
+		{AccountID: accID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit},
+		{AccountID: accID, Amount: decimal.NewFromInt(50), TransactionType: domain.Credit},
+		{AccountID: accID, Amount: decimal.NewFromInt(25), TransactionType: domain.Debit},
 	}
-	expectedBalance := decimal.NewFromInt(120)
-	suite.mockAccountRepo.On("FindAccountByID", ctx, accountID).Return(account, nil).Once()
-	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, accountID).Return(transactions, nil).Once()
-	balance, err := suite.service.CalculateAccountBalance(ctx, accountID)
+
+	suite.mockAccountRepo.On("FindAccountByID", ctx, accID).Return(account, nil).Once()
+	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, dummyWorkplaceID, accID).Return(transactions, nil).Once()
+
+	balance, err := suite.service.CalculateAccountBalance(ctx, dummyWorkplaceID, accID)
+
 	suite.Require().NoError(err)
-	suite.True(expectedBalance.Equal(balance), "Expected %s, got %s", expectedBalance, balance)
+	suite.Equal("75", balance.String())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
 }
 
 func (suite *JournalServiceTestSuite) TestCalculateAccountBalance_Success_LiabilityZero() {
 	ctx := context.Background()
-	accountID := uuid.NewString()
+	accID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
 	account := &domain.Account{
-		AccountID:   accountID,
+		AccountID:   accID,
 		AccountType: domain.Liability,
 		IsActive:    true,
+		WorkplaceID: dummyWorkplaceID, // Ensure WorkplaceID is set in mock
 	}
 	transactions := []domain.Transaction{
-		{AccountID: accountID, Amount: decimal.NewFromInt(200), TransactionType: domain.Credit},
-		{AccountID: accountID, Amount: decimal.NewFromInt(200), TransactionType: domain.Debit},
+		{AccountID: accID, Amount: decimal.NewFromInt(200), TransactionType: domain.Credit},
+		{AccountID: accID, Amount: decimal.NewFromInt(200), TransactionType: domain.Debit},
 	}
-	expectedBalance := decimal.Zero
-	suite.mockAccountRepo.On("FindAccountByID", ctx, accountID).Return(account, nil).Once()
-	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, accountID).Return(transactions, nil).Once()
-	balance, err := suite.service.CalculateAccountBalance(ctx, accountID)
+
+	suite.mockAccountRepo.On("FindAccountByID", ctx, accID).Return(account, nil).Once()
+	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, dummyWorkplaceID, accID).Return(transactions, nil).Once()
+
+	balance, err := suite.service.CalculateAccountBalance(ctx, dummyWorkplaceID, accID)
+
 	suite.Require().NoError(err)
-	suite.True(expectedBalance.Equal(balance), "Expected %s, got %s", expectedBalance, balance)
+	suite.True(balance.IsZero())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
 }
 
 func (suite *JournalServiceTestSuite) TestCalculateAccountBalance_Success_EquityNegative() {
 	ctx := context.Background()
-	accountID := uuid.NewString()
+	accID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
 	account := &domain.Account{
-		AccountID:   accountID,
+		AccountID:   accID,
 		AccountType: domain.Equity,
 		IsActive:    true,
+		WorkplaceID: dummyWorkplaceID, // Ensure WorkplaceID is set in mock
 	}
 	transactions := []domain.Transaction{
-		{AccountID: accountID, Amount: decimal.NewFromInt(500), TransactionType: domain.Credit},
-		{AccountID: accountID, Amount: decimal.NewFromInt(600), TransactionType: domain.Debit},
+		{AccountID: accID, Amount: decimal.NewFromInt(500), TransactionType: domain.Debit},
+		{AccountID: accID, Amount: decimal.NewFromInt(100), TransactionType: domain.Credit},
 	}
-	expectedBalance := decimal.NewFromInt(-100)
-	suite.mockAccountRepo.On("FindAccountByID", ctx, accountID).Return(account, nil).Once()
-	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, accountID).Return(transactions, nil).Once()
-	balance, err := suite.service.CalculateAccountBalance(ctx, accountID)
+
+	suite.mockAccountRepo.On("FindAccountByID", ctx, accID).Return(account, nil).Once()
+	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, dummyWorkplaceID, accID).Return(transactions, nil).Once()
+
+	balance, err := suite.service.CalculateAccountBalance(ctx, dummyWorkplaceID, accID)
+
 	suite.Require().NoError(err)
-	suite.True(expectedBalance.Equal(balance), "Expected %s, got %s", expectedBalance, balance)
+	suite.Equal("-400", balance.String())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
 }
 
 func (suite *JournalServiceTestSuite) TestCalculateAccountBalance_NoTransactions() {
 	ctx := context.Background()
-	accountID := uuid.NewString()
-	account := &domain.Account{
-		AccountID:   accountID,
-		AccountType: domain.Asset,
-		IsActive:    true,
-	}
-	var transactions []domain.Transaction
-	suite.mockAccountRepo.On("FindAccountByID", ctx, accountID).Return(account, nil).Once()
-	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, accountID).Return(transactions, nil).Once()
-	balance, err := suite.service.CalculateAccountBalance(ctx, accountID)
+	accID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
+	account := &domain.Account{AccountID: accID, AccountType: domain.Asset, IsActive: true, WorkplaceID: dummyWorkplaceID}
+	transactions := []domain.Transaction{}
+
+	suite.mockAccountRepo.On("FindAccountByID", ctx, accID).Return(account, nil).Once()
+	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, dummyWorkplaceID, accID).Return(transactions, nil).Once()
+
+	balance, err := suite.service.CalculateAccountBalance(ctx, dummyWorkplaceID, accID)
+
 	suite.Require().NoError(err)
-	suite.True(decimal.Zero.Equal(balance), "Expected 0, got %s", balance)
+	suite.True(balance.IsZero())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
 }
 
 func (suite *JournalServiceTestSuite) TestCalculateAccountBalance_AccountNotFound() {
 	ctx := context.Background()
-	accountID := uuid.NewString()
-	suite.mockAccountRepo.On("FindAccountByID", ctx, accountID).Return(nil, apperrors.ErrNotFound).Once()
-	balance, err := suite.service.CalculateAccountBalance(ctx, accountID)
+	accID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
+
+	suite.mockAccountRepo.On("FindAccountByID", ctx, accID).Return(nil, apperrors.ErrNotFound).Once()
+
+	balance, err := suite.service.CalculateAccountBalance(ctx, dummyWorkplaceID, accID)
+
 	suite.Require().Error(err)
 	suite.ErrorIs(err, services.ErrAccountNotFound)
-	suite.True(decimal.Zero.Equal(balance))
+	suite.True(balance.IsZero())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
-	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByAccountID", mock.Anything)
+	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByAccountID", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *JournalServiceTestSuite) TestCalculateAccountBalance_AccountWrongWorkplace() {
+	ctx := context.Background()
+	accID := uuid.NewString()
+	correctWorkplaceID := uuid.NewString()
+	incorrectWorkplaceID := uuid.NewString()
+	account := &domain.Account{
+		AccountID:   accID,
+		AccountType: domain.Asset,
+		IsActive:    true,
+		WorkplaceID: incorrectWorkplaceID, // Account belongs to wrong workplace
+	}
+
+	// FindAccountByID returns the account (even if wrong workplace)
+	suite.mockAccountRepo.On("FindAccountByID", ctx, accID).Return(account, nil).Once()
+
+	// Call CalculateAccountBalance asking for the *correct* workplace
+	balance, err := suite.service.CalculateAccountBalance(ctx, correctWorkplaceID, accID)
+
+	// Service should detect the mismatch and return an error (e.g., NotFound or Forbidden)
+	suite.Require().Error(err)
+	suite.True(balance.IsZero())
+	suite.Contains(err.Error(), "not found in workplace") // Or check for ErrForbidden if that's the chosen behavior
+	suite.mockAccountRepo.AssertExpectations(suite.T())
+	// Should not attempt to fetch transactions if account workplace doesn't match
+	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByAccountID", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *JournalServiceTestSuite) TestCalculateAccountBalance_AccountInactive() {
 	ctx := context.Background()
-	accountID := uuid.NewString()
-	account := &domain.Account{
-		AccountID:   accountID,
-		AccountType: domain.Asset,
-		IsActive:    false,
-	}
-	suite.mockAccountRepo.On("FindAccountByID", ctx, accountID).Return(account, nil).Once()
-	balance, err := suite.service.CalculateAccountBalance(ctx, accountID)
+	accID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
+	account := &domain.Account{AccountID: accID, AccountType: domain.Asset, IsActive: false, WorkplaceID: dummyWorkplaceID}
+
+	suite.mockAccountRepo.On("FindAccountByID", ctx, accID).Return(account, nil).Once()
+
+	balance, err := suite.service.CalculateAccountBalance(ctx, dummyWorkplaceID, accID)
+
 	suite.Require().Error(err)
-	suite.Contains(err.Error(), "account")
-	suite.Contains(err.Error(), "is inactive")
-	suite.True(decimal.Zero.Equal(balance))
+	suite.Contains(err.Error(), "inactive")
+	suite.True(balance.IsZero())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
-	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByAccountID", mock.Anything)
+	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByAccountID", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *JournalServiceTestSuite) TestCalculateAccountBalance_FindAccountError() {
 	ctx := context.Background()
-	accountID := uuid.NewString()
+	accID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
 	expectedErr := assert.AnError
-	suite.mockAccountRepo.On("FindAccountByID", ctx, accountID).Return(nil, expectedErr).Once()
-	balance, err := suite.service.CalculateAccountBalance(ctx, accountID)
+
+	suite.mockAccountRepo.On("FindAccountByID", ctx, accID).Return(nil, expectedErr).Once()
+
+	balance, err := suite.service.CalculateAccountBalance(ctx, dummyWorkplaceID, accID)
+
 	suite.Require().Error(err)
 	suite.ErrorIs(err, expectedErr)
-	suite.Contains(err.Error(), "failed to find account")
-	suite.True(decimal.Zero.Equal(balance))
+	suite.True(balance.IsZero())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
-	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByAccountID", mock.Anything)
+	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByAccountID", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *JournalServiceTestSuite) TestCalculateAccountBalance_FindTransactionsError() {
 	ctx := context.Background()
-	accountID := uuid.NewString()
-	account := &domain.Account{AccountID: accountID, AccountType: domain.Asset, IsActive: true}
+	accID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
+	account := &domain.Account{AccountID: accID, AccountType: domain.Asset, IsActive: true, WorkplaceID: dummyWorkplaceID}
 	expectedErr := assert.AnError
-	suite.mockAccountRepo.On("FindAccountByID", ctx, accountID).Return(account, nil).Once()
-	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, accountID).Return(nil, expectedErr).Once()
-	balance, err := suite.service.CalculateAccountBalance(ctx, accountID)
+
+	suite.mockAccountRepo.On("FindAccountByID", ctx, accID).Return(account, nil).Once()
+	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, dummyWorkplaceID, accID).Return(nil, expectedErr).Once()
+
+	balance, err := suite.service.CalculateAccountBalance(ctx, dummyWorkplaceID, accID)
+
 	suite.Require().Error(err)
 	suite.ErrorIs(err, expectedErr)
-	suite.Contains(err.Error(), "failed to fetch transactions")
-	suite.True(decimal.Zero.Equal(balance))
+	suite.True(balance.IsZero())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
 }
 
 func (suite *JournalServiceTestSuite) TestCalculateAccountBalance_InvalidTransactionAmount() {
 	ctx := context.Background()
-	accountID := uuid.NewString()
-	account := &domain.Account{
-		AccountID:   accountID,
-		AccountType: domain.Asset,
-		IsActive:    true,
-	}
+	accID := uuid.NewString()
+	dummyWorkplaceID := uuid.NewString()
+	account := &domain.Account{AccountID: accID, AccountType: domain.Asset, IsActive: true, WorkplaceID: dummyWorkplaceID}
 	transactions := []domain.Transaction{
-		{AccountID: accountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit},
-		{AccountID: accountID, Amount: decimal.NewFromInt(0), TransactionType: domain.Credit},
+		{AccountID: accID, Amount: decimal.NewFromInt(-10), TransactionType: domain.Debit},
 	}
 
-	suite.mockAccountRepo.On("FindAccountByID", ctx, accountID).Return(account, nil).Once()
-	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, accountID).Return(transactions, nil).Once()
+	suite.mockAccountRepo.On("FindAccountByID", ctx, accID).Return(account, nil).Once()
+	suite.mockJournalRepo.On("FindTransactionsByAccountID", ctx, dummyWorkplaceID, accID).Return(transactions, nil).Once()
 
-	balance, err := suite.service.CalculateAccountBalance(ctx, accountID)
+	balance, err := suite.service.CalculateAccountBalance(ctx, dummyWorkplaceID, accID)
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "invalid non-positive transaction amount")
-	suite.True(decimal.Zero.Equal(balance))
+	suite.True(balance.IsZero())
 	suite.mockAccountRepo.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
 }
 
-// --- Run Suite ---
+// --- Run Test Suite ---
 func TestJournalService(t *testing.T) {
 	suite.Run(t, new(JournalServiceTestSuite))
 }

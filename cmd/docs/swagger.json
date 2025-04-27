@@ -9,362 +9,6 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
-        "/accounts": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retrieves a list of accounts owned by the logged-in user",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "accounts"
-                ],
-                "summary": "List accounts for the logged-in user",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "default": 20,
-                        "description": "Limit number of results",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 0,
-                        "description": "Offset for pagination",
-                        "name": "offset",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ListAccountsResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Failed to list accounts",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Creates a new account for the logged-in user",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "accounts"
-                ],
-                "summary": "Create a new account",
-                "parameters": [
-                    {
-                        "description": "Account details",
-                        "name": "account",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.CreateAccountRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/dto.AccountResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid input format or validation error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Failed to create account",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/accounts/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retrieves details for a specific account by its ID",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "accounts"
-                ],
-                "summary": "Get an account by ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Account ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.AccountResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden (accessing another user's account)",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Account not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Failed to retrieve account",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Updates an account's details (e.g., name)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "accounts"
-                ],
-                "summary": "Update an account",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Account ID to update",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Account details to update",
-                        "name": "account",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.UpdateAccountRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.AccountResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid input",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Account not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Failed to update account",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Marks an account as deleted (soft delete)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "accounts"
-                ],
-                "summary": "Delete an account",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Account ID to delete",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Account not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict (e.g., already deleted)",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Failed to delete account",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/auth/login": {
             "post": {
                 "description": "Authenticates a user and returns a JWT token.",
@@ -771,127 +415,6 @@
                 }
             }
         },
-        "/journals": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Creates a new journal and associated transactions",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "journals"
-                ],
-                "summary": "Persist a journal entry with its transactions",
-                "parameters": [
-                    {
-                        "description": "Journal and Transactions",
-                        "name": "journal",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.CreateJournalAndTxn"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Returns the ID of the created journal",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid request format or validation error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Failed to persist journal",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/journals/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retrieves a journal and its associated transactions by journal ID",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "journals"
-                ],
-                "summary": "Get a journal entry and its transactions",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Journal ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Journal and its transactions",
-                        "schema": {
-                            "$ref": "#/definitions/dto.GetJournalResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Journal not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Failed to retrieve journal",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/users": {
             "get": {
                 "security": [
@@ -1247,6 +770,1073 @@
                     }
                 }
             }
+        },
+        "/workplaces": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves a list of workplaces the authenticated user belongs to.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workplaces"
+                ],
+                "summary": "List workplaces for current user",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ListWorkplacesResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to list workplaces",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new workplace and assigns the creator as admin.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workplaces"
+                ],
+                "summary": "Create a new workplace",
+                "parameters": [
+                    {
+                        "description": "Workplace details",
+                        "name": "workplace",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateWorkplaceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.WorkplaceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to create workplace",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workplaces/{workplace_id}/accounts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves a list of accounts for the specified workplace if the user is a member.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "List accounts for current user in workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Limit number of results",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Offset for pagination",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ListAccountsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing Workplace ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User not part of workplace)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to list accounts",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new account within the specified workplace.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Create account in workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Account details",
+                        "name": "account",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateAccountRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AccountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input or missing Workplace ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User cannot create in this workplace)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to create account",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workplaces/{workplace_id}/accounts/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves details for a specific account by its ID within a workplace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Get account by ID from workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Account ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AccountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing Workplace or Account ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User not part of workplace)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Account not found in this workplace",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to retrieve account",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates details for a specific account within a workplace.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Update account in workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Account ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Account details to update",
+                        "name": "account",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateAccountRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AccountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input or missing IDs",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User cannot update)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Account not found in this workplace",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to update account",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marks an account as inactive within a specified workplace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Deactivate account in workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Account ID to deactivate",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Missing Workplace or Account ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User cannot deactivate)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Account not found in this workplace",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict (e.g., already inactive)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to deactivate account",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workplaces/{workplace_id}/journals": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves a list of journals for the specified workplace if the user is a member.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "journals"
+                ],
+                "summary": "List journals for current user in workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Limit number of results",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Offset for pagination",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ListJournalsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing Workplace ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User not part of workplace)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to list journals",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new journal entry within the specified workplace.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "journals"
+                ],
+                "summary": "Create a new journal in workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Journal details",
+                        "name": "journal",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateJournalRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.JournalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input or missing Workplace ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User cannot create in this workplace)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to create journal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workplaces/{workplace_id}/journals/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves details for a specific journal entry by its ID within a workplace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "journals"
+                ],
+                "summary": "Get a journal by ID from workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Journal ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.JournalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing Workplace or Journal ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User not part of workplace)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Journal not found in this workplace",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to retrieve journal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates details (like description, date) for a specific journal entry within a workplace.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "journals"
+                ],
+                "summary": "Update a journal entry in workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Journal ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Journal details to update",
+                        "name": "journal",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateJournalRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.JournalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input or missing IDs",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User cannot update)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Journal not found in this workplace",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to update journal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marks a journal entry as inactive within a specified workplace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "journals"
+                ],
+                "summary": "Deactivate a journal entry in workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Journal ID to deactivate",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Missing Workplace or Journal ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User cannot deactivate)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Journal not found in this workplace",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict (e.g., already inactive)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to deactivate journal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workplaces/{workplace_id}/users": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a specified user to a workplace with a given role (requires admin permission).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workplaces"
+                ],
+                "summary": "Add a user to a workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User ID and Role",
+                        "name": "user_details",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.AddUserToWorkplaceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (caller is not admin)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Workplace or User not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to add user",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -1267,6 +1857,28 @@
                 "Expense"
             ]
         },
+        "domain.TransactionType": {
+            "type": "string",
+            "enum": [
+                "DEBIT",
+                "CREDIT"
+            ],
+            "x-enum-varnames": [
+                "Debit",
+                "Credit"
+            ]
+        },
+        "domain.UserWorkplaceRole": {
+            "type": "string",
+            "enum": [
+                "ADMIN",
+                "MEMBER"
+            ],
+            "x-enum-varnames": [
+                "RoleAdmin",
+                "RoleMember"
+            ]
+        },
         "dto.AccountResponse": {
             "type": "object",
             "properties": {
@@ -1280,6 +1892,7 @@
                     "type": "string"
                 },
                 "createdBy": {
+                    "description": "UserID",
                     "type": "string"
                 },
                 "currencyCode": {
@@ -1295,13 +1908,39 @@
                     "type": "string"
                 },
                 "lastUpdatedBy": {
+                    "description": "UserID",
                     "type": "string"
                 },
                 "name": {
                     "type": "string"
                 },
                 "parentAccountID": {
-                    "description": "Note: Empty string if null in DB",
+                    "type": "string"
+                },
+                "workplaceID": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.AddUserToWorkplaceRequest": {
+            "type": "object",
+            "required": [
+                "role",
+                "userID"
+            ],
+            "properties": {
+                "role": {
+                    "enum": [
+                        "ADMIN",
+                        "MEMBER"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.UserWorkplaceRole"
+                        }
+                    ]
+                },
+                "userID": {
                     "type": "string"
                 }
             }
@@ -1332,18 +1971,13 @@
                     "type": "string"
                 },
                 "description": {
-                    "description": "Optional",
                     "type": "string"
                 },
                 "name": {
                     "type": "string"
                 },
                 "parentAccountID": {
-                    "description": "Optional, use pointer for nullability",
-                    "type": "string"
-                },
-                "userID": {
-                    "description": "needed for audit fields",
+                    "description": "Optional, must be UUID if provided",
                     "type": "string"
                 }
             }
@@ -1395,20 +2029,62 @@
                 }
             }
         },
-        "dto.CreateJournalAndTxn": {
+        "dto.CreateJournalRequest": {
             "type": "object",
+            "required": [
+                "currencyCode",
+                "date",
+                "transactions"
+            ],
             "properties": {
-                "journal": {
-                    "$ref": "#/definitions/models.Journal"
+                "currencyCode": {
+                    "description": "Enforce valid currency code",
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
                 },
                 "transactions": {
+                    "description": "Embed transactions",
                     "type": "array",
+                    "minItems": 2,
                     "items": {
-                        "$ref": "#/definitions/models.Transaction"
+                        "$ref": "#/definitions/dto.CreateTransactionRequest"
                     }
-                },
-                "userID": {
+                }
+            }
+        },
+        "dto.CreateTransactionRequest": {
+            "type": "object",
+            "required": [
+                "accountID",
+                "amount",
+                "transactionType"
+            ],
+            "properties": {
+                "accountID": {
                     "type": "string"
+                },
+                "amount": {
+                    "description": "Must be positive",
+                    "type": "number"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "transactionType": {
+                    "enum": [
+                        "DEBIT",
+                        "CREDIT"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.TransactionType"
+                        }
+                    ]
                 }
             }
         },
@@ -1418,6 +2094,20 @@
                 "name"
             ],
             "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CreateWorkplaceRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 }
@@ -1469,27 +2159,17 @@
                 }
             }
         },
-        "dto.GetJournalResponse": {
-            "type": "object",
-            "properties": {
-                "journal": {
-                    "$ref": "#/definitions/dto.JournalResponse"
-                },
-                "transactions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.TransactionResponse"
-                    }
-                }
-            }
-        },
         "dto.JournalResponse": {
             "type": "object",
             "properties": {
                 "createdAt": {
+                    "description": "Status domain.JournalStatus `json:\"status\"` // Status might not be needed/settable directly via CRUD",
                     "type": "string"
                 },
                 "createdBy": {
+                    "type": "string"
+                },
+                "currencyCode": {
                     "type": "string"
                 },
                 "date": {
@@ -1499,6 +2179,15 @@
                     "type": "string"
                 },
                 "journalID": {
+                    "type": "string"
+                },
+                "lastUpdatedAt": {
+                    "type": "string"
+                },
+                "lastUpdatedBy": {
+                    "type": "string"
+                },
+                "workplaceID": {
                     "type": "string"
                 }
             }
@@ -1514,6 +2203,17 @@
                 }
             }
         },
+        "dto.ListJournalsResponse": {
+            "type": "object",
+            "properties": {
+                "journals": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.JournalResponse"
+                    }
+                }
+            }
+        },
         "dto.ListUsersResponse": {
             "type": "object",
             "properties": {
@@ -1525,21 +2225,14 @@
                 }
             }
         },
-        "dto.TransactionResponse": {
+        "dto.ListWorkplacesResponse": {
             "type": "object",
             "properties": {
-                "accountID": {
-                    "type": "string"
-                },
-                "amount": {
-                    "type": "number"
-                },
-                "transactionID": {
-                    "type": "string"
-                },
-                "type": {
-                    "description": "DEBIT or CREDIT",
-                    "type": "string"
+                "workplaces": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.WorkplaceResponse"
+                    }
                 }
             }
         },
@@ -1547,15 +2240,25 @@
             "type": "object",
             "properties": {
                 "description": {
-                    "description": "Optional: New description",
                     "type": "string"
                 },
                 "isActive": {
-                    "description": "Optional: New active status",
                     "type": "boolean"
                 },
                 "name": {
-                    "description": "Optional: New name",
+                    "type": "string"
+                }
+            }
+        },
+        "dto.UpdateJournalRequest": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "description": "Pointer to allow optional update",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "Pointer to allow optional update",
                     "type": "string"
                 }
             }
@@ -1592,6 +2295,34 @@
                 }
             }
         },
+        "dto.WorkplaceResponse": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "description": "UserID",
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "lastUpdatedAt": {
+                    "type": "string"
+                },
+                "lastUpdatedBy": {
+                    "description": "UserID",
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "workplaceID": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -1622,122 +2353,6 @@
                     "type": "string"
                 }
             }
-        },
-        "models.Journal": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "createdBy": {
-                    "description": "UserID Reference",
-                    "type": "string"
-                },
-                "currencyCode": {
-                    "description": "Primary currency of the Journal (Not Null)",
-                    "type": "string"
-                },
-                "description": {
-                    "description": "Nullable user description",
-                    "type": "string"
-                },
-                "journalDate": {
-                    "description": "Date the event occurred",
-                    "type": "string"
-                },
-                "journalID": {
-                    "description": "Primary Key (e.g., UUID)",
-                    "type": "string"
-                },
-                "lastUpdatedAt": {
-                    "type": "string"
-                },
-                "lastUpdatedBy": {
-                    "description": "UserID Reference",
-                    "type": "string"
-                },
-                "status": {
-                    "description": "Default: Posted",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/models.JournalStatus"
-                        }
-                    ]
-                }
-            }
-        },
-        "models.JournalStatus": {
-            "type": "string",
-            "enum": [
-                "POSTED",
-                "REVERSED"
-            ],
-            "x-enum-varnames": [
-                "Posted",
-                "Reversed"
-            ]
-        },
-        "models.Transaction": {
-            "type": "object",
-            "properties": {
-                "accountID": {
-                    "description": "FK -\u003e Account.accountID (Not Null)",
-                    "type": "string"
-                },
-                "amount": {
-                    "description": "Positive value; Precise decimal type",
-                    "type": "number"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "createdBy": {
-                    "description": "UserID Reference",
-                    "type": "string"
-                },
-                "currencyCode": {
-                    "description": "Must match Journal currency (Not Null)",
-                    "type": "string"
-                },
-                "journalID": {
-                    "description": "FK -\u003e Journal.journalID (Not Null)",
-                    "type": "string"
-                },
-                "lastUpdatedAt": {
-                    "type": "string"
-                },
-                "lastUpdatedBy": {
-                    "description": "UserID Reference",
-                    "type": "string"
-                },
-                "notes": {
-                    "description": "Nullable",
-                    "type": "string"
-                },
-                "transactionID": {
-                    "description": "Primary Key (e.g., UUID)",
-                    "type": "string"
-                },
-                "transactionType": {
-                    "description": "DEBIT or CREDIT (Not Null)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/models.TransactionType"
-                        }
-                    ]
-                }
-            }
-        },
-        "models.TransactionType": {
-            "type": "string",
-            "enum": [
-                "DEBIT",
-                "CREDIT"
-            ],
-            "x-enum-varnames": [
-                "Debit",
-                "Credit"
-            ]
         }
     },
     "securityDefinitions": {

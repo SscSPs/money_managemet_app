@@ -13,6 +13,7 @@ const (
 // Journal represents a single, balanced financial event composed of multiple transactions.
 type Journal struct {
 	JournalID    string        `json:"journalID"`    // Primary Key (e.g., UUID)
+	WorkplaceID  string        `json:"workplaceID"`  // FK -> workplaces.workplace_id (NON-NULL)
 	JournalDate  time.Time     `json:"journalDate"`  // Date the event occurred
 	Description  string        `json:"description"`  // Nullable user description
 	CurrencyCode string        `json:"currencyCode"` // Primary currency of the Journal (Not Null)

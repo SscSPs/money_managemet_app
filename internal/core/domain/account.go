@@ -15,6 +15,7 @@ const (
 // This is the primary representation used by services.
 type Account struct {
 	AccountID       string      `json:"accountID"`       // Primary Key (e.g., UUID)
+	WorkplaceID     string      `json:"workplaceID"`     // FK -> workplaces.workplace_id (NON-NULL)
 	Name            string      `json:"name"`            // User-defined name
 	AccountType     AccountType `json:"accountType"`     // ASSET, LIABILITY, etc.
 	CurrencyCode    string      `json:"currencyCode"`    // FK -> Currency.currencyCode (Not Null)

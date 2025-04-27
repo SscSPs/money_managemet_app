@@ -24,29 +24,31 @@ func NewAccountService(repo portsrepo.AccountRepository) *AccountService {
 	return &AccountService{AccountRepository: repo}
 }
 
-func (s *AccountService) CreateAccount(ctx context.Context, req dto.CreateAccountRequest, userID string) (*domain.Account, error) {
-	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
-	// Basic validation (currency existence, parent account existence) could be added here
-	// For now, assume input is valid per DTO binding
+func (s *AccountService) CreateAccount(ctx context.Context, workplaceID string, req dto.CreateAccountRequest, userID string) (*domain.Account, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+
+	// TODO: Authorization: Check if userID has permission to create accounts in workplaceID
+	// Use AuthorizeUserAction(ctx, userID, workplaceID, domain.RoleMember) // Or RoleAdmin?
 
 	now := time.Now()
-	newAccountID := uuid.NewString() // Generate a new UUID for the account
+	newAccountID := uuid.NewString()
 
 	parentID := ""
 	if req.ParentAccountID != nil {
 		parentID = *req.ParentAccountID
-		// TODO: Validate parent account exists and is suitable (e.g., not the same account)
+		// TODO: Validate parent account exists AND belongs to the same workplaceID
 	}
 
-	// Create domain.Account
+	// Create domain.Account, ensuring WorkplaceID is set
 	account := domain.Account{
 		AccountID:       newAccountID,
+		WorkplaceID:     workplaceID, // Set from parameter
 		Name:            req.Name,
-		AccountType:     domain.AccountType(req.AccountType), // Convert from model type if different, seems same here
+		AccountType:     domain.AccountType(req.AccountType),
 		CurrencyCode:    req.CurrencyCode,
 		ParentAccountID: parentID,
 		Description:     req.Description,
-		IsActive:        true, // Default to active on creation
+		IsActive:        true,
 		AuditFields: domain.AuditFields{
 			CreatedAt:     now,
 			CreatedBy:     userID,
@@ -55,68 +57,81 @@ func (s *AccountService) CreateAccount(ctx context.Context, req dto.CreateAccoun
 		},
 	}
 
-	err := s.AccountRepository.SaveAccount(ctx, account) // Pass domain.Account
+	err := s.AccountRepository.SaveAccount(ctx, account)
 	if err != nil {
-		logger.Error("Failed to save account in repository", slog.String("error", err.Error()), slog.String("account_id", account.AccountID))
-		// Propagate repository error (error handling improvements later)
+		logger.Error("Failed to save account in repository", slog.String("error", err.Error()), slog.String("account_id", account.AccountID), slog.String("workplace_id", workplaceID))
 		return nil, err
 	}
 
-	logger.Info("Account created successfully in service", slog.String("account_id", account.AccountID))
+	logger.Info("Account created successfully in service", slog.String("account_id", account.AccountID), slog.String("workplace_id", workplaceID))
 	return &account, nil
 }
 
-func (s *AccountService) GetAccountByID(ctx context.Context, accountID string) (*domain.Account, error) {
-	logger := middleware.GetLoggerFromCtx(ctx)                          // Get logger from context
-	account, err := s.AccountRepository.FindAccountByID(ctx, accountID) // Expect domain.Account
+func (s *AccountService) GetAccountByID(ctx context.Context, workplaceID string, accountID string) (*domain.Account, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+	account, err := s.AccountRepository.FindAccountByID(ctx, accountID)
 	if err != nil {
-		// Log the error occurred during repository call
-		// Note: Don't log if error is ErrNotFound, as it's an expected outcome
 		if !errors.Is(err, apperrors.ErrNotFound) {
 			logger.Error("Failed to find account by ID in repository", slog.String("error", err.Error()), slog.String("account_id", accountID))
 		}
-		// Propagate the error (including apperrors.ErrNotFound)
-		return nil, err
+		return nil, err // Propagate error (including NotFound)
 	}
-	logger.Debug("Account retrieved successfully from service", slog.String("account_id", account.AccountID))
+
+	// Authorization: Check if the fetched account belongs to the expected workplace
+	if account.WorkplaceID != workplaceID {
+		logger.Warn("Account found but belongs to different workplace", slog.String("account_id", accountID), slog.String("account_workplace", account.WorkplaceID), slog.String("requested_workplace", workplaceID))
+		// Return NotFound to obscure existence from unauthorized workplaces
+		return nil, apperrors.ErrNotFound
+	}
+
+	// TODO: Further auth check: Does the requesting user (from ctx) belong to this workplace?
+
+	logger.Debug("Account retrieved successfully from service", slog.String("account_id", account.AccountID), slog.String("workplace_id", account.WorkplaceID))
 	return account, nil
 }
 
-// ListAccounts retrieves a paginated list of active accounts.
-func (s *AccountService) ListAccounts(ctx context.Context, limit int, offset int) ([]domain.Account, error) {
+// ListAccounts retrieves a paginated list of active accounts for a specific workplace.
+func (s *AccountService) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	accounts, err := s.AccountRepository.ListAccounts(ctx, limit, offset)
+
+	// TODO: Authorization - Check if the user associated with the ctx has access to this workplaceID.
+
+	accounts, err := s.AccountRepository.ListAccounts(ctx, workplaceID, limit, offset) // Pass workplaceID
 	if err != nil {
-		logger.Error("Failed to list accounts from repository", slog.String("error", err.Error()), slog.Int("limit", limit), slog.Int("offset", offset))
-		return nil, fmt.Errorf("failed to list accounts: %w", err)
+		logger.Error("Failed to list accounts from repository", slog.String("error", err.Error()), slog.String("workplace_id", workplaceID), slog.Int("limit", limit), slog.Int("offset", offset))
+		return nil, fmt.Errorf("failed to list accounts for workplace %s: %w", workplaceID, err)
 	}
 
 	if accounts == nil {
 		return []domain.Account{}, nil // Return empty slice if repo returns nil
 	}
 
-	logger.Debug("Accounts listed successfully from service", slog.Int("count", len(accounts)))
+	logger.Debug("Accounts listed successfully from service", slog.Int("count", len(accounts)), slog.String("workplace_id", workplaceID))
 	return accounts, nil
 }
 
 // UpdateAccount updates specific fields of an existing account.
-func (s *AccountService) UpdateAccount(ctx context.Context, accountID string, req dto.UpdateAccountRequest, userID string) (*domain.Account, error) {
+func (s *AccountService) UpdateAccount(ctx context.Context, workplaceID string, accountID string, req dto.UpdateAccountRequest, userID string) (*domain.Account, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// Fetch the existing account
 	account, err := s.AccountRepository.FindAccountByID(ctx, accountID)
 	if err != nil {
-		// Propagate error (including ErrNotFound)
 		if !errors.Is(err, apperrors.ErrNotFound) {
 			logger.Error("Failed to find account by ID for update", slog.String("error", err.Error()), slog.String("account_id", accountID))
 		}
 		return nil, err
 	}
 
-	// TODO: Authorization Check - Does userID have permission to update this account?
-	// (e.g., check if account.CreatedBy == userID, or based on roles/permissions)
+	// Authorization: Check if the fetched account belongs to the expected workplace
+	if account.WorkplaceID != workplaceID {
+		logger.Warn("Attempt to update account from wrong workplace", slog.String("account_id", accountID), slog.String("account_workplace", account.WorkplaceID), slog.String("requested_workplace", workplaceID))
+		return nil, apperrors.ErrNotFound // Treat as NotFound
+	}
 
-	// Apply updates from the request DTO if fields are provided
+	// TODO: Authorization Check - Does userID have permission to update this account in this workplace?
+
+	// Apply updates...
 	updated := false
 	if req.Name != nil {
 		account.Name = *req.Name
@@ -130,8 +145,6 @@ func (s *AccountService) UpdateAccount(ctx context.Context, accountID string, re
 		account.IsActive = *req.IsActive
 		updated = true
 	}
-
-	// If no fields were updated, just return the fetched account
 	if !updated {
 		logger.Debug("No fields provided for account update", slog.String("account_id", accountID))
 		return account, nil
@@ -142,37 +155,48 @@ func (s *AccountService) UpdateAccount(ctx context.Context, accountID string, re
 	account.LastUpdatedAt = now
 	account.LastUpdatedBy = userID
 
-	// Persist changes using the newly added repository method
-	err = s.AccountRepository.UpdateAccount(ctx, *account) // Correctly calling UpdateAccount
+	err = s.AccountRepository.UpdateAccount(ctx, *account)
 	if err != nil {
 		logger.Error("Failed to update account in repository", slog.String("error", err.Error()), slog.String("account_id", accountID))
 		return nil, err
 	}
 
-	logger.Info("Account updated successfully in service", slog.String("account_id", account.AccountID))
+	logger.Info("Account updated successfully in service", slog.String("account_id", account.AccountID), slog.String("workplace_id", account.WorkplaceID))
 	return account, nil
 }
 
 // DeactivateAccount marks an account as inactive (soft delete).
-// Method name reverted to match repository interface and original implementation.
-func (s *AccountService) DeactivateAccount(ctx context.Context, accountID string, userID string) error {
+func (s *AccountService) DeactivateAccount(ctx context.Context, workplaceID string, accountID string, userID string) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
-	// We could add checks here (e.g., check balance is zero before deactivating?)
-	// Fetching the account first might be useful for checks, but the repo method handles not found.
+	// Fetch the existing account first to check workplace ownership
+	account, err := s.AccountRepository.FindAccountByID(ctx, accountID)
+	if err != nil {
+		if !errors.Is(err, apperrors.ErrNotFound) {
+			logger.Error("Failed to find account by ID for deactivate", slog.String("error", err.Error()), slog.String("account_id", accountID))
+		}
+		return err // Propagate NotFound or other errors
+	}
 
+	// Authorization: Check if the fetched account belongs to the expected workplace
+	if account.WorkplaceID != workplaceID {
+		logger.Warn("Attempt to deactivate account from wrong workplace", slog.String("account_id", accountID), slog.String("account_workplace", account.WorkplaceID), slog.String("requested_workplace", workplaceID))
+		return apperrors.ErrNotFound // Treat as NotFound
+	}
+
+	// TODO: Authorization Check - Does userID have permission to deactivate accounts in this workplace?
+
+	// Now call the repository method which handles already inactive state
 	now := time.Now()
-	err := s.AccountRepository.DeactivateAccount(ctx, accountID, userID, now) // Correctly calling DeactivateAccount
+	err = s.AccountRepository.DeactivateAccount(ctx, accountID, userID, now)
 	if err != nil {
 		if !errors.Is(err, apperrors.ErrNotFound) && !errors.Is(err, apperrors.ErrValidation) {
-			// Log unexpected repository errors
 			logger.Error("Failed to deactivate account in repository", slog.String("error", err.Error()), slog.String("account_id", accountID))
 		}
-		// Propagate known errors (NotFound, Validation[already inactive]) and unexpected ones
 		return err
 	}
 
-	logger.Info("Account deactivated successfully in service", slog.String("account_id", accountID))
+	logger.Info("Account deactivated successfully in service", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
 	return nil
 }
 
