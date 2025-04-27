@@ -15,6 +15,7 @@ type AccountRepository interface {
 	FindAccountByID(ctx context.Context, accountID string) (*domain.Account, error)
 	FindAccountsByIDs(ctx context.Context, accountIDs []string) (map[string]domain.Account, error)
 	ListAccounts(ctx context.Context, limit int, offset int) ([]domain.Account, error)
+	UpdateAccount(ctx context.Context, account domain.Account) error
 	// Add methods for updating (inactivation), listing etc. in later milestones
 	// ListAccounts(ctx context.Context) ([]domain.Account, error)
 	// UpdateAccount(ctx context.Context, account domain.Account) error

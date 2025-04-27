@@ -14,13 +14,6 @@ definitions:
     - Equity
     - Income
     - Expense
-  dto.AccountBalanceResponse:
-    properties:
-      accountID:
-        type: string
-      balance:
-        type: number
-    type: object
   dto.AccountResponse:
     properties:
       accountID:
@@ -157,6 +150,28 @@ definitions:
       toCurrencyCode:
         type: string
     type: object
+  dto.GetJournalResponse:
+    properties:
+      journal:
+        $ref: '#/definitions/dto.JournalResponse'
+      transactions:
+        items:
+          $ref: '#/definitions/dto.TransactionResponse'
+        type: array
+    type: object
+  dto.JournalResponse:
+    properties:
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      date:
+        type: string
+      description:
+        type: string
+      journalID:
+        type: string
+    type: object
   dto.ListAccountsResponse:
     properties:
       accounts:
@@ -170,6 +185,30 @@ definitions:
         items:
           $ref: '#/definitions/dto.UserResponse'
         type: array
+    type: object
+  dto.TransactionResponse:
+    properties:
+      accountID:
+        type: string
+      amount:
+        type: number
+      transactionID:
+        type: string
+      type:
+        description: DEBIT or CREDIT
+        type: string
+    type: object
+  dto.UpdateAccountRequest:
+    properties:
+      description:
+        description: 'Optional: New description'
+        type: string
+      isActive:
+        description: 'Optional: New active status'
+        type: boolean
+      name:
+        description: 'Optional: New name'
+        type: string
     type: object
   dto.UpdateUserRequest:
     properties:
@@ -190,6 +229,11 @@ definitions:
       name:
         type: string
       userID:
+        type: string
+    type: object
+  handlers.ErrorResponse:
+    properties:
+      error:
         type: string
     type: object
   handlers.LoginRequest:
@@ -296,9 +340,7 @@ info:
 paths:
   /accounts:
     get:
-      consumes:
-      - application/json
-      description: Retrieves a paginated list of active financial accounts
+      description: Retrieves a list of accounts owned by the logged-in user
       parameters:
       - default: 20
         description: Limit number of results
@@ -317,25 +359,27 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/dto.ListAccountsResponse'
-        "400":
-          description: Invalid query parameters
+        "401":
+          description: Unauthorized
           schema:
             additionalProperties:
               type: string
             type: object
         "500":
-          description: Internal server error
+          description: Failed to list accounts
           schema:
             additionalProperties:
               type: string
             type: object
-      summary: List accounts
+      security:
+      - BearerAuth: []
+      summary: List accounts for the logged-in user
       tags:
       - accounts
     post:
       consumes:
       - application/json
-      description: Creates a new account (Asset, Liability, Equity, Income, Expense)
+      description: Creates a new account for the logged-in user
       parameters:
       - description: Account details
         in: body
@@ -347,11 +391,11 @@ paths:
       - application/json
       responses:
         "201":
-          description: The created account
+          description: Created
           schema:
             $ref: '#/definitions/dto.AccountResponse'
         "400":
-          description: Invalid request format
+          description: Invalid input format or validation error
           schema:
             additionalProperties:
               type: string
@@ -363,23 +407,23 @@ paths:
               type: string
             type: object
         "500":
-          description: Internal server error
+          description: Failed to create account
           schema:
             additionalProperties:
               type: string
             type: object
-      summary: Create a new financial account
+      security:
+      - BearerAuth: []
+      summary: Create a new account
       tags:
       - accounts
-  /accounts/{accountID}:
+  /accounts/{id}:
     delete:
-      consumes:
-      - application/json
-      description: Marks a financial account as inactive
+      description: Marks an account as deleted (soft delete)
       parameters:
-      - description: Account ID to deactivate
+      - description: Account ID to delete
         in: path
-        name: accountID
+        name: id
         required: true
         type: string
       produces:
@@ -387,72 +431,47 @@ paths:
       responses:
         "204":
           description: No Content
-        "400":
-          description: Account already inactive or other validation error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
         "401":
           description: Unauthorized
           schema:
             additionalProperties:
               type: string
             type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
           description: Account not found
           schema:
             additionalProperties:
               type: string
             type: object
-        "500":
-          description: Internal server error
+        "409":
+          description: Conflict (e.g., already deleted)
           schema:
             additionalProperties:
               type: string
             type: object
-      summary: Deactivate an account
+        "500":
+          description: Failed to delete account
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete an account
       tags:
       - accounts
     get:
-      consumes:
-      - application/json
       description: Retrieves details for a specific account by its ID
       parameters:
       - description: Account ID
         in: path
-        name: accountID
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: The requested account
-          schema:
-            $ref: '#/definitions/dto.AccountResponse'
-        "404":
-          description: Account not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get an account by ID
-      tags:
-      - accounts
-  /accounts/{accountID}/balance:
-    get:
-      description: Retrieves the current calculated balance for a specific account
-      parameters:
-      - description: Account ID
-        in: path
-        name: accountID
+        name: id
         required: true
         type: string
       produces:
@@ -461,7 +480,19 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dto.AccountBalanceResponse'
+            $ref: '#/definitions/dto.AccountResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden (accessing another user's account)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
           description: Account not found
           schema:
@@ -469,23 +500,83 @@ paths:
               type: string
             type: object
         "500":
-          description: Internal server error
+          description: Failed to retrieve account
           schema:
             additionalProperties:
               type: string
             type: object
-      summary: Get account balance
+      security:
+      - BearerAuth: []
+      summary: Get an account by ID
+      tags:
+      - accounts
+    put:
+      consumes:
+      - application/json
+      description: Updates an account's details (e.g., name)
+      parameters:
+      - description: Account ID to update
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Account details to update
+        in: body
+        name: account
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateAccountRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AccountResponse'
+        "400":
+          description: Invalid input
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Account not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to update account
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update an account
       tags:
       - accounts
   /auth/login:
     post:
       consumes:
       - application/json
-      description: Authenticates a user (dummy implementation) and returns a JWT.
+      description: Authenticates a user and returns a JWT token.
       parameters:
-      - description: User credentials
+      - description: Login Credentials
         in: body
-        name: credentials
+        name: login
         required: true
         schema:
           $ref: '#/definitions/handlers.LoginRequest'
@@ -497,25 +588,57 @@ paths:
           schema:
             $ref: '#/definitions/handlers.LoginResponse'
         "400":
-          description: Invalid input
+          description: Bad Request
           schema:
-            type: string
+            $ref: '#/definitions/handlers.ErrorResponse'
         "401":
-          description: Invalid credentials (dummy check)
+          description: Unauthorized
           schema:
-            type: string
+            $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal server error (token generation failed)
+          description: Internal Server Error
           schema:
-            type: string
-      summary: Log in a user
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: User login
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user account.
+      parameters:
+      - description: User Registration Info
+        in: body
+        name: register
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.UserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict (e.g., username exists)
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Register new user
       tags:
       - auth
   /currencies:
     get:
-      consumes:
-      - application/json
-      description: Retrieves a list of all currencies supported by the system
+      description: Retrieves a list of all available currencies
       produces:
       - application/json
       responses:
@@ -526,16 +649,20 @@ paths:
               $ref: '#/definitions/dto.CurrencyResponse'
             type: array
         "500":
-          description: Internal server error
+          description: Failed to list currencies
           schema:
-            type: string
-      summary: List all available currencies
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List all currencies
       tags:
       - currencies
     post:
       consumes:
       - application/json
-      description: Adds a new currency to the system (e.g., USD, EUR)
+      description: Adds a new currency to the system (admin operation)
       parameters:
       - description: Currency details
         in: body
@@ -553,23 +680,41 @@ paths:
         "400":
           description: Invalid input
           schema:
-            type: string
-        "500":
-          description: Internal server error
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Currency code already exists
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to create currency
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
       summary: Create a new currency
       tags:
       - currencies
-  /currencies/{currencyCode}:
+  /currencies/{code}:
     get:
-      consumes:
-      - application/json
       description: Retrieves details for a specific currency by its 3-letter code
       parameters:
-      - description: Currency Code (3 uppercase letters)
+      - description: Currency Code (3 letters)
         in: path
-        name: currencyCode
+        maxLength: 3
+        minLength: 3
+        name: code
         required: true
         type: string
       produces:
@@ -579,77 +724,29 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/dto.CurrencyResponse'
-        "400":
-          description: Invalid currency code format
-          schema:
-            type: string
         "404":
           description: Currency not found
           schema:
-            type: string
-        "500":
-          description: Internal server error
-          schema:
-            type: string
-      summary: Get a currency by code
-      tags:
-      - currencies
-  /exchange-rates:
-    get:
-      consumes:
-      - application/json
-      description: Retrieves a specific exchange rate based on from/to currencies
-        and effective date.
-      parameters:
-      - description: From Currency Code (3 uppercase letters)
-        example: USD
-        format: string
-        in: query
-        name: from
-        required: true
-        type: string
-      - description: To Currency Code (3 uppercase letters)
-        example: EUR
-        format: string
-        in: query
-        name: to
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.ExchangeRateResponse'
-        "400":
-          description: Invalid query parameter format or value
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Exchange rate not found
-          schema:
             additionalProperties:
               type: string
             type: object
         "500":
-          description: Internal server error
+          description: Failed to retrieve currency
           schema:
             additionalProperties:
               type: string
             type: object
       security:
       - BearerAuth: []
-      summary: Get an exchange rate
+      summary: Get a currency by code
       tags:
-      - exchange-rates
+      - currencies
+  /exchange-rates:
     post:
       consumes:
       - application/json
-      description: Adds a new conversion rate between two currencies for a specific
-        date.
+      description: Adds a new exchange rate between two currencies for a specific
+        date
       parameters:
       - description: Exchange Rate details
         in: body
@@ -671,13 +768,13 @@ paths:
               type: string
             type: object
         "401":
-          description: Unauthorized - User ID not found in context
+          description: Unauthorized
           schema:
             additionalProperties:
               type: string
             type: object
         "500":
-          description: Internal server error
+          description: Failed to create exchange rate
           schema:
             additionalProperties:
               type: string
@@ -686,8 +783,56 @@ paths:
       - BearerAuth: []
       summary: Create a new exchange rate
       tags:
-      - exchange-rates
-  /journals/:
+      - exchange rates
+  /exchange-rates/{from}/{to}:
+    get:
+      description: Retrieves the latest exchange rate for a given currency pair
+      parameters:
+      - description: From Currency Code (3 letters)
+        in: path
+        maxLength: 3
+        minLength: 3
+        name: from
+        required: true
+        type: string
+      - description: To Currency Code (3 letters)
+        in: path
+        maxLength: 3
+        minLength: 3
+        name: to
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ExchangeRateResponse'
+        "400":
+          description: Invalid currency code format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Exchange rate not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to retrieve exchange rate
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get an exchange rate
+      tags:
+      - exchange rates
+  /journals:
     post:
       consumes:
       - application/json
@@ -709,7 +854,7 @@ paths:
               type: string
             type: object
         "400":
-          description: Invalid request format
+          description: Invalid request format or validation error
           schema:
             additionalProperties:
               type: string
@@ -726,19 +871,19 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Persist a journal entry with its transactions
       tags:
       - journals
-  /journals/{journalID}:
+  /journals/{id}:
     get:
-      consumes:
-      - application/json
       description: Retrieves a journal and its associated transactions by journal
         ID
       parameters:
       - description: Journal ID
         in: path
-        name: journalID
+        name: id
         required: true
         type: string
       produces:
@@ -747,7 +892,7 @@ paths:
         "200":
           description: Journal and its transactions
           schema:
-            $ref: '#/definitions/dto.CreateJournalAndTxn'
+            $ref: '#/definitions/dto.GetJournalResponse'
         "404":
           description: Journal not found
           schema:
@@ -760,14 +905,14 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Get a journal entry and its transactions
       tags:
       - journals
   /users:
     get:
-      consumes:
-      - application/json
-      description: Retrieves a paginated list of users
+      description: Retrieves a list of users (potentially admin only)
       parameters:
       - default: 20
         description: Limit number of results
@@ -786,17 +931,33 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/dto.ListUsersResponse'
-        "500":
-          description: Internal server error
+        "401":
+          description: Unauthorized
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to list users
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
       summary: List users
       tags:
       - users
     post:
       consumes:
       - application/json
-      description: Creates a new user account
+      description: Creates a new user (typically an admin action)
       parameters:
       - description: User details
         in: body
@@ -814,23 +975,33 @@ paths:
         "400":
           description: Invalid input
           schema:
-            type: string
-        "500":
-          description: Internal server error
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to create user
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
       summary: Create a new user
       tags:
       - users
-  /users/{userID}:
+  /users/{id}:
     delete:
-      consumes:
-      - application/json
-      description: Soft-deletes a user by their ID
+      description: Marks a user as deleted (soft delete)
       parameters:
       - description: User ID to delete
         in: path
-        name: userID
+        name: id
         required: true
         type: string
       produces:
@@ -841,26 +1012,38 @@ paths:
         "401":
           description: Unauthorized
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
           description: User not found
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
         "500":
-          description: Internal server error
+          description: Failed to delete user
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
       summary: Delete a user
       tags:
       - users
     get:
-      consumes:
-      - application/json
       description: Retrieves details for a specific user by their ID
       parameters:
       - description: User ID
         in: path
-        name: userID
+        name: id
         required: true
         type: string
       produces:
@@ -870,14 +1053,32 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/dto.UserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden (trying to access another user's details)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
           description: User not found
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
         "500":
-          description: Internal server error
+          description: Failed to retrieve user
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
       summary: Get a user by ID
       tags:
       - users
@@ -888,7 +1089,7 @@ paths:
       parameters:
       - description: User ID to update
         in: path
-        name: userID
+        name: id
         required: true
         type: string
       - description: User details to update
@@ -907,19 +1108,35 @@ paths:
         "400":
           description: Invalid input
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Unauthorized
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
           description: User not found
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
         "500":
-          description: Internal server error
+          description: Failed to update user
           schema:
-            type: string
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
       summary: Update a user
       tags:
       - users

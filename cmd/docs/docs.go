@@ -17,17 +17,19 @@ const docTemplate = `{
     "paths": {
         "/accounts": {
             "get": {
-                "description": "Retrieves a paginated list of active financial accounts",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "description": "Retrieves a list of accounts owned by the logged-in user",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "accounts"
                 ],
-                "summary": "List accounts",
+                "summary": "List accounts for the logged-in user",
                 "parameters": [
                     {
                         "type": "integer",
@@ -51,8 +53,8 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.ListAccountsResponse"
                         }
                     },
-                    "400": {
-                        "description": "Invalid query parameters",
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -61,7 +63,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to list accounts",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -72,7 +74,12 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Creates a new account (Asset, Liability, Equity, Income, Expense)",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new account for the logged-in user",
                 "consumes": [
                     "application/json"
                 ],
@@ -82,7 +89,7 @@ const docTemplate = `{
                 "tags": [
                     "accounts"
                 ],
-                "summary": "Create a new financial account",
+                "summary": "Create a new account",
                 "parameters": [
                     {
                         "description": "Account details",
@@ -96,13 +103,13 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "201": {
-                        "description": "The created account",
+                        "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/dto.AccountResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid request format",
+                        "description": "Invalid input format or validation error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -120,7 +127,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to create account",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -131,12 +138,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/accounts/{accountID}": {
+        "/accounts/{id}": {
             "get": {
-                "description": "Retrieves details for a specific account by its ID",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "description": "Retrieves details for a specific account by its ID",
                 "produces": [
                     "application/json"
                 ],
@@ -148,16 +157,34 @@ const docTemplate = `{
                     {
                         "type": "string",
                         "description": "Account ID",
-                        "name": "accountID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "The requested account",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/dto.AccountResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (accessing another user's account)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
@@ -170,7 +197,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to retrieve account",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -180,8 +207,13 @@ const docTemplate = `{
                     }
                 }
             },
-            "delete": {
-                "description": "Marks a financial account as inactive",
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates an account's details (e.g., name)",
                 "consumes": [
                     "application/json"
                 ],
@@ -191,22 +223,34 @@ const docTemplate = `{
                 "tags": [
                     "accounts"
                 ],
-                "summary": "Deactivate an account",
+                "summary": "Update an account",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Account ID to deactivate",
-                        "name": "accountID",
+                        "description": "Account ID to update",
+                        "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Account details to update",
+                        "name": "account",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateAccountRequest"
+                        }
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "No Content"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AccountResponse"
+                        }
                     },
                     "400": {
-                        "description": "Account already inactive or other validation error",
+                        "description": "Invalid input",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -223,6 +267,15 @@ const docTemplate = `{
                             }
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
                     "404": {
                         "description": "Account not found",
                         "schema": {
@@ -233,7 +286,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to update account",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -242,32 +295,50 @@ const docTemplate = `{
                         }
                     }
                 }
-            }
-        },
-        "/accounts/{accountID}/balance": {
-            "get": {
-                "description": "Retrieves the current calculated balance for a specific account",
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marks an account as deleted (soft delete)",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "accounts"
                 ],
-                "summary": "Get account balance",
+                "summary": "Delete an account",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Account ID",
-                        "name": "accountID",
+                        "description": "Account ID to delete",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/dto.AccountBalanceResponse"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
@@ -279,8 +350,17 @@ const docTemplate = `{
                             }
                         }
                     },
+                    "409": {
+                        "description": "Conflict (e.g., already deleted)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to delete account",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -293,7 +373,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Authenticates a user (dummy implementation) and returns a JWT.",
+                "description": "Authenticates a user and returns a JWT token.",
                 "consumes": [
                     "application/json"
                 ],
@@ -303,11 +383,11 @@ const docTemplate = `{
                 "tags": [
                     "auth"
                 ],
-                "summary": "Log in a user",
+                "summary": "User login",
                 "parameters": [
                     {
-                        "description": "User credentials",
-                        "name": "credentials",
+                        "description": "Login Credentials",
+                        "name": "login",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -323,29 +403,29 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid input",
+                        "description": "Bad Request",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
                     "401": {
-                        "description": "Invalid credentials (dummy check)",
+                        "description": "Unauthorized",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error (token generation failed)",
+                        "description": "Internal Server Error",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
                 }
             }
         },
-        "/currencies": {
-            "get": {
-                "description": "Retrieves a list of all currencies supported by the system",
+        "/auth/register": {
+            "post": {
+                "description": "Creates a new user account.",
                 "consumes": [
                     "application/json"
                 ],
@@ -353,9 +433,63 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
+                    "auth"
+                ],
+                "summary": "Register new user",
+                "parameters": [
+                    {
+                        "description": "User Registration Info",
+                        "name": "register",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict (e.g., username exists)",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/currencies": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves a list of all available currencies",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
                     "currencies"
                 ],
-                "summary": "List all available currencies",
+                "summary": "List all currencies",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -367,15 +501,23 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to list currencies",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             },
             "post": {
-                "description": "Adds a new currency to the system (e.g., USD, EUR)",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a new currency to the system (admin operation)",
                 "consumes": [
                     "application/json"
                 ],
@@ -407,24 +549,50 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid input",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Currency code already exists",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to create currency",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             }
         },
-        "/currencies/{currencyCode}": {
+        "/currencies/{code}": {
             "get": {
-                "description": "Retrieves details for a specific currency by its 3-letter code",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "description": "Retrieves details for a specific currency by its 3-letter code",
                 "produces": [
                     "application/json"
                 ],
@@ -434,9 +602,11 @@ const docTemplate = `{
                 "summary": "Get a currency by code",
                 "parameters": [
                     {
+                        "maxLength": 3,
+                        "minLength": 3,
                         "type": "string",
-                        "description": "Currency Code (3 uppercase letters)",
-                        "name": "currencyCode",
+                        "description": "Currency Code (3 letters)",
+                        "name": "code",
                         "in": "path",
                         "required": true
                     }
@@ -448,108 +618,35 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.CurrencyResponse"
                         }
                     },
-                    "400": {
-                        "description": "Invalid currency code format",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
                     "404": {
                         "description": "Currency not found",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to retrieve currency",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             }
         },
         "/exchange-rates": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retrieves a specific exchange rate based on from/to currencies and effective date.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "exchange-rates"
-                ],
-                "summary": "Get an exchange rate",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "format": "string",
-                        "example": "USD",
-                        "description": "From Currency Code (3 uppercase letters)",
-                        "name": "from",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "format": "string",
-                        "example": "EUR",
-                        "description": "To Currency Code (3 uppercase letters)",
-                        "name": "to",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ExchangeRateResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid query parameter format or value",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Exchange rate not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Adds a new conversion rate between two currencies for a specific date.",
+                "description": "Adds a new exchange rate between two currencies for a specific date",
                 "consumes": [
                     "application/json"
                 ],
@@ -557,7 +654,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "exchange-rates"
+                    "exchange rates"
                 ],
                 "summary": "Create a new exchange rate",
                 "parameters": [
@@ -588,7 +685,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized - User ID not found in context",
+                        "description": "Unauthorized",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -597,7 +694,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to create exchange rate",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -608,8 +705,85 @@ const docTemplate = `{
                 }
             }
         },
-        "/journals/": {
+        "/exchange-rates/{from}/{to}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves the latest exchange rate for a given currency pair",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exchange rates"
+                ],
+                "summary": "Get an exchange rate",
+                "parameters": [
+                    {
+                        "maxLength": 3,
+                        "minLength": 3,
+                        "type": "string",
+                        "description": "From Currency Code (3 letters)",
+                        "name": "from",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "maxLength": 3,
+                        "minLength": 3,
+                        "type": "string",
+                        "description": "To Currency Code (3 letters)",
+                        "name": "to",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ExchangeRateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid currency code format",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Exchange rate not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to retrieve exchange rate",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/journals": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Creates a new journal and associated transactions",
                 "consumes": [
                     "application/json"
@@ -643,7 +817,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request format",
+                        "description": "Invalid request format or validation error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -672,12 +846,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/journals/{journalID}": {
+        "/journals/{id}": {
             "get": {
-                "description": "Retrieves a journal and its associated transactions by journal ID",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "description": "Retrieves a journal and its associated transactions by journal ID",
                 "produces": [
                     "application/json"
                 ],
@@ -689,7 +865,7 @@ const docTemplate = `{
                     {
                         "type": "string",
                         "description": "Journal ID",
-                        "name": "journalID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
@@ -698,7 +874,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Journal and its transactions",
                         "schema": {
-                            "$ref": "#/definitions/dto.CreateJournalAndTxn"
+                            "$ref": "#/definitions/dto.GetJournalResponse"
                         }
                     },
                     "404": {
@@ -724,10 +900,12 @@ const docTemplate = `{
         },
         "/users": {
             "get": {
-                "description": "Retrieves a paginated list of users",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "description": "Retrieves a list of users (potentially admin only)",
                 "produces": [
                     "application/json"
                 ],
@@ -758,16 +936,42 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.ListUsersResponse"
                         }
                     },
-                    "500": {
-                        "description": "Internal server error",
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to list users",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             },
             "post": {
-                "description": "Creates a new user account",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new user (typically an admin action)",
                 "consumes": [
                     "application/json"
                 ],
@@ -799,24 +1003,41 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid input",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to create user",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             }
         },
-        "/users/{userID}": {
+        "/users/{id}": {
             "get": {
-                "description": "Retrieves details for a specific user by their ID",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "description": "Retrieves details for a specific user by their ID",
                 "produces": [
                     "application/json"
                 ],
@@ -828,7 +1049,7 @@ const docTemplate = `{
                     {
                         "type": "string",
                         "description": "User ID",
-                        "name": "userID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
@@ -840,21 +1061,50 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.UserResponse"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (trying to access another user's details)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
                     "404": {
                         "description": "User not found",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to retrieve user",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             },
             "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Updates a user's details (currently only name)",
                 "consumes": [
                     "application/json"
@@ -870,7 +1120,7 @@ const docTemplate = `{
                     {
                         "type": "string",
                         "description": "User ID to update",
-                        "name": "userID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     },
@@ -894,34 +1144,57 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid input",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
                         "description": "User not found",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to update user",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             },
             "delete": {
-                "description": "Soft-deletes a user by their ID",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "description": "Marks a user as deleted (soft delete)",
                 "produces": [
                     "application/json"
                 ],
@@ -933,7 +1206,7 @@ const docTemplate = `{
                     {
                         "type": "string",
                         "description": "User ID to delete",
-                        "name": "userID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
@@ -945,19 +1218,37 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
                         "description": "User not found",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Failed to delete user",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -981,17 +1272,6 @@ const docTemplate = `{
                 "Income",
                 "Expense"
             ]
-        },
-        "dto.AccountBalanceResponse": {
-            "type": "object",
-            "properties": {
-                "accountID": {
-                    "type": "string"
-                },
-                "balance": {
-                    "type": "number"
-                }
-            }
         },
         "dto.AccountResponse": {
             "type": "object",
@@ -1195,6 +1475,40 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.GetJournalResponse": {
+            "type": "object",
+            "properties": {
+                "journal": {
+                    "$ref": "#/definitions/dto.JournalResponse"
+                },
+                "transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.TransactionResponse"
+                    }
+                }
+            }
+        },
+        "dto.JournalResponse": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "journalID": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ListAccountsResponse": {
             "type": "object",
             "properties": {
@@ -1214,6 +1528,41 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.UserResponse"
                     }
+                }
+            }
+        },
+        "dto.TransactionResponse": {
+            "type": "object",
+            "properties": {
+                "accountID": {
+                    "type": "string"
+                },
+                "amount": {
+                    "type": "number"
+                },
+                "transactionID": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "DEBIT or CREDIT",
+                    "type": "string"
+                }
+            }
+        },
+        "dto.UpdateAccountRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "description": "Optional: New description",
+                    "type": "string"
+                },
+                "isActive": {
+                    "description": "Optional: New active status",
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "Optional: New name",
+                    "type": "string"
                 }
             }
         },
@@ -1245,6 +1594,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "userID": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
                     "type": "string"
                 }
             }

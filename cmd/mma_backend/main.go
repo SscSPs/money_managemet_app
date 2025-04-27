@@ -7,10 +7,12 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/handlers"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/SscSPs/money_managemet_app/internal/platform/config"
 	"github.com/SscSPs/money_managemet_app/internal/platform/database"
+	"github.com/SscSPs/money_managemet_app/internal/repositories/database/pgsql"
 	"github.com/gin-gonic/gin"
 
 	migrate "github.com/golang-migrate/migrate/v4"
@@ -53,11 +55,31 @@ func main() {
 	defer dbPool.Close()
 	logger.Info("Database connection pool established.")
 
+	// --- Dependency Injection Setup ---
+	logger.Info("Initializing repositories and services...")
+
+	// Repositories
+	accountRepo := pgsql.NewPgxAccountRepository(dbPool)
+	currencyRepo := pgsql.NewPgxCurrencyRepository(dbPool)
+	exchangeRateRepo := pgsql.NewExchangeRateRepository(dbPool)
+	userRepo := pgsql.NewPgxUserRepository(dbPool)
+	journalRepo := pgsql.NewPgxJournalRepository(dbPool)
+
+	// Services
+	accountService := services.NewAccountService(accountRepo)
+	currencyService := services.NewCurrencyService(currencyRepo)
+	exchangeRateService := services.NewExchangeRateService(exchangeRateRepo, currencyService)
+	userService := services.NewUserService(userRepo)
+	journalService := services.NewJournalService(accountRepo, journalRepo)
+
+	logger.Info("Dependencies initialized.")
+	// --- End Dependency Injection Setup ---
+
 	// Initialize Gin engine
 	r := setupGinEngine(logger, cfg)
 
-	// Register all routes
-	handlers.RegisterRoutes(r, cfg, dbPool)
+	// Pass initialized services to route registration
+	handlers.RegisterRoutes(r, cfg, *userService, *accountService, *currencyService, *exchangeRateService, *journalService)
 
 	logger.Info("Server starting", slog.String("port", cfg.Port))
 	if err := r.Run(":" + cfg.Port); err != nil {

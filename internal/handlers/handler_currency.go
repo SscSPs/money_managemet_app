@@ -2,56 +2,66 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
-	"strings" // For uppercase conversion
 
+	// For uppercase conversion
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
-	"github.com/SscSPs/money_managemet_app/internal/repositories/database/pgsql"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type CurrencyHandler struct {
+// currencyHandler handles HTTP requests related to currencies.
+type currencyHandler struct {
 	currencyService *services.CurrencyService
 }
 
-func newCurrencyHandler(currencyService *services.CurrencyService) *CurrencyHandler {
-	return &CurrencyHandler{
-		currencyService: currencyService,
+// newCurrencyHandler creates a new currencyHandler.
+func newCurrencyHandler(cs *services.CurrencyService) *currencyHandler {
+	return &currencyHandler{
+		currencyService: cs,
+	}
+}
+
+// registerCurrencyRoutes registers routes related to currencies.
+func registerCurrencyRoutes(rg *gin.RouterGroup, currencyService services.CurrencyService) {
+	h := newCurrencyHandler(&currencyService) // Inject service
+
+	currencies := rg.Group("/currencies")
+	{
+		currencies.POST("", h.createCurrency)
+		currencies.GET("", h.listCurrencies)
+		currencies.GET("/:code", h.getCurrencyByCode)
 	}
 }
 
 // createCurrency godoc
 // @Summary Create a new currency
-// @Description Adds a new currency to the system (e.g., USD, EUR)
+// @Description Adds a new currency to the system (admin operation)
 // @Tags currencies
 // @Accept  json
 // @Produce  json
 // @Param   currency body dto.CreateCurrencyRequest true "Currency details"
 // @Success 201 {object} dto.CurrencyResponse
-// @Failure 400 {object} string "Invalid input"
-// @Failure 500 {object} string "Internal server error"
+// @Failure 400 {object} map[string]string "Invalid input"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 409 {object} map[string]string "Currency code already exists"
+// @Failure 500 {object} map[string]string "Failed to create currency"
+// @Security BearerAuth
 // @Router /currencies [post]
-func (h *CurrencyHandler) createCurrency(c *gin.Context) {
-	logger := middleware.GetLoggerFromCtx(c.Request.Context()) // Use GetLoggerFromCtx
-
-	var createReq dto.CreateCurrencyRequest
-	if err := c.ShouldBindJSON(&createReq); err != nil {
-		logger.Error("Failed to bind JSON for CreateCurrency", slog.String("error", err.Error()))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+func (h *currencyHandler) createCurrency(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	var req dto.CreateCurrencyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Warn("Failed to bind JSON for CreateCurrency", slog.String("error", err.Error()))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format: " + err.Error()})
 		return
 	}
 
-	if len(createReq.CurrencyCode) != 3 || createReq.CurrencyCode != strings.ToUpper(createReq.CurrencyCode) {
-		logger.Warn("Invalid currency code format in request body", slog.String("code", createReq.CurrencyCode))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Currency code must be 3 uppercase letters"})
-		return
-	}
-
+	// Get creator UserID from context
 	creatorUserID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		logger.Error("Creator user ID not found in context")
@@ -59,103 +69,97 @@ func (h *CurrencyHandler) createCurrency(c *gin.Context) {
 		return
 	}
 
-	currency, err := h.currencyService.CreateCurrency(c.Request.Context(), createReq, creatorUserID)
+	// TODO: Add authorization check - is the user an admin?
+
+	logger = logger.With(slog.String("creator_user_id", creatorUserID))
+	logger.Info("Received request to create currency", slog.String("currency_code", req.CurrencyCode))
+
+	createdCurrency, err := h.currencyService.CreateCurrency(c.Request.Context(), req, creatorUserID)
 	if err != nil {
-		// Check for potential validation errors from service (e.g., duplicate code if implemented)
-		if errors.Is(err, apperrors.ErrValidation) {
-			logger.Warn("Validation error creating currency", slog.String("error", err.Error()), slog.String("code", createReq.CurrencyCode))
+		if errors.Is(err, apperrors.ErrDuplicate) {
+			logger.Warn("Attempted to create duplicate currency", slog.String("currency_code", req.CurrencyCode))
+			c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("Currency code '%s' already exists", req.CurrencyCode)})
+		} else if errors.Is(err, apperrors.ErrValidation) {
+			logger.Warn("Validation error creating currency", slog.String("error", err.Error()))
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		} else {
-			// Log other unexpected errors
-			logger.Error("Failed to create currency in service", slog.String("error", err.Error()), slog.String("code", createReq.CurrencyCode))
+			logger.Error("Failed to create currency in service", slog.String("error", err.Error()))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create currency"})
 		}
 		return
 	}
 
-	logger.Info("Currency created successfully", slog.String("code", currency.CurrencyCode))
-	c.JSON(http.StatusCreated, dto.ToCurrencyResponse(currency))
+	logger.Info("Currency created successfully", slog.String("currency_code", createdCurrency.CurrencyCode))
+	c.JSON(http.StatusCreated, dto.ToCurrencyResponse(createdCurrency))
 }
 
-// getCurrency godoc
+// getCurrencyByCode godoc
 // @Summary Get a currency by code
 // @Description Retrieves details for a specific currency by its 3-letter code
 // @Tags currencies
-// @Accept  json
 // @Produce  json
-// @Param   currencyCode path string true "Currency Code (3 uppercase letters)"
+// @Param   code path string true "Currency Code (3 letters)" MinLength(3) MaxLength(3)
 // @Success 200 {object} dto.CurrencyResponse
-// @Failure 400 {object} string "Invalid currency code format"
-// @Failure 404 {object} string "Currency not found"
-// @Failure 500 {object} string "Internal server error"
-// @Router /currencies/{currencyCode} [get]
-func (h *CurrencyHandler) getCurrency(c *gin.Context) {
-	logger := middleware.GetLoggerFromCtx(c.Request.Context()) // Use GetLoggerFromCtx
-	currencyCode := strings.ToUpper(c.Param("currencyCode"))
+// @Failure 404 {object} map[string]string "Currency not found"
+// @Failure 500 {object} map[string]string "Failed to retrieve currency"
+// @Security BearerAuth
+// @Router /currencies/{code} [get]
+func (h *currencyHandler) getCurrencyByCode(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	currencyCode := c.Param("code")
 
+	// Basic validation - service likely does more thorough validation
 	if len(currencyCode) != 3 {
-		logger.Warn("Invalid currency code format requested in path", slog.String("code", c.Param("currencyCode")))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Currency code must be 3 letters"})
 		return
 	}
 
+	logger = logger.With(slog.String("currency_code", currencyCode))
+	logger.Info("Received request to get currency by code")
+
 	currency, err := h.currencyService.GetCurrencyByCode(c.Request.Context(), currencyCode)
 	if err != nil {
-		// Check for specific ErrNotFound
 		if errors.Is(err, apperrors.ErrNotFound) {
-			logger.Warn("Currency not found", slog.String("code", currencyCode))
+			logger.Warn("Currency not found")
 			c.JSON(http.StatusNotFound, gin.H{"error": "Currency not found"})
-			return
+		} else {
+			logger.Error("Failed to get currency from service", slog.String("error", err.Error()))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve currency"})
 		}
-		// Log other errors
-		logger.Error("Failed to get currency from service", slog.String("error", err.Error()), slog.String("code", currencyCode))
-		// Use generic error message
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve currency"})
 		return
 	}
 
-	// No need for explicit nil check if service returns ErrNotFound
-
-	logger.Debug("Currency retrieved successfully", slog.String("code", currency.CurrencyCode))
+	logger.Info("Currency retrieved successfully")
 	c.JSON(http.StatusOK, dto.ToCurrencyResponse(currency))
 }
 
 // listCurrencies godoc
-// @Summary List all available currencies
-// @Description Retrieves a list of all currencies supported by the system
+// @Summary List all currencies
+// @Description Retrieves a list of all available currencies
 // @Tags currencies
-// @Accept  json
 // @Produce  json
 // @Success 200 {array} dto.CurrencyResponse
-// @Failure 500 {object} string "Internal server error"
+// @Failure 500 {object} map[string]string "Failed to list currencies"
+// @Security BearerAuth
 // @Router /currencies [get]
-func (h *CurrencyHandler) listCurrencies(c *gin.Context) {
-	logger := middleware.GetLoggerFromCtx(c.Request.Context()) // Use GetLoggerFromCtx
+func (h *currencyHandler) listCurrencies(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	logger.Info("Received request to list currencies")
 
 	currencies, err := h.currencyService.ListCurrencies(c.Request.Context())
 	if err != nil {
 		logger.Error("Failed to list currencies from service", slog.String("error", err.Error()))
-		// Use generic error message
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list currencies"})
 		return
 	}
 
-	logger.Debug("Currencies listed successfully", slog.Int("count", len(currencies)))
-	c.JSON(http.StatusOK, dto.ToListCurrencyResponse(currencies))
-}
-
-// registerCurrencyRoutes registers currency specific routes
-func registerCurrencyRoutes(group *gin.RouterGroup, dbPool *pgxpool.Pool) {
-	// Instantiate dependencies
-	currencyRepo := pgsql.NewPgxCurrencyRepository(dbPool)
-	currencyService := services.NewCurrencyService(currencyRepo)
-	currencyHandler := newCurrencyHandler(currencyService)
-
-	// Define routes
-	currencies := group.Group("/currencies")
-	{
-		currencies.POST("/", currencyHandler.createCurrency)
-		currencies.GET("/", currencyHandler.listCurrencies)
-		currencies.GET("/:currencyCode", currencyHandler.getCurrency)
+	// Convert domain currencies to DTOs
+	currencyResponses := make([]dto.CurrencyResponse, len(currencies))
+	for i, curr := range currencies {
+		currencyResponses[i] = dto.ToCurrencyResponse(&curr) // Corrected: ToCurrencyResponse returns value
 	}
+
+	logger.Info("Currencies listed successfully", slog.Int("count", len(currencyResponses)))
+	// Return the slice directly as ListCurrenciesResponse might not exist
+	c.JSON(http.StatusOK, currencyResponses) // Return slice directly
 }

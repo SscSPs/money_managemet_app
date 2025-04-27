@@ -33,6 +33,14 @@ type AccountResponse struct {
 	LastUpdatedBy   string             `json:"lastUpdatedBy"`
 }
 
+// UpdateAccountRequest defines the data allowed for updating an account.
+// Use pointers to distinguish between zero-value updates and fields not provided.
+type UpdateAccountRequest struct {
+	Name        *string `json:"name"`        // Optional: New name
+	Description *string `json:"description"` // Optional: New description
+	IsActive    *bool   `json:"isActive"`    // Optional: New active status
+}
+
 // ToAccountResponse converts a domain.Account to AccountResponse DTO
 func ToAccountResponse(acc *domain.Account) AccountResponse {
 	return AccountResponse{

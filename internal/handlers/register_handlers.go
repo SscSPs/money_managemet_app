@@ -2,37 +2,53 @@ package handlers
 
 import (
 	"github.com/SscSPs/money_managemet_app/cmd/docs"
+	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/SscSPs/money_managemet_app/internal/platform/config"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-// RegisterRoutes sets up all application routes
-func RegisterRoutes(r *gin.Engine, cfg *config.Config, dbPool *pgxpool.Pool) {
-	// Register public authentication routes
-	registerAuthRoutes(r, cfg)
+// RegisterRoutes sets up all application routes, injecting dependencies
+func RegisterRoutes(
+	r *gin.Engine,
+	cfg *config.Config,
+	userService services.UserService, // Renamed for clarity
+	accountService services.AccountService,
+	currencyService services.CurrencyService,
+	exchangeRateService services.ExchangeRateService,
+	journalService services.JournalService,
+) {
+	// Register public authentication routes (Auth might need its own service later)
+	registerAuthRoutes(r, cfg, userService) // Auth handler likely needs UserService
 
-	// Setup API v1 routes with Auth Middleware
-	setupAPIV1Routes(r, cfg, dbPool)
+	// Setup API v1 routes with Auth Middleware, passing services
+	setupAPIV1Routes(r, cfg, userService, accountService, currencyService, exchangeRateService, journalService)
 
 	// Swagger routes (typically public or conditionally available)
 	setupSwaggerRoutes(r, cfg)
 }
 
 // setupAPIV1Routes configures the /api/v1 group and delegates to specific entity route registrations
-func setupAPIV1Routes(r *gin.Engine, cfg *config.Config, dbPool *pgxpool.Pool) {
+func setupAPIV1Routes(
+	r *gin.Engine,
+	cfg *config.Config,
+	userService services.UserService,
+	accountService services.AccountService,
+	currencyService services.CurrencyService,
+	exchangeRateService services.ExchangeRateService,
+	journalService services.JournalService,
+) {
 	// Apply AuthMiddleware to the entire v1 group
 	v1 := r.Group("/api/v1", middleware.AuthMiddleware(cfg.JWTSecret))
 
-	// Delegate route registration to specific handlers
-	registerJournalRoutes(v1, dbPool)
-	registerAccountRoutes(v1, dbPool)
-	registerUserRoutes(v1, dbPool)
-	registerCurrencyRoutes(v1, dbPool)
-	registerExchangeRateRoutes(v1, dbPool)
+	// Delegate route registration to specific handlers, passing required services
+	registerJournalRoutes(v1, journalService)           // Pass JournalService
+	registerAccountRoutes(v1, accountService)           // Pass AccountService
+	registerUserRoutes(v1, userService)                 // Pass UserService
+	registerCurrencyRoutes(v1, currencyService)         // Pass CurrencyService
+	registerExchangeRateRoutes(v1, exchangeRateService) // Pass ExchangeRateService
 }
 
 // setupSwaggerRoutes configures the swagger documentation routes

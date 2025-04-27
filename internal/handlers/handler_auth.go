@@ -1,101 +1,164 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/SscSPs/money_managemet_app/internal/middleware"
-	"github.com/SscSPs/money_managemet_app/internal/platform/config" // For JWT config
+	// For error checking
+
+	"github.com/SscSPs/money_managemet_app/internal/core/services"
+	"github.com/SscSPs/money_managemet_app/internal/dto"
+	"github.com/SscSPs/money_managemet_app/internal/middleware" // For logger/user context
+
+	// "github.com/SscSPs/money_managemet_app/internal/models" // Models not needed directly here
+	"github.com/SscSPs/money_managemet_app/internal/platform/config" // For JWT config access
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	// "github.com/google/uuid" // Use actual user ID from service
 )
 
 // AuthHandler handles authentication related requests.
 type AuthHandler struct {
-	cfg *config.Config // Needs config for JWT secret and expiry
+	userService services.UserService
+	jwtSecret   string
+	jwtDuration time.Duration
 }
 
-// newAuthHandler creates a new AuthHandler.
-func newAuthHandler(cfg *config.Config) *AuthHandler {
-	return &AuthHandler{cfg: cfg}
+// NewAuthHandler creates a new AuthHandler.
+func NewAuthHandler(us services.UserService, cfg *config.Config) *AuthHandler {
+	return &AuthHandler{
+		userService: us,
+		jwtSecret:   cfg.JWTSecret,         // Store secret
+		jwtDuration: cfg.JWTExpiryDuration, // Store duration
+	}
 }
 
-// LoginRequest represents the expected login payload (simplified).
+// LoginRequest defines the structure for the login request body.
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
 }
 
-// LoginResponse represents the successful login response payload.
+// LoginResponse defines the structure for the login response body.
 type LoginResponse struct {
 	Token string `json:"token"`
 }
 
-// login godoc
-// @Summary Log in a user
-// @Description Authenticates a user (dummy implementation) and returns a JWT.
+// ErrorResponse is a generic error response structure for handlers.
+// Moved here or define globally if used by other handlers.
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+// registerAuthRoutes sets up the routes for authentication.
+// Pass the instantiated handler.
+func registerAuthRoutes(rg *gin.Engine, cfg *config.Config, userService services.UserService) {
+	h := NewAuthHandler(userService, cfg) // Pass full config to extract details
+
+	auth := rg.Group("/auth")
+	{
+		auth.POST("/login", h.Login)
+		auth.POST("/register", h.Register)
+	}
+}
+
+// Login godoc
+// @Summary User login
+// @Description Authenticates a user and returns a JWT token.
 // @Tags auth
-// @Accept  json
-// @Produce  json
-// @Param   credentials body LoginRequest true "User credentials"
+// @Accept json
+// @Produce json
+// @Param login body LoginRequest true "Login Credentials"
 // @Success 200 {object} LoginResponse
-// @Failure 400 {object} string "Invalid input"
-// @Failure 401 {object} string "Invalid credentials (dummy check)"
-// @Failure 500 {object} string "Internal server error (token generation failed)"
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /auth/login [post]
-func (h *AuthHandler) login(c *gin.Context) {
-	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+func (h *AuthHandler) Login(c *gin.Context) {
 	var req LoginRequest
-
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Warn("Failed to bind JSON for Login", "error", err.Error())
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid request body"})
 		return
 	}
 
-	// Dummy authentication - replace with actual user lookup and password check
-	// IMPORTANT: Never log passwords in production!
-	if req.Username != "testuser" || req.Password != "password" {
-		logger.Warn("Invalid login attempt", "username", req.Username)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+	// TODO: The UserService currently lacks authentication logic.
+	// Assuming a hypothetical AuthenticateUser method exists for now.
+	// user, err := h.userService.AuthenticateUser(c.Request.Context(), req.Username, req.Password)
+	// if err != nil {
+	// 	if errors.Is(err, apperrors.ErrAuthentication) || errors.Is(err, apperrors.ErrNotFound) {
+	// 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid username or password"})
+	// 	} else {
+	// 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Login failed"})
+	// 	}
+	// 	return
+	// }
+
+	// --- Placeholder Login Success ---
+	// Replace with actual user ID after implementing authentication in UserService
+	dummyUserID := "41181354-419f-4847-8405-b10dfd04ccdf"
+	if req.Username != "testuser" || req.Password != "password" { // Basic check for placeholder
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid username or password (placeholder check)"})
 		return
 	}
+	// --- End Placeholder ---
 
-	// --- Dummy User Info (Replace with actual user ID from DB lookup) ---
-	dummyUserID := "41181354-419f-4847-8405-b10dfd04ccdf" // Example user ID
-	// ----------------------------------------------------------------------
-
-	// Create JWT claims
+	// Generate JWT Token
 	claims := jwt.RegisteredClaims{
 		Issuer:    "mma-backend",
-		Subject:   dummyUserID,
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(h.cfg.JWTExpiryDuration)),
+		Subject:   dummyUserID, // Use actual user.UserID here
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(h.jwtDuration)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 		NotBefore: jwt.NewNumericDate(time.Now()),
 	}
-
-	// Create token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	// Sign token
-	tsignedString, err := token.SignedString([]byte(h.cfg.JWTSecret))
+	tsignedString, err := token.SignedString([]byte(h.jwtSecret))
 	if err != nil {
-		logger.Error("Failed to sign JWT token", "error", err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		logger := middleware.GetLoggerFromCtx(c.Request.Context())
+		logger.Error("Failed to sign JWT token", slog.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to generate token"})
 		return
 	}
 
-	logger.Info("User logged in successfully", "user_id", dummyUserID)
 	c.JSON(http.StatusOK, LoginResponse{Token: tsignedString})
 }
 
-// registerAuthRoutes registers authentication related routes (/auth)
-func registerAuthRoutes(engine *gin.Engine, cfg *config.Config) {
-	authHandler := newAuthHandler(cfg)
-
-	authRoutes := engine.Group("/auth")
-	{
-		authRoutes.POST("/login", authHandler.login)
-		// TODO: Add refresh token route later
+// Register godoc
+// @Summary Register new user
+// @Description Creates a new user account.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param register body dto.CreateUserRequest true "User Registration Info"
+// @Success 201 {object} dto.UserResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse "Conflict (e.g., username exists)"
+// @Failure 500 {object} ErrorResponse
+// @Router /auth/register [post]
+func (h *AuthHandler) Register(c *gin.Context) {
+	var req dto.CreateUserRequest // Use DTO for request binding
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid request body: " + err.Error()})
+		return
 	}
+
+	// UserID for creation - use a system identifier or similar for self-registration
+	creatorUserID := "SYSTEM_SELF_REGISTER"
+
+	// Call the user service to create the user
+	newUser, err := h.userService.CreateUser(c.Request.Context(), req, creatorUserID)
+	if err != nil {
+		logger := middleware.GetLoggerFromCtx(c.Request.Context())
+		// TODO: Add specific check for duplicate errors if the repo/service supports it
+		// if errors.Is(err, apperrors.ErrDuplicate) {
+		// 	 c.JSON(http.StatusConflict, ErrorResponse{Error: "User already exists"})
+		// 	 return
+		// }
+		logger.Error("Failed to register user", slog.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to register user"})
+		return
+	}
+
+	// Return the created user details (using UserResponse DTO)
+	c.JSON(http.StatusCreated, dto.ToUserResponse(newUser))
 }

@@ -278,30 +278,68 @@ func toDomainAccountSlice(ms []models.Account) []domain.Account {
 	return ds
 }
 
+// UpdateAccount updates an existing account in the database.
+func (r *PgxAccountRepository) UpdateAccount(ctx context.Context, account domain.Account) error {
+	modelAcc := toModelAccount(account) // Convert domain to model
+
+	query := `
+		UPDATE accounts
+		SET name = $2, description = $3, is_active = $4, last_updated_at = $5, last_updated_by = $6
+		WHERE account_id = $1;
+	`
+	// Note: We are not allowing updates to account_type, currency_code, parent_account_id, created_at, created_by here.
+
+	cmdTag, err := r.pool.Exec(ctx, query,
+		modelAcc.AccountID,
+		modelAcc.Name,
+		modelAcc.Description,
+		modelAcc.IsActive,
+		modelAcc.LastUpdatedAt,
+		modelAcc.LastUpdatedBy,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to execute update account %s: %w", modelAcc.AccountID, err)
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		// If no rows were affected, the account ID likely didn't exist.
+		// This check might be redundant if the service layer already fetched the account.
+		return apperrors.ErrNotFound
+	}
+
+	return nil
+}
+
 // DeactivateAccount marks an account as inactive.
 func (r *PgxAccountRepository) DeactivateAccount(ctx context.Context, accountID string, userID string, now time.Time) error {
 	query := `
-        UPDATE accounts
-        SET is_active = FALSE, last_updated_at = $1, last_updated_by = $2
-        WHERE account_id = $3 AND is_active = TRUE;
-    `
-	cmdTag, err := r.pool.Exec(ctx, query, now, userID, accountID)
+		UPDATE accounts
+		SET is_active = FALSE, last_updated_at = $2, last_updated_by = $3
+		WHERE account_id = $1 AND is_active = TRUE;
+	` // Only update if it was active
+
+	cmdTag, err := r.pool.Exec(ctx, query, accountID, now, userID)
 	if err != nil {
-		return fmt.Errorf("failed to execute deactivate account query: %w", err)
+		return fmt.Errorf("failed to execute deactivate account %s: %w", accountID, err)
 	}
+
 	if cmdTag.RowsAffected() == 0 {
-		// Check if the account exists at all to differentiate errors
+		// If no rows affected, it could be because the account doesn't exist OR it was already inactive.
+		// We need to check which case it is.
 		_, findErr := r.FindAccountByID(ctx, accountID)
-		if findErr != nil {
-			if errors.Is(findErr, apperrors.ErrNotFound) {
-				return apperrors.ErrNotFound // Account doesn't exist
-			}
-			// Some other error finding the account
-			return fmt.Errorf("failed check account existence during deactivate: %w", findErr)
+		if errors.Is(findErr, apperrors.ErrNotFound) {
+			// Account truly doesn't exist.
+			return apperrors.ErrNotFound
+		} else if findErr != nil {
+			// Some other error finding the account, return that.
+			return fmt.Errorf("failed to check account status after deactivation attempt for %s: %w", accountID, findErr)
 		}
-		// Account exists but was already inactive
-		return fmt.Errorf("%w: account %s already inactive", apperrors.ErrValidation, accountID)
+		// If FindAccountByID succeeded, it means the account exists but was already inactive.
+		// Return a validation/conflict error to indicate this.
+		return apperrors.ErrValidation // Or potentially apperrors.ErrConflict
 	}
+
 	return nil
 }
 

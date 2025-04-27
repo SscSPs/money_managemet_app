@@ -99,14 +99,70 @@ func (s *AccountService) ListAccounts(ctx context.Context, limit int, offset int
 	return accounts, nil
 }
 
-// DeactivateAccount marks an account as inactive.
+// UpdateAccount updates specific fields of an existing account.
+func (s *AccountService) UpdateAccount(ctx context.Context, accountID string, req dto.UpdateAccountRequest, userID string) (*domain.Account, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+
+	// Fetch the existing account
+	account, err := s.AccountRepository.FindAccountByID(ctx, accountID)
+	if err != nil {
+		// Propagate error (including ErrNotFound)
+		if !errors.Is(err, apperrors.ErrNotFound) {
+			logger.Error("Failed to find account by ID for update", slog.String("error", err.Error()), slog.String("account_id", accountID))
+		}
+		return nil, err
+	}
+
+	// TODO: Authorization Check - Does userID have permission to update this account?
+	// (e.g., check if account.CreatedBy == userID, or based on roles/permissions)
+
+	// Apply updates from the request DTO if fields are provided
+	updated := false
+	if req.Name != nil {
+		account.Name = *req.Name
+		updated = true
+	}
+	if req.Description != nil {
+		account.Description = *req.Description
+		updated = true
+	}
+	if req.IsActive != nil {
+		account.IsActive = *req.IsActive
+		updated = true
+	}
+
+	// If no fields were updated, just return the fetched account
+	if !updated {
+		logger.Debug("No fields provided for account update", slog.String("account_id", accountID))
+		return account, nil
+	}
+
+	// Update audit fields
+	now := time.Now()
+	account.LastUpdatedAt = now
+	account.LastUpdatedBy = userID
+
+	// Persist changes using the newly added repository method
+	err = s.AccountRepository.UpdateAccount(ctx, *account) // Correctly calling UpdateAccount
+	if err != nil {
+		logger.Error("Failed to update account in repository", slog.String("error", err.Error()), slog.String("account_id", accountID))
+		return nil, err
+	}
+
+	logger.Info("Account updated successfully in service", slog.String("account_id", account.AccountID))
+	return account, nil
+}
+
+// DeactivateAccount marks an account as inactive (soft delete).
+// Method name reverted to match repository interface and original implementation.
 func (s *AccountService) DeactivateAccount(ctx context.Context, accountID string, userID string) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
+
+	// We could add checks here (e.g., check balance is zero before deactivating?)
+	// Fetching the account first might be useful for checks, but the repo method handles not found.
+
 	now := time.Now()
-
-	// We could add checks here (e.g., check balance is zero before deactivating? PRD doesn't specify)
-
-	err := s.AccountRepository.DeactivateAccount(ctx, accountID, userID, now)
+	err := s.AccountRepository.DeactivateAccount(ctx, accountID, userID, now) // Correctly calling DeactivateAccount
 	if err != nil {
 		if !errors.Is(err, apperrors.ErrNotFound) && !errors.Is(err, apperrors.ErrValidation) {
 			// Log unexpected repository errors
@@ -120,4 +176,19 @@ func (s *AccountService) DeactivateAccount(ctx context.Context, accountID string
 	return nil
 }
 
-// TODO: Add UpdateAccount method later
+/* // Removed the incorrect DeleteAccount implementation
+// DeleteAccount marks an account as inactive (soft delete).
+// Renamed from DeactivateAccount for consistency with handler.
+func (s *AccountService) DeleteAccount(ctx context.Context, accountID string, userID string) error {
+	...
+}
+*/
+
+/* // Commenting out the old DeactivateAccount - now handled above
+// DeactivateAccount marks an account as inactive.
+func (s *AccountService) DeactivateAccount(ctx context.Context, accountID string, userID string) error {
+	...
+}
+*/
+
+// Remove the outdated TODO

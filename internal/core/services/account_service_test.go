@@ -52,6 +52,11 @@ func (m *MockAccountRepository) ListAccounts(ctx context.Context, limit int, off
 	return args.Get(0).([]domain.Account), args.Error(1)
 }
 
+func (m *MockAccountRepository) UpdateAccount(ctx context.Context, account domain.Account) error {
+	args := m.Called(ctx, account)
+	return args.Error(0)
+}
+
 func (m *MockAccountRepository) DeactivateAccount(ctx context.Context, accountID string, userID string, now time.Time) error {
 	args := m.Called(ctx, accountID, userID, now)
 	return args.Error(0)
@@ -322,6 +327,211 @@ func (suite *AccountServiceTestSuite) TestDeactivateAccount_RepoError() {
 
 	// Assertions
 	suite.Require().Error(err)
+	suite.ErrorIs(err, expectedErr)
+
+	suite.mockRepo.AssertExpectations(suite.T())
+}
+
+func (suite *AccountServiceTestSuite) TestUpdateAccount_Success_NameAndDescription() {
+	ctx := context.Background()
+	testID := uuid.NewString()
+	updaterUserID := uuid.NewString()
+	initialTime := time.Now().Add(-time.Hour) // Use a distinct initial time
+
+	originalAccount := &domain.Account{
+		AccountID:    testID,
+		Name:         "Original Name",
+		Description:  "Original Desc",
+		AccountType:  domain.Asset,
+		CurrencyCode: "USD",
+		IsActive:     true,
+		AuditFields: domain.AuditFields{ // Correctly initialize embedded struct
+			CreatedBy:     "creator",
+			LastUpdatedBy: "creator",
+			CreatedAt:     initialTime,
+			LastUpdatedAt: initialTime, // Initialize LastUpdatedAt
+		},
+	}
+
+	newName := "Updated Name"
+	newDesc := "Updated Desc"
+	req := dto.UpdateAccountRequest{
+		Name:        &newName,
+		Description: &newDesc,
+		// IsActive not provided
+	}
+
+	// Expect FindAccountByID to be called first
+	suite.mockRepo.On("FindAccountByID", ctx, testID).Return(originalAccount, nil).Once()
+
+	// Expect UpdateAccount to be called with the updated account
+	suite.mockRepo.On("UpdateAccount", ctx, mock.MatchedBy(func(acc domain.Account) bool {
+		return acc.AccountID == testID &&
+			acc.Name == newName &&
+			acc.Description == newDesc &&
+			acc.IsActive == originalAccount.IsActive && // Should remain unchanged
+			acc.LastUpdatedBy == updaterUserID &&
+			acc.LastUpdatedAt.After(initialTime) // Check that the time was updated
+	})).Return(nil).Once()
+
+	// Call the service method
+	updatedAccount, err := suite.service.UpdateAccount(ctx, testID, req, updaterUserID)
+
+	// Assertions
+	suite.Require().NoError(err)
+	suite.Require().NotNil(updatedAccount)
+	suite.Equal(testID, updatedAccount.AccountID)
+	suite.Equal(newName, updatedAccount.Name)
+	suite.Equal(newDesc, updatedAccount.Description)
+	suite.True(updatedAccount.IsActive) // Unchanged
+	suite.Equal(updaterUserID, updatedAccount.LastUpdatedBy)
+	suite.True(updatedAccount.LastUpdatedAt.After(initialTime)) // Verify time increased
+
+	suite.mockRepo.AssertExpectations(suite.T())
+}
+
+func (suite *AccountServiceTestSuite) TestUpdateAccount_Success_IsActive() {
+	ctx := context.Background()
+	testID := uuid.NewString()
+	updaterUserID := uuid.NewString()
+
+	originalAccount := &domain.Account{
+		AccountID:    testID,
+		Name:         "To Deactivate",
+		AccountType:  domain.Liability,
+		CurrencyCode: "GBP",
+		IsActive:     true, // Start active
+	}
+
+	newIsActive := false
+	req := dto.UpdateAccountRequest{
+		IsActive: &newIsActive,
+	}
+
+	// Expect FindAccountByID
+	suite.mockRepo.On("FindAccountByID", ctx, testID).Return(originalAccount, nil).Once()
+
+	// Expect UpdateAccount with IsActive set to false
+	suite.mockRepo.On("UpdateAccount", ctx, mock.MatchedBy(func(acc domain.Account) bool {
+		return acc.AccountID == testID && !acc.IsActive && acc.LastUpdatedBy == updaterUserID
+	})).Return(nil).Once()
+
+	// Call the service method
+	updatedAccount, err := suite.service.UpdateAccount(ctx, testID, req, updaterUserID)
+
+	// Assertions
+	suite.Require().NoError(err)
+	suite.Require().NotNil(updatedAccount)
+	suite.False(updatedAccount.IsActive)
+	suite.Equal(updaterUserID, updatedAccount.LastUpdatedBy)
+
+	suite.mockRepo.AssertExpectations(suite.T())
+}
+
+func (suite *AccountServiceTestSuite) TestUpdateAccount_NoChanges() {
+	ctx := context.Background()
+	testID := uuid.NewString()
+	updaterUserID := uuid.NewString()
+
+	originalAccount := &domain.Account{
+		AccountID: testID,
+		Name:      "No Change",
+		IsActive:  true,
+	}
+
+	req := dto.UpdateAccountRequest{ // Empty request, no pointers set
+	}
+
+	// Expect FindAccountByID only
+	suite.mockRepo.On("FindAccountByID", ctx, testID).Return(originalAccount, nil).Once()
+
+	// DO NOT expect UpdateAccount to be called
+
+	// Call the service method
+	updatedAccount, err := suite.service.UpdateAccount(ctx, testID, req, updaterUserID)
+
+	// Assertions
+	suite.Require().NoError(err)
+	suite.Require().NotNil(updatedAccount)
+	suite.Equal(originalAccount, updatedAccount) // Should return the original unmodified account
+
+	suite.mockRepo.AssertExpectations(suite.T())
+	// Verify UpdateAccount was NOT called
+	suite.mockRepo.AssertNotCalled(suite.T(), "UpdateAccount", mock.Anything, mock.Anything)
+}
+
+func (suite *AccountServiceTestSuite) TestUpdateAccount_NotFound() {
+	ctx := context.Background()
+	testID := uuid.NewString()
+	updaterUserID := uuid.NewString()
+	newName := "Doesn't matter"
+	req := dto.UpdateAccountRequest{Name: &newName}
+
+	// Expect FindAccountByID to return ErrNotFound
+	suite.mockRepo.On("FindAccountByID", ctx, testID).Return(nil, apperrors.ErrNotFound).Once()
+
+	// Call the service method
+	updatedAccount, err := suite.service.UpdateAccount(ctx, testID, req, updaterUserID)
+
+	// Assertions
+	suite.Require().Error(err)
+	suite.Nil(updatedAccount)
+	suite.ErrorIs(err, apperrors.ErrNotFound)
+
+	suite.mockRepo.AssertExpectations(suite.T())
+	suite.mockRepo.AssertNotCalled(suite.T(), "UpdateAccount", mock.Anything, mock.Anything)
+}
+
+func (suite *AccountServiceTestSuite) TestUpdateAccount_FindError() {
+	ctx := context.Background()
+	testID := uuid.NewString()
+	updaterUserID := uuid.NewString()
+	newName := "Doesn't matter"
+	req := dto.UpdateAccountRequest{Name: &newName}
+	expectedErr := assert.AnError
+
+	// Expect FindAccountByID to return a generic error
+	suite.mockRepo.On("FindAccountByID", ctx, testID).Return(nil, expectedErr).Once()
+
+	// Call the service method
+	updatedAccount, err := suite.service.UpdateAccount(ctx, testID, req, updaterUserID)
+
+	// Assertions
+	suite.Require().Error(err)
+	suite.Nil(updatedAccount)
+	suite.ErrorIs(err, expectedErr)
+
+	suite.mockRepo.AssertExpectations(suite.T())
+	suite.mockRepo.AssertNotCalled(suite.T(), "UpdateAccount", mock.Anything, mock.Anything)
+}
+
+func (suite *AccountServiceTestSuite) TestUpdateAccount_UpdateError() {
+	ctx := context.Background()
+	testID := uuid.NewString()
+	updaterUserID := uuid.NewString()
+
+	originalAccount := &domain.Account{
+		AccountID: testID,
+		Name:      "Update Fail",
+		IsActive:  true,
+	}
+
+	newName := "Will Fail"
+	req := dto.UpdateAccountRequest{Name: &newName}
+	expectedErr := assert.AnError
+
+	// Expect FindAccountByID to succeed
+	suite.mockRepo.On("FindAccountByID", ctx, testID).Return(originalAccount, nil).Once()
+
+	// Expect UpdateAccount to be called and return an error
+	suite.mockRepo.On("UpdateAccount", ctx, mock.AnythingOfType("domain.Account")).Return(expectedErr).Once()
+
+	// Call the service method
+	updatedAccount, err := suite.service.UpdateAccount(ctx, testID, req, updaterUserID)
+
+	// Assertions
+	suite.Require().Error(err)
+	suite.Nil(updatedAccount)
 	suite.ErrorIs(err, expectedErr)
 
 	suite.mockRepo.AssertExpectations(suite.T())
