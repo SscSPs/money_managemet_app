@@ -61,7 +61,7 @@ func main() {
 	// Repositories
 	accountRepo := pgsql.NewPgxAccountRepository(dbPool)
 	currencyRepo := pgsql.NewPgxCurrencyRepository(dbPool)
-	exchangeRateRepo := pgsql.NewExchangeRateRepository(dbPool)
+	exchangeRateRepo := pgsql.NewPgxExchangeRateRepository(dbPool)
 	userRepo := pgsql.NewPgxUserRepository(dbPool)
 	journalRepo := pgsql.NewPgxJournalRepository(dbPool)
 
