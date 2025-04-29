@@ -1987,8 +1987,7 @@
             "required": [
                 "currencyCode",
                 "name",
-                "symbol",
-                "userID"
+                "symbol"
             ],
             "properties": {
                 "currencyCode": {
@@ -1998,9 +1997,6 @@
                     "type": "string"
                 },
                 "symbol": {
-                    "type": "string"
-                },
-                "userID": {
                     "type": "string"
                 }
             }

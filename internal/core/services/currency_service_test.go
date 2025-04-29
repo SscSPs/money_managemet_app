@@ -61,10 +61,11 @@ func (suite *CurrencyServiceTestSuite) TestCreateCurrency_Success() {
 		CurrencyCode: "TST",
 		Symbol:       "T",
 		Name:         "Test Currency",
-		UserID:       creatorUserID,
 	}
 
-	suite.mockRepo.On("SaveCurrency", ctx, mock.AnythingOfType("domain.Currency")).Return(nil).Once()
+	suite.mockRepo.On("SaveCurrency", ctx, mock.MatchedBy(func(c domain.Currency) bool {
+		return c.CurrencyCode == req.CurrencyCode && c.Symbol == req.Symbol && c.Name == req.Name && c.CreatedBy == creatorUserID && c.LastUpdatedBy == creatorUserID
+	})).Return(nil).Once()
 
 	currency, err := suite.service.CreateCurrency(ctx, req, creatorUserID)
 
@@ -81,7 +82,11 @@ func (suite *CurrencyServiceTestSuite) TestCreateCurrency_Success() {
 func (suite *CurrencyServiceTestSuite) TestCreateCurrency_SaveError() {
 	ctx := context.Background()
 	creatorUserID := uuid.NewString()
-	req := dto.CreateCurrencyRequest{ /* ... */ }
+	req := dto.CreateCurrencyRequest{
+		CurrencyCode: "ERR",
+		Symbol:       "E",
+		Name:         "Error Currency",
+	}
 	expectedErr := assert.AnError
 
 	suite.mockRepo.On("SaveCurrency", ctx, mock.AnythingOfType("domain.Currency")).Return(expectedErr).Once()

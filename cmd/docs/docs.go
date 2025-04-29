@@ -1993,8 +1993,7 @@ const docTemplate = `{
             "required": [
                 "currencyCode",
                 "name",
-                "symbol",
-                "userID"
+                "symbol"
             ],
             "properties": {
                 "currencyCode": {
@@ -2004,9 +2003,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "symbol": {
-                    "type": "string"
-                },
-                "userID": {
                     "type": "string"
                 }
             }

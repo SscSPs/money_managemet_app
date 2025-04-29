@@ -9,7 +9,6 @@ type CreateCurrencyRequest struct {
 	CurrencyCode string `json:"currencyCode" binding:"required,uppercase,len=3"`
 	Symbol       string `json:"symbol" binding:"required"`
 	Name         string `json:"name" binding:"required"`
-	UserID       string `json:"userID" binding:"required"`
 }
 
 // CurrencyResponse defines the data returned for a currency.

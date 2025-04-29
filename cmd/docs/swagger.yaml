@@ -106,13 +106,10 @@ definitions:
         type: string
       symbol:
         type: string
-      userID:
-        type: string
     required:
     - currencyCode
     - name
     - symbol
-    - userID
     type: object
   dto.CreateExchangeRateRequest:
     properties:
