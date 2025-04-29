@@ -25,8 +25,8 @@ func newWorkplaceHandler(ws *services.WorkplaceService) *workplaceHandler {
 }
 
 // registerWorkplaceRoutes registers routes related to workplaces and their members.
-// It now also registers JOURNAL routes nested under a specific workplace.
-func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService services.WorkplaceService, journalService services.JournalService) {
+// It now also registers JOURNAL and ACCOUNT routes nested under a specific workplace.
+func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService services.WorkplaceService, journalService services.JournalService, accountService services.AccountService) {
 	h := newWorkplaceHandler(&workplaceService)
 
 	// Routes for managing workplaces themselves (e.g., creating, listing user's workplaces)
@@ -55,6 +55,10 @@ func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService services.Work
 		// -- NESTED JOURNAL ROUTES --
 		// Register journal routes relative to this specific workplace group
 		registerJournalRoutes(workplaceSpecific, journalService) // Pass the group and service
+
+		// -- NESTED ACCOUNT ROUTES --
+		// Register account routes relative to this specific workplace group
+		registerAccountRoutes(workplaceSpecific, accountService) // Pass the group and service
 	}
 }
 
