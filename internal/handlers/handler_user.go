@@ -6,7 +6,9 @@ import (
 	"net/http"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
-	"github.com/SscSPs/money_managemet_app/internal/core/services"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services
+
+	// "github.com/SscSPs/money_managemet_app/internal/core/services" // Remove concrete services
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 
@@ -15,19 +17,19 @@ import (
 
 // userHandler handles HTTP requests related to users.
 type userHandler struct {
-	userService *services.UserService
+	userService portssvc.UserService // Use interface
 }
 
 // newUserHandler creates a new userHandler.
-func newUserHandler(us *services.UserService) *userHandler {
+func newUserHandler(us portssvc.UserService) *userHandler { // Use interface
 	return &userHandler{
 		userService: us,
 	}
 }
 
 // registerUserRoutes registers routes related to users.
-func registerUserRoutes(rg *gin.RouterGroup, userService services.UserService) {
-	h := newUserHandler(&userService) // Inject service
+func registerUserRoutes(rg *gin.RouterGroup, userService portssvc.UserService) { // Use interface
+	h := newUserHandler(userService) // Pass interface
 
 	users := rg.Group("/users")
 	{
@@ -74,7 +76,7 @@ func (h *userHandler) createUser(c *gin.Context) {
 	logger = logger.With(slog.String("creator_user_id", creatorUserID))
 	logger.Info("Received request to create user", slog.String("user_name", req.Name))
 
-	newUser, err := h.userService.CreateUser(c.Request.Context(), req, creatorUserID)
+	newUser, err := h.userService.CreateUser(c.Request.Context(), req)
 	if err != nil {
 		// TODO: Handle specific errors like duplicate username/email if implemented
 		logger.Error("Failed to create user in service", slog.String("error", err.Error()))
@@ -171,14 +173,20 @@ func (h *userHandler) listUsers(c *gin.Context) {
 
 	logger.Info("Received request to list users", slog.Int("limit", params.Limit), slog.Int("offset", params.Offset))
 
-	resp, err := h.userService.ListUsers(c.Request.Context(), params)
+	users, err := h.userService.ListUsers(c.Request.Context(), params.Limit, params.Offset)
 	if err != nil {
 		logger.Error("Failed to list users from service", slog.String("error", err.Error()))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list users"})
 		return
 	}
 
-	logger.Info("Users listed successfully", slog.Int("count", len(resp.Users)))
+	logger.Info("Users listed successfully", slog.Int("count", len(users)))
+	// Convert []domain.User to dto.ListUsersResponse
+	userResponses := make([]dto.UserResponse, len(users))
+	for i := range users {
+		userResponses[i] = dto.ToUserResponse(&users[i]) // Use address of user in slice
+	}
+	resp := dto.ListUsersResponse{Users: userResponses}
 	c.JSON(http.StatusOK, resp)
 }
 

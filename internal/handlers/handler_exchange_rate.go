@@ -6,7 +6,9 @@ import (
 	"net/http"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
-	"github.com/SscSPs/money_managemet_app/internal/core/services"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services
+
+	// "github.com/SscSPs/money_managemet_app/internal/core/services" // Remove concrete services
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
@@ -15,19 +17,19 @@ import (
 
 // exchangeRateHandler handles HTTP requests related to exchange rates.
 type exchangeRateHandler struct {
-	exchangeRateService *services.ExchangeRateService
+	exchangeRateService portssvc.ExchangeRateService // Use interface
 }
 
 // newExchangeRateHandler creates a new exchangeRateHandler.
-func newExchangeRateHandler(ers *services.ExchangeRateService) *exchangeRateHandler {
+func newExchangeRateHandler(ers portssvc.ExchangeRateService) *exchangeRateHandler { // Use interface
 	return &exchangeRateHandler{
 		exchangeRateService: ers,
 	}
 }
 
 // registerExchangeRateRoutes registers routes related to exchange rates.
-func registerExchangeRateRoutes(rg *gin.RouterGroup, exchangeRateService services.ExchangeRateService) {
-	h := newExchangeRateHandler(&exchangeRateService) // Inject service
+func registerExchangeRateRoutes(rg *gin.RouterGroup, exchangeRateService portssvc.ExchangeRateService) { // Use interface
+	h := newExchangeRateHandler(exchangeRateService) // Pass interface
 
 	rates := rg.Group("/exchange-rates")
 	{

@@ -256,6 +256,13 @@ definitions:
           $ref: '#/definitions/dto.JournalResponse'
         type: array
     type: object
+  dto.ListTransactionsResponse:
+    properties:
+      transactions:
+        items:
+          $ref: '#/definitions/dto.TransactionResponse'
+        type: array
+    type: object
   dto.ListUsersResponse:
     properties:
       users:
@@ -1223,6 +1230,73 @@ paths:
       security:
       - BearerAuth: []
       summary: Update account in workplace
+      tags:
+      - accounts
+  /workplaces/{workplace_id}/accounts/{id}/transactions:
+    get:
+      description: Retrieves a paginated list of transactions associated with a specific
+        account within a workplace.
+      parameters:
+      - description: Workplace ID
+        in: path
+        name: workplace_id
+        required: true
+        type: string
+      - description: Account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - default: 20
+        description: Limit number of results
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset for pagination
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ListTransactionsResponse'
+        "400":
+          description: Missing Workplace/Account ID or invalid query params
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden (User not part of workplace)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Account not found in this workplace
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to list transactions
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List transactions for an account in a workplace
       tags:
       - accounts
   /workplaces/{workplace_id}/journals:

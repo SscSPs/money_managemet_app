@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"github.com/SscSPs/money_managemet_app/cmd/docs"
-	"github.com/SscSPs/money_managemet_app/internal/core/services"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services import
+
+	// "github.com/SscSPs/money_managemet_app/internal/core/services" // Remove concrete services import
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/SscSPs/money_managemet_app/internal/platform/config"
 	"github.com/gin-gonic/gin"
@@ -10,21 +12,21 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-// RegisterRoutes sets up all application routes, injecting dependencies
+// RegisterRoutes sets up all application routes, injecting dependencies using interfaces
 func RegisterRoutes(
 	r *gin.Engine,
 	cfg *config.Config,
-	userService services.UserService, // Renamed for clarity
-	accountService services.AccountService,
-	currencyService services.CurrencyService,
-	exchangeRateService services.ExchangeRateService,
-	journalService services.JournalService,
-	workplaceService services.WorkplaceService,
+	userService portssvc.UserService, // Use interface type
+	accountService portssvc.AccountService, // Use interface type
+	currencyService portssvc.CurrencyService, // Use interface type
+	exchangeRateService portssvc.ExchangeRateService, // Use interface type
+	journalService portssvc.JournalService, // Use interface type
+	workplaceService portssvc.WorkplaceService, // Use interface type
 ) {
-	// Register public authentication routes (Auth might need its own service later)
-	registerAuthRoutes(r, cfg, userService) // Auth handler likely needs UserService
+	// Register public authentication routes
+	registerAuthRoutes(r, cfg, userService)
 
-	// Setup API v1 routes with Auth Middleware, passing services
+	// Setup API v1 routes with Auth Middleware, passing service interfaces
 	setupAPIV1Routes(r, cfg, userService, accountService, currencyService, exchangeRateService, journalService, workplaceService)
 
 	// Swagger routes (typically public or conditionally available)
@@ -35,21 +37,21 @@ func RegisterRoutes(
 func setupAPIV1Routes(
 	r *gin.Engine,
 	cfg *config.Config,
-	userService services.UserService,
-	accountService services.AccountService,
-	currencyService services.CurrencyService,
-	exchangeRateService services.ExchangeRateService,
-	journalService services.JournalService,
-	workplaceService services.WorkplaceService,
+	userService portssvc.UserService, // Use interface type
+	accountService portssvc.AccountService, // Use interface type
+	currencyService portssvc.CurrencyService, // Use interface type
+	exchangeRateService portssvc.ExchangeRateService, // Use interface type
+	journalService portssvc.JournalService, // Use interface type
+	workplaceService portssvc.WorkplaceService, // Use interface type
 ) {
 	// Apply AuthMiddleware to the entire v1 group
 	v1 := r.Group("/api/v1", middleware.AuthMiddleware(cfg.JWTSecret))
 
 	// Delegate route registration to specific handlers, passing required services
-	registerUserRoutes(v1, userService)                                           // Pass UserService
-	registerCurrencyRoutes(v1, currencyService)                                   // Pass CurrencyService
-	registerExchangeRateRoutes(v1, exchangeRateService)                           // Pass ExchangeRateService
-	registerWorkplaceRoutes(v1, workplaceService, journalService, accountService) // Pass Workplace, Journal, AND Account Services
+	registerUserRoutes(v1, userService)
+	registerCurrencyRoutes(v1, currencyService)
+	registerExchangeRateRoutes(v1, exchangeRateService)
+	registerWorkplaceRoutes(v1, workplaceService, journalService, accountService)
 }
 
 // setupSwaggerRoutes configures the swagger documentation routes

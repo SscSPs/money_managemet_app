@@ -21,7 +21,8 @@ type WorkplaceService struct {
 	// userRepo portsrepo.UserRepository // Might be needed for user validation
 }
 
-func NewWorkplaceService(wr portsrepo.WorkplaceRepository) *WorkplaceService {
+// NewWorkplaceService creates a new WorkplaceService.
+func NewWorkplaceService(wr portsrepo.WorkplaceRepository) portssvc.WorkplaceService {
 	return &WorkplaceService{
 		workplaceRepo: wr,
 	}

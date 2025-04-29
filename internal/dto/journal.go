@@ -116,6 +116,19 @@ func ToTransactionResponses(ts []domain.Transaction) []TransactionResponse {
 	return list
 }
 
+// ListTransactionsParams defines query parameters for listing transactions.
+type ListTransactionsParams struct {
+	Limit  int `form:"limit,default=20"`
+	Offset int `form:"offset,default=0"`
+	// TODO: Add filtering options like date range?
+}
+
+// ListTransactionsResponse wraps a list of transaction responses.
+type ListTransactionsResponse struct {
+	Transactions []TransactionResponse `json:"transactions"`
+	// TODO: Add pagination metadata (total count, limit, offset)?
+}
+
 // --- Old DTOs (Marked for removal or refactoring) ---
 
 /*

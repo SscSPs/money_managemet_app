@@ -5,8 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/SscSPs/money_managemet_app/internal/apperrors" // Import if needed for DTO conversion
-	"github.com/SscSPs/money_managemet_app/internal/core/services"
+	"github.com/SscSPs/money_managemet_app/internal/apperrors"                    // Import if needed for DTO conversion
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services
+
+	// "github.com/SscSPs/money_managemet_app/internal/core/services" // Remove concrete services
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
@@ -15,20 +17,20 @@ import (
 
 // journalHandler handles HTTP requests related to journals.
 type journalHandler struct {
-	journalService *services.JournalService
+	journalService portssvc.JournalService // Use interface
 	// We might need AccountService too if we add balance endpoints here
 }
 
 // newJournalHandler creates a new journalHandler.
-func newJournalHandler(js *services.JournalService) *journalHandler {
+func newJournalHandler(js portssvc.JournalService) *journalHandler { // Use interface
 	return &journalHandler{
 		journalService: js,
 	}
 }
 
 // registerJournalRoutes registers routes related to journals WITHIN a workplace.
-func registerJournalRoutes(rg *gin.RouterGroup, journalService services.JournalService) {
-	h := newJournalHandler(&journalService)
+func registerJournalRoutes(rg *gin.RouterGroup, journalService portssvc.JournalService) { // Use interface
+	h := newJournalHandler(journalService) // Pass interface
 
 	// Routes are now relative to /workplaces/{workplace_id}/
 	journals := rg.Group("/journals")

@@ -8,6 +8,7 @@ import (
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/google/uuid"
@@ -67,7 +68,7 @@ func (m *MockAccountRepository) DeactivateAccount(ctx context.Context, accountID
 type AccountServiceTestSuite struct {
 	suite.Suite
 	mockRepo *MockAccountRepository
-	service  *services.AccountService
+	service  portssvc.AccountService
 }
 
 func (suite *AccountServiceTestSuite) SetupTest() {

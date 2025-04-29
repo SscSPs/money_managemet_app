@@ -6,6 +6,7 @@ import (
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/google/uuid"
@@ -44,7 +45,7 @@ func (m *MockCurrencyRepository) ListCurrencies(ctx context.Context) ([]domain.C
 type CurrencyServiceTestSuite struct {
 	suite.Suite
 	mockRepo *MockCurrencyRepository
-	service  *services.CurrencyService
+	service  portssvc.CurrencyService
 }
 
 func (suite *CurrencyServiceTestSuite) SetupTest() {

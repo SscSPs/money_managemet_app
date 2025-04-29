@@ -8,7 +8,9 @@ import (
 
 	// For uppercase conversion
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
-	"github.com/SscSPs/money_managemet_app/internal/core/services"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services
+
+	// "github.com/SscSPs/money_managemet_app/internal/core/services" // Remove concrete services
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
@@ -16,19 +18,19 @@ import (
 
 // currencyHandler handles HTTP requests related to currencies.
 type currencyHandler struct {
-	currencyService *services.CurrencyService
+	currencyService portssvc.CurrencyService // Use interface
 }
 
 // newCurrencyHandler creates a new currencyHandler.
-func newCurrencyHandler(cs *services.CurrencyService) *currencyHandler {
+func newCurrencyHandler(cs portssvc.CurrencyService) *currencyHandler { // Use interface
 	return &currencyHandler{
 		currencyService: cs,
 	}
 }
 
 // registerCurrencyRoutes registers routes related to currencies.
-func registerCurrencyRoutes(rg *gin.RouterGroup, currencyService services.CurrencyService) {
-	h := newCurrencyHandler(&currencyService) // Inject service
+func registerCurrencyRoutes(rg *gin.RouterGroup, currencyService portssvc.CurrencyService) { // Use interface
+	h := newCurrencyHandler(currencyService) // Pass interface
 
 	currencies := rg.Group("/currencies")
 	{

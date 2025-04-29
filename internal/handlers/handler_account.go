@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/SscSPs/money_managemet_app/internal/apperrors" // Ensure domain is imported if needed for ToAccountResponse or models
-	"github.com/SscSPs/money_managemet_app/internal/core/services"
+	"github.com/SscSPs/money_managemet_app/internal/apperrors"                    // Ensure domain is imported if needed for ToAccountResponse or models
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
@@ -14,28 +14,32 @@ import (
 
 // accountHandler handles HTTP requests related to accounts.
 type accountHandler struct {
-	accountService *services.AccountService
+	accountService portssvc.AccountService // Use interface
+	journalService portssvc.JournalService // Use interface
 }
 
 // newAccountHandler creates a new accountHandler.
-func newAccountHandler(as *services.AccountService) *accountHandler {
+func newAccountHandler(as portssvc.AccountService, js portssvc.JournalService) *accountHandler { // Use interfaces
 	return &accountHandler{
 		accountService: as,
+		journalService: js,
 	}
 }
 
-// registerAccountRoutes registers routes related to accounts WITHIN a workplace.
-func registerAccountRoutes(rg *gin.RouterGroup, accountService services.AccountService) {
-	h := newAccountHandler(&accountService)
+// RegisterAccountRoutes registers routes related to accounts WITHIN a workplace.
+func RegisterAccountRoutes(rg *gin.RouterGroup, accountService portssvc.AccountService, journalService portssvc.JournalService) { // Use interfaces
+	h := newAccountHandler(accountService, journalService)
 
 	// Routes are now relative to /workplaces/{workplace_id}/
 	accounts := rg.Group("/accounts")
 	{
 		accounts.POST("", h.createAccount)
-		accounts.GET("/:id", h.getAccount) // Path: /workplaces/{workplace_id}/accounts/:id
-		accounts.GET("", h.listAccounts)   // Path: /workplaces/{workplace_id}/accounts
+		accounts.GET("", h.listAccounts)
+		accounts.GET("/:id", h.getAccount)
 		accounts.PUT("/:id", h.updateAccount)
 		accounts.DELETE("/:id", h.deleteAccount)
+		// Nested route for transactions within an account
+		accounts.GET("/:id/transactions", h.listTransactionsByAccount)
 	}
 }
 
@@ -338,6 +342,72 @@ func (h *accountHandler) deleteAccount(c *gin.Context) {
 
 	logger.Info("Account deleted successfully")
 	c.Status(http.StatusNoContent)
+}
+
+// listTransactionsByAccount godoc
+// @Summary List transactions for an account in a workplace
+// @Description Retrieves a paginated list of transactions associated with a specific account within a workplace.
+// @Tags accounts
+// @Produce  json
+// @Param   workplace_id path string true "Workplace ID"
+// @Param   id path string true "Account ID"
+// @Param   limit query int false "Limit number of results" default(20)
+// @Param   offset query int false "Offset for pagination" default(0)
+// @Success 200 {object} dto.ListTransactionsResponse
+// @Failure 400 {object} map[string]string "Missing Workplace/Account ID or invalid query params"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 403 {object} map[string]string "Forbidden (User not part of workplace)"
+// @Failure 404 {object} map[string]string "Account not found in this workplace"
+// @Failure 500 {object} map[string]string "Failed to list transactions"
+// @Security BearerAuth
+// @Router /workplaces/{workplace_id}/accounts/{id}/transactions [get]
+func (h *accountHandler) listTransactionsByAccount(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	workplaceID := c.Param("workplace_id")
+	accountID := c.Param("id")
+
+	if workplaceID == "" || accountID == "" {
+		logger.Error("Workplace ID or Account ID missing from path for listTransactionsByAccount")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Workplace and Account ID required in path"})
+		return
+	}
+
+	loggedInUserID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		logger.Error("Logged-in user ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var params dto.ListTransactionsParams
+	if err := c.ShouldBindQuery(&params); err != nil {
+		logger.Warn("Failed to bind query params for ListTransactionsByAccount", slog.String("error", err.Error()))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid query parameters: " + err.Error()})
+		return
+	}
+
+	logger = logger.With(slog.String("user_id", loggedInUserID), slog.String("workplace_id", workplaceID), slog.String("account_id", accountID))
+	logger.Info("Received request to list transactions for account", slog.Int("limit", params.Limit), slog.Int("offset", params.Offset))
+
+	respTransactions, err := h.journalService.ListTransactionsByAccount(c.Request.Context(), workplaceID, accountID, params.Limit, params.Offset, loggedInUserID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Account not found or user forbidden from workplace for list transactions")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found or access denied"})
+		} else if errors.Is(err, apperrors.ErrForbidden) {
+			logger.Warn("User forbidden to list transactions for workplace", slog.String("user_id", loggedInUserID), slog.String("workplace_id", workplaceID))
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		} else {
+			logger.Error("Failed to list transactions from service", slog.String("error", err.Error()))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list transactions"})
+		}
+		return
+	}
+
+	transactionResponses := dto.ToTransactionResponses(respTransactions)
+
+	logger.Info("Transactions listed successfully for account", slog.Int("count", len(transactionResponses)))
+	c.JSON(http.StatusOK, dto.ListTransactionsResponse{Transactions: transactionResponses})
 }
 
 /* Potential Balance Endpoint - better in account service?

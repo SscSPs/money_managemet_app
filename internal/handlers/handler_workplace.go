@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
-	"github.com/SscSPs/money_managemet_app/internal/core/services"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
@@ -14,11 +14,11 @@ import (
 
 // workplaceHandler handles HTTP requests related to workplaces.
 type workplaceHandler struct {
-	workplaceService *services.WorkplaceService
+	workplaceService portssvc.WorkplaceService
 }
 
 // newWorkplaceHandler creates a new workplaceHandler.
-func newWorkplaceHandler(ws *services.WorkplaceService) *workplaceHandler {
+func newWorkplaceHandler(ws portssvc.WorkplaceService) *workplaceHandler {
 	return &workplaceHandler{
 		workplaceService: ws,
 	}
@@ -26,8 +26,8 @@ func newWorkplaceHandler(ws *services.WorkplaceService) *workplaceHandler {
 
 // registerWorkplaceRoutes registers routes related to workplaces and their members.
 // It now also registers JOURNAL and ACCOUNT routes nested under a specific workplace.
-func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService services.WorkplaceService, journalService services.JournalService, accountService services.AccountService) {
-	h := newWorkplaceHandler(&workplaceService)
+func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService portssvc.WorkplaceService, journalService portssvc.JournalService, accountService portssvc.AccountService) {
+	h := newWorkplaceHandler(workplaceService)
 
 	// Routes for managing workplaces themselves (e.g., creating, listing user's workplaces)
 	workplacesTopLevel := rg.Group("/workplaces")
@@ -58,7 +58,7 @@ func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService services.Work
 
 		// -- NESTED ACCOUNT ROUTES --
 		// Register account routes relative to this specific workplace group
-		registerAccountRoutes(workplaceSpecific, accountService) // Pass the group and service
+		RegisterAccountRoutes(workplaceSpecific, accountService, journalService) // Use exported name (no package needed)
 	}
 }
 

@@ -11,28 +11,29 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain" // Use domain
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Added portssvc import
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware" // Import middleware
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
-// ExchangeRateService provides business logic for exchange rates.
-type ExchangeRateService struct {
+// exchangeRateService provides business logic for exchange rates.
+type exchangeRateService struct {
 	rateRepo        portsrepo.ExchangeRateRepository
-	currencyService *CurrencyService // Added CurrencyService dependency
+	currencyService portssvc.CurrencyService // Added CurrencyService dependency
 }
 
 // NewExchangeRateService creates a new ExchangeRateService.
-func NewExchangeRateService(repo portsrepo.ExchangeRateRepository, currencyService *CurrencyService) *ExchangeRateService {
-	return &ExchangeRateService{
+func NewExchangeRateService(repo portsrepo.ExchangeRateRepository, currencyService portssvc.CurrencyService) portssvc.ExchangeRateService {
+	return &exchangeRateService{
 		rateRepo:        repo,
-		currencyService: currencyService, // Initialize currencyService
+		currencyService: currencyService,
 	}
 }
 
 // CreateExchangeRate handles the creation of a new exchange rate.
-func (s *ExchangeRateService) CreateExchangeRate(ctx context.Context, req dto.CreateExchangeRateRequest, creatorUserID string) (*domain.ExchangeRate, error) {
+func (s *exchangeRateService) CreateExchangeRate(ctx context.Context, req dto.CreateExchangeRateRequest, creatorUserID string) (*domain.ExchangeRate, error) {
 	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
 
 	// Input validation (basic format) is handled by DTO binding tags.
@@ -106,7 +107,7 @@ func (s *ExchangeRateService) CreateExchangeRate(ctx context.Context, req dto.Cr
 }
 
 // GetExchangeRate retrieves a specific exchange rate for a given currency pair and date.
-func (s *ExchangeRateService) GetExchangeRate(ctx context.Context, fromCode, toCode string) (*domain.ExchangeRate, error) {
+func (s *exchangeRateService) GetExchangeRate(ctx context.Context, fromCode, toCode string) (*domain.ExchangeRate, error) {
 	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
 
 	fromCode = strings.ToUpper(fromCode)

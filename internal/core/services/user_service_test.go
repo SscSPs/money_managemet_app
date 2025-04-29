@@ -7,6 +7,7 @@ import (
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/google/uuid"
@@ -55,7 +56,7 @@ func (m *MockUserRepository) MarkUserDeleted(ctx context.Context, userID string,
 type UserServiceTestSuite struct {
 	suite.Suite
 	mockUserRepo *MockUserRepository
-	service      *services.UserService
+	service      portssvc.UserService
 }
 
 func (suite *UserServiceTestSuite) SetupTest() {
@@ -68,7 +69,6 @@ func (suite *UserServiceTestSuite) SetupTest() {
 // --- CreateUser Tests ---
 func (suite *UserServiceTestSuite) TestCreateUser_Success() {
 	ctx := context.Background()
-	creatorUserID := uuid.NewString()
 	req := dto.CreateUserRequest{
 		Name: "Test User",
 	}
@@ -77,30 +77,29 @@ func (suite *UserServiceTestSuite) TestCreateUser_Success() {
 		userArg := args.Get(1).(domain.User)
 		suite.Equal(req.Name, userArg.Name)
 		suite.NotEmpty(userArg.UserID)
-		suite.Equal(creatorUserID, userArg.CreatedBy)
-		suite.Equal(creatorUserID, userArg.LastUpdatedBy)
+		suite.Equal("PLACEHOLDER_CREATOR_ID", userArg.CreatedBy)
+		suite.Equal("PLACEHOLDER_CREATOR_ID", userArg.LastUpdatedBy)
 	})
 
-	user, err := suite.service.CreateUser(ctx, req, creatorUserID)
+	user, err := suite.service.CreateUser(ctx, req)
 
 	suite.Require().NoError(err)
 	suite.Require().NotNil(user)
 	suite.Equal(req.Name, user.Name)
 	suite.NotEmpty(user.UserID)
-	suite.Equal(creatorUserID, user.CreatedBy)
+	suite.Equal("PLACEHOLDER_CREATOR_ID", user.CreatedBy)
 
 	suite.mockUserRepo.AssertExpectations(suite.T())
 }
 
 func (suite *UserServiceTestSuite) TestCreateUser_SaveError() {
 	ctx := context.Background()
-	creatorUserID := uuid.NewString()
 	req := dto.CreateUserRequest{Name: "Error User"}
 	expectedErr := assert.AnError
 
 	suite.mockUserRepo.On("SaveUser", ctx, mock.AnythingOfType("domain.User")).Return(expectedErr).Once()
 
-	user, err := suite.service.CreateUser(ctx, req, creatorUserID)
+	user, err := suite.service.CreateUser(ctx, req)
 
 	suite.Require().Error(err)
 	suite.Nil(user)
@@ -158,17 +157,16 @@ func (suite *UserServiceTestSuite) TestListUsers_Success() {
 	ctx := context.Background()
 	limit, offset := 10, 0
 	expectedUsers := []domain.User{{UserID: uuid.NewString()}, {UserID: uuid.NewString()}}
-	req := dto.ListUsersParams{Limit: limit, Offset: offset}
 
 	suite.mockUserRepo.On("FindUsers", ctx, limit, offset).Return(expectedUsers, nil).Once()
 
-	resp, err := suite.service.ListUsers(ctx, req)
+	users, err := suite.service.ListUsers(ctx, limit, offset)
 
 	suite.Require().NoError(err)
-	suite.Require().NotNil(resp)
-	suite.Len(resp.Users, len(expectedUsers))
+	suite.Require().NotNil(users)
+	suite.Len(users, len(expectedUsers))
 	for i := range expectedUsers {
-		suite.Equal(expectedUsers[i].UserID, resp.Users[i].UserID)
+		suite.Equal(expectedUsers[i].UserID, users[i].UserID)
 	}
 	suite.mockUserRepo.AssertExpectations(suite.T())
 }
@@ -177,15 +175,14 @@ func (suite *UserServiceTestSuite) TestListUsers_Empty() {
 	ctx := context.Background()
 	limit, offset := 5, 10
 	var expectedUsers []domain.User // Empty slice
-	req := dto.ListUsersParams{Limit: limit, Offset: offset}
 
 	suite.mockUserRepo.On("FindUsers", ctx, limit, offset).Return(expectedUsers, nil).Once()
 
-	resp, err := suite.service.ListUsers(ctx, req)
+	users, err := suite.service.ListUsers(ctx, limit, offset)
 
 	suite.Require().NoError(err)
-	suite.Require().NotNil(resp)
-	suite.Empty(resp.Users)
+	suite.Require().NotNil(users)
+	suite.Empty(users)
 	suite.mockUserRepo.AssertExpectations(suite.T())
 }
 
@@ -193,14 +190,13 @@ func (suite *UserServiceTestSuite) TestListUsers_RepoError() {
 	ctx := context.Background()
 	limit, offset := 10, 0
 	expectedErr := assert.AnError
-	req := dto.ListUsersParams{Limit: limit, Offset: offset}
 
 	suite.mockUserRepo.On("FindUsers", ctx, limit, offset).Return(nil, expectedErr).Once()
 
-	resp, err := suite.service.ListUsers(ctx, req)
+	users, err := suite.service.ListUsers(ctx, limit, offset)
 
 	suite.Require().Error(err)
-	suite.Nil(resp)
+	suite.Nil(users)
 	suite.Contains(err.Error(), "failed to list users")
 	suite.ErrorIs(err, expectedErr)
 	suite.mockUserRepo.AssertExpectations(suite.T())

@@ -8,6 +8,7 @@ import (
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/google/uuid"
@@ -39,8 +40,8 @@ type ExchangeRateServiceTestSuite struct {
 	suite.Suite
 	mockRateRepo     *MockExchangeRateRepository
 	mockCurrencyRepo *MockCurrencyRepository // Need mock for currency validation
-	service          *services.ExchangeRateService
-	currencyService  *services.CurrencyService // Real currency service using mock repo
+	service          portssvc.ExchangeRateService
+	currencyService  portssvc.CurrencyService // Real currency service using mock repo
 }
 
 func (suite *ExchangeRateServiceTestSuite) SetupTest() {

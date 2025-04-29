@@ -10,19 +10,23 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware" // Import middleware
 )
 
-type CurrencyService struct {
+// currencyService provides business logic for currency operations.
+type currencyService struct {
 	currencyRepo portsrepo.CurrencyRepository
 }
 
-func NewCurrencyService(repo portsrepo.CurrencyRepository) *CurrencyService {
-	return &CurrencyService{currencyRepo: repo}
+// NewCurrencyService creates a new CurrencyService.
+func NewCurrencyService(repo portsrepo.CurrencyRepository) portssvc.CurrencyService {
+	return &currencyService{currencyRepo: repo}
 }
 
-func (s *CurrencyService) CreateCurrency(ctx context.Context, req dto.CreateCurrencyRequest, creatorUserID string) (*domain.Currency, error) {
+// CreateCurrency adds a new currency definition.
+func (s *currencyService) CreateCurrency(ctx context.Context, req dto.CreateCurrencyRequest, creatorUserID string) (*domain.Currency, error) {
 	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
 	now := time.Now()
 
@@ -48,7 +52,7 @@ func (s *CurrencyService) CreateCurrency(ctx context.Context, req dto.CreateCurr
 	return &currency, nil
 }
 
-func (s *CurrencyService) GetCurrencyByCode(ctx context.Context, currencyCode string) (*domain.Currency, error) {
+func (s *currencyService) GetCurrencyByCode(ctx context.Context, currencyCode string) (*domain.Currency, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	currency, err := s.currencyRepo.FindCurrencyByCode(ctx, currencyCode)
 	if err != nil {
@@ -62,7 +66,7 @@ func (s *CurrencyService) GetCurrencyByCode(ctx context.Context, currencyCode st
 	return currency, nil
 }
 
-func (s *CurrencyService) ListCurrencies(ctx context.Context) ([]domain.Currency, error) {
+func (s *currencyService) ListCurrencies(ctx context.Context) ([]domain.Currency, error) {
 	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
 	currencies, err := s.currencyRepo.ListCurrencies(ctx)
 	if err != nil {

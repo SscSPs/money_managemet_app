@@ -7,12 +7,13 @@ import (
 
 	// For error checking
 
-	"github.com/SscSPs/money_managemet_app/internal/core/services"
+	// Use ports
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware" // For logger/user context
 
 	// "github.com/SscSPs/money_managemet_app/internal/models" // Models not needed directly here
-	"github.com/SscSPs/money_managemet_app/internal/platform/config" // For JWT config access
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services
+	"github.com/SscSPs/money_managemet_app/internal/platform/config"              // For JWT config access
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	// "github.com/google/uuid" // Use actual user ID from service
@@ -20,13 +21,13 @@ import (
 
 // AuthHandler handles authentication related requests.
 type AuthHandler struct {
-	userService services.UserService
+	userService portssvc.UserService // Use interface
 	jwtSecret   string
 	jwtDuration time.Duration
 }
 
 // NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler(us services.UserService, cfg *config.Config) *AuthHandler {
+func NewAuthHandler(us portssvc.UserService, cfg *config.Config) *AuthHandler { // Use interface
 	return &AuthHandler{
 		userService: us,
 		jwtSecret:   cfg.JWTSecret,         // Store secret
@@ -53,8 +54,8 @@ type ErrorResponse struct {
 
 // registerAuthRoutes sets up the routes for authentication.
 // Pass the instantiated handler.
-func registerAuthRoutes(rg *gin.Engine, cfg *config.Config, userService services.UserService) {
-	h := NewAuthHandler(userService, cfg) // Pass full config to extract details
+func registerAuthRoutes(rg *gin.Engine, cfg *config.Config, userService portssvc.UserService) { // Use interface
+	h := NewAuthHandler(userService, cfg) // Pass interface
 
 	auth := rg.Group("/api/v1/auth")
 	{
@@ -142,11 +143,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// UserID for creation - use a system identifier or similar for self-registration
-	creatorUserID := "SYSTEM_SELF_REGISTER"
+	// creatorUserID := "SYSTEM_SELF_REGISTER" // This variable is unused now based on the interface
 
 	// Call the user service to create the user
-	newUser, err := h.userService.CreateUser(c.Request.Context(), req, creatorUserID)
+	newUser, err := h.userService.CreateUser(c.Request.Context(), req)
 	if err != nil {
 		logger := middleware.GetLoggerFromCtx(c.Request.Context())
 		// TODO: Add specific check for duplicate errors if the repo/service supports it

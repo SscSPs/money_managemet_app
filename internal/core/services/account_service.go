@@ -10,21 +10,23 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain" // Use domain types
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Added portssvc import
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware" // Import middleware for GetLoggerFromCtx
 	"github.com/google/uuid"                                    // For generating AccountID
+	"github.com/shopspring/decimal"
 )
 
-type AccountService struct {
+type accountService struct {
 	AccountRepository portsrepo.AccountRepository
 	// Potentially add CurrencyRepository if validation is needed
 }
 
-func NewAccountService(repo portsrepo.AccountRepository) *AccountService {
-	return &AccountService{AccountRepository: repo}
+func NewAccountService(repo portsrepo.AccountRepository) portssvc.AccountService { // Revert to concrete pointer type
+	return &accountService{AccountRepository: repo}
 }
 
-func (s *AccountService) CreateAccount(ctx context.Context, workplaceID string, req dto.CreateAccountRequest, userID string) (*domain.Account, error) {
+func (s *accountService) CreateAccount(ctx context.Context, workplaceID string, req dto.CreateAccountRequest, userID string) (*domain.Account, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// TODO: Authorization: Check if userID has permission to create accounts in workplaceID
@@ -67,7 +69,7 @@ func (s *AccountService) CreateAccount(ctx context.Context, workplaceID string, 
 	return &account, nil
 }
 
-func (s *AccountService) GetAccountByID(ctx context.Context, workplaceID string, accountID string) (*domain.Account, error) {
+func (s *accountService) GetAccountByID(ctx context.Context, workplaceID string, accountID string) (*domain.Account, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	account, err := s.AccountRepository.FindAccountByID(ctx, accountID)
 	if err != nil {
@@ -91,7 +93,7 @@ func (s *AccountService) GetAccountByID(ctx context.Context, workplaceID string,
 }
 
 // ListAccounts retrieves a paginated list of active accounts for a specific workplace.
-func (s *AccountService) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
+func (s *accountService) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// TODO: Authorization - Check if the user associated with the ctx has access to this workplaceID.
@@ -111,7 +113,7 @@ func (s *AccountService) ListAccounts(ctx context.Context, workplaceID string, l
 }
 
 // UpdateAccount updates specific fields of an existing account.
-func (s *AccountService) UpdateAccount(ctx context.Context, workplaceID string, accountID string, req dto.UpdateAccountRequest, userID string) (*domain.Account, error) {
+func (s *accountService) UpdateAccount(ctx context.Context, workplaceID string, accountID string, req dto.UpdateAccountRequest, userID string) (*domain.Account, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// Fetch the existing account
@@ -166,7 +168,7 @@ func (s *AccountService) UpdateAccount(ctx context.Context, workplaceID string, 
 }
 
 // DeactivateAccount marks an account as inactive (soft delete).
-func (s *AccountService) DeactivateAccount(ctx context.Context, workplaceID string, accountID string, userID string) error {
+func (s *accountService) DeactivateAccount(ctx context.Context, workplaceID string, accountID string, userID string) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// Fetch the existing account first to check workplace ownership
@@ -214,5 +216,23 @@ func (s *AccountService) DeactivateAccount(ctx context.Context, accountID string
 	...
 }
 */
+
+// CalculateAccountBalance calculates the current balance for a given account.
+// It requires access to transaction data, likely via JournalService or a dedicated TransactionRepository/Service.
+// TODO: Implement balance calculation logic.
+func (s *accountService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+	logger.Warn("CalculateAccountBalance not implemented", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
+
+	// 1. Authorization: Check user can access workplaceID (maybe done implicitly if called by other authorized services)
+	// 2. Fetch account to verify it belongs to workplaceID (redundant if called after GetAccountByID?)
+	// 3. Fetch relevant transactions for the accountID within the workplaceID.
+	// 4. Sum transactions based on account type (debit/credit).
+	// 5. Return balance.
+
+	// --- TEMPORARY: Return zero and error indicating not implemented --- \
+	return decimal.Zero, fmt.Errorf("account balance calculation not implemented")
+	// --- /TEMPORARY ---
+}
 
 // Remove the outdated TODO

@@ -8,6 +8,7 @@ import (
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/google/uuid"
@@ -167,7 +168,7 @@ type JournalServiceTestSuite struct {
 	mockJournalRepo  *MockJournalRepository
 	mockAccountRepo  *MockAccountRepository
 	mockWorkplaceSvc *MockWorkplaceService // Added mock workplace service
-	service          *services.JournalService
+	service          portssvc.JournalService
 }
 
 func (suite *JournalServiceTestSuite) SetupTest() {

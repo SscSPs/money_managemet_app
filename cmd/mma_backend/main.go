@@ -82,7 +82,7 @@ func main() {
 	r := setupGinEngine(logger, cfg)
 
 	// Pass initialized services to route registration
-	handlers.RegisterRoutes(r, cfg, *userService, *accountService, *currencyService, *exchangeRateService, *journalService, *workplaceService)
+	handlers.RegisterRoutes(r, cfg, userService, accountService, currencyService, exchangeRateService, journalService, workplaceService)
 
 	logger.Info("Server starting", slog.String("port", cfg.Port))
 	if err := r.Run(":" + cfg.Port); err != nil {

@@ -27,8 +27,8 @@ var (
 	ErrCurrencyMismatch  = errors.New("account currency does not match journal currency")
 )
 
-// JournalService provides core journal and transaction operations.
-type JournalService struct {
+// journalService provides core journal and transaction operations.
+type journalService struct {
 	accountRepo  portsrepo.AccountRepository
 	journalRepo  portsrepo.JournalRepository
 	workplaceSvc portssvc.WorkplaceService // Added for authorization checks
@@ -36,8 +36,8 @@ type JournalService struct {
 }
 
 // NewJournalService creates a new JournalService.
-func NewJournalService(accountRepo portsrepo.AccountRepository, journalRepo portsrepo.JournalRepository, workplaceSvc portssvc.WorkplaceService) *JournalService {
-	return &JournalService{
+func NewJournalService(accountRepo portsrepo.AccountRepository, journalRepo portsrepo.JournalRepository, workplaceSvc portssvc.WorkplaceService) portssvc.JournalService {
+	return &journalService{
 		accountRepo:  accountRepo,
 		journalRepo:  journalRepo,
 		workplaceSvc: workplaceSvc,
@@ -45,10 +45,10 @@ func NewJournalService(accountRepo portsrepo.AccountRepository, journalRepo port
 }
 
 // Ensure JournalService implements the portssvc.JournalService interface
-var _ portssvc.JournalService = (*JournalService)(nil)
+var _ portssvc.JournalService = (*journalService)(nil)
 
 // getSignedAmount applies the correct sign to a transaction amount based on account type and transaction type.
-func (s *JournalService) getSignedAmount(txn domain.Transaction, accountType domain.AccountType) (decimal.Decimal, error) {
+func (s *journalService) getSignedAmount(txn domain.Transaction, accountType domain.AccountType) (decimal.Decimal, error) {
 	signedAmount := txn.Amount
 	isDebit := txn.TransactionType == domain.Debit
 
@@ -74,7 +74,7 @@ func (s *JournalService) getSignedAmount(txn domain.Transaction, accountType dom
 }
 
 // validateJournalBalance checks if the transactions for a journal balance to zero.
-func (s *JournalService) validateJournalBalance(transactions []domain.Transaction, accountTypes map[string]domain.AccountType) error {
+func (s *journalService) validateJournalBalance(transactions []domain.Transaction, accountTypes map[string]domain.AccountType) error {
 	if len(transactions) < 2 {
 		return ErrJournalMinEntries
 	}
@@ -152,7 +152,7 @@ func modelToDomainJournal(m models.Journal) domain.Journal {
 
 // CreateJournal creates a new journal entry with its transactions after validation.
 // Implements portssvc.JournalService
-func (s *JournalService) CreateJournal(ctx context.Context, workplaceID string, req dto.CreateJournalRequest, creatorUserID string) (*domain.Journal, error) {
+func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, req dto.CreateJournalRequest, creatorUserID string) (*domain.Journal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// --- Authorization Check --- (Requires WorkplaceService injection)
@@ -260,7 +260,7 @@ func (s *JournalService) CreateJournal(ctx context.Context, workplaceID string, 
 
 // GetJournalByID retrieves a specific journal entry (without transactions).
 // Implements portssvc.JournalService
-func (s *JournalService) GetJournalByID(ctx context.Context, workplaceID string, journalID string, requestingUserID string) (*domain.Journal, error) {
+func (s *journalService) GetJournalByID(ctx context.Context, workplaceID string, journalID string, requestingUserID string) (*domain.Journal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// --- Authorization Check --- (Requires WorkplaceService injection)
@@ -309,7 +309,7 @@ func (s *JournalService) GetJournalByID(ctx context.Context, workplaceID string,
 
 // ListJournals retrieves a paginated list of journals for a specific workplace.
 // Implements portssvc.JournalService
-func (s *JournalService) ListJournals(ctx context.Context, workplaceID string, limit int, offset int, requestingUserID string) ([]domain.Journal, error) {
+func (s *journalService) ListJournals(ctx context.Context, workplaceID string, limit int, offset int, requestingUserID string) ([]domain.Journal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// --- Authorization Check --- (Requires WorkplaceService injection)
@@ -365,7 +365,7 @@ func (s *JournalService) ListJournals(ctx context.Context, workplaceID string, l
 
 // UpdateJournal updates details of a specific journal entry.
 // Implements portssvc.JournalService
-func (s *JournalService) UpdateJournal(ctx context.Context, workplaceID string, journalID string, req dto.UpdateJournalRequest, requestingUserID string) (*domain.Journal, error) {
+func (s *journalService) UpdateJournal(ctx context.Context, workplaceID string, journalID string, req dto.UpdateJournalRequest, requestingUserID string) (*domain.Journal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// --- Authorization Check --- (Requires WorkplaceService injection)
@@ -431,7 +431,7 @@ func (s *JournalService) UpdateJournal(ctx context.Context, workplaceID string, 
 
 // DeactivateJournal marks a journal as inactive (conceptually; might involve changing status).
 // Implements portssvc.JournalService
-func (s *JournalService) DeactivateJournal(ctx context.Context, workplaceID string, journalID string, requestingUserID string) error {
+func (s *journalService) DeactivateJournal(ctx context.Context, workplaceID string, journalID string, requestingUserID string) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// --- Authorization Check --- (Requires WorkplaceService injection)
@@ -478,6 +478,67 @@ func (s *JournalService) DeactivateJournal(ctx context.Context, workplaceID stri
 	return fmt.Errorf("DeactivateJournal repository call not implemented") // Placeholder Error
 }
 
+// ListTransactionsByAccount retrieves a paginated list of transactions for a specific account within a workplace.
+func (s *journalService) ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, limit int, offset int, requestingUserID string) ([]domain.Transaction, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+
+	// --- Authorization Check --- (User must be member of workplace)
+	if s.workplaceSvc != nil {
+		if err := s.workplaceSvc.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleMember); err != nil {
+			logger.Warn("Authorization failed for ListTransactionsByAccount", slog.String("user_id", requestingUserID), slog.String("workplace_id", workplaceID), slog.String("account_id", accountID), slog.String("error", err.Error()))
+			return nil, err // Return NotFound or Forbidden
+		}
+	} else {
+		logger.Warn("WorkplaceService not available for authorization check in ListTransactionsByAccount")
+	}
+
+	// --- Optional: Verify account exists and belongs to workplace ---
+	// This prevents querying transactions for accounts the user shouldn't see,
+	// even if they have access to the workplace.
+	_, err := s.accountRepo.FindAccountByID(ctx, accountID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Account not found when listing transactions", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
+			return nil, apperrors.ErrNotFound // Account not found
+		}
+		logger.Error("Failed to verify account existence before listing transactions", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID), slog.String("error", err.Error()))
+		return nil, fmt.Errorf("failed to verify account %s: %w", accountID, err)
+	}
+	// We might add an explicit check here: if account.WorkplaceID != workplaceID { return nil, apperrors.ErrNotFound }
+	// However, FindTransactionsByAccountID in the repo already filters by workplaceID,
+	// so this check might be redundant depending on desired error message/behavior.
+	// Let's rely on the repo's filter for now.
+
+	// --- Fetch Transactions ---
+	// TODO: Adapt repository method or add new one to handle pagination (limit, offset)
+	// Current FindTransactionsByAccountID does not support pagination.
+	transactions, err := s.journalRepo.FindTransactionsByAccountID(ctx, workplaceID, accountID)
+	if err != nil {
+		logger.Error("Failed to list transactions by account from repository", slog.String("error", err.Error()), slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
+		return nil, fmt.Errorf("failed to retrieve transactions: %w", apperrors.ErrInternal)
+	}
+
+	// Apply pagination manually for now until repo is updated
+	totalTransactions := len(transactions)
+	startIndex := offset
+	endIndex := offset + limit
+
+	if startIndex < 0 {
+		startIndex = 0
+	}
+	if startIndex >= totalTransactions {
+		return []domain.Transaction{}, nil // Offset is beyond the total number of transactions
+	}
+	if endIndex > totalTransactions {
+		endIndex = totalTransactions
+	}
+
+	pagedTransactions := transactions[startIndex:endIndex]
+
+	logger.Debug("Transactions listed successfully for account", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID), slog.Int("count", len(pagedTransactions)))
+	return pagedTransactions, nil
+}
+
 // uniqueStrings returns a slice containing only the unique strings from the input.
 func uniqueStrings(input []string) []string {
 	seen := make(map[string]struct{}, len(input))
@@ -493,7 +554,7 @@ func uniqueStrings(input []string) []string {
 
 // CalculateAccountBalance calculates the current balance of a given account within its workplace.
 // Note: This might be better placed in AccountService if it doesn't need journal specifics beyond transactions.
-func (s *JournalService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
+func (s *journalService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// --- Authorization Check? ---

@@ -10,25 +10,30 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/google/uuid"
 )
 
-// UserService provides business logic for user operations.
-type UserService struct {
+// userService provides business logic for user operations.
+type userService struct {
 	UserRepository portsrepo.UserRepository
 }
 
 // NewUserService creates a new UserService.
-func NewUserService(repo portsrepo.UserRepository) *UserService {
-	return &UserService{UserRepository: repo}
+func NewUserService(repo portsrepo.UserRepository) portssvc.UserService {
+	return &userService{UserRepository: repo}
 }
 
-func (s *UserService) CreateUser(ctx context.Context, req dto.CreateUserRequest, creatorUserID string) (*domain.User, error) {
+func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	now := time.Now()
 	newUserID := uuid.NewString()
+	// Determine creatorUserID - for self-registration via /auth/register, it might be the user ID itself or a system ID.
+	// For creation via /users endpoint, it should come from the authenticated admin user context.
+	// For now, using a placeholder. This needs proper handling based on the call site.
+	creatorUserID := "PLACEHOLDER_CREATOR_ID" // TODO: Determine creator properly
 
 	user := domain.User{
 		UserID: newUserID,
@@ -51,7 +56,7 @@ func (s *UserService) CreateUser(ctx context.Context, req dto.CreateUserRequest,
 	return &user, nil
 }
 
-func (s *UserService) GetUserByID(ctx context.Context, userID string) (*domain.User, error) {
+func (s *userService) GetUserByID(ctx context.Context, userID string) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	user, err := s.UserRepository.FindUserByID(ctx, userID)
 	if err != nil {
@@ -65,15 +70,15 @@ func (s *UserService) GetUserByID(ctx context.Context, userID string) (*domain.U
 }
 
 // ListUsers retrieves a paginated list of non-deleted users.
-func (s *UserService) ListUsers(ctx context.Context, req dto.ListUsersParams) (*dto.ListUsersResponse, error) {
+// Implements portssvc.UserService interface.
+func (s *userService) ListUsers(ctx context.Context, limit, offset int) ([]domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	limit := 10
-	if req.Limit > 0 {
-		limit = req.Limit
+	// Apply defaults if needed (or rely on repo layer defaults)
+	if limit <= 0 {
+		limit = 20 // Default limit
 	}
-	offset := 0
-	if req.Offset > 0 {
-		offset = req.Offset
+	if offset < 0 {
+		offset = 0 // Default offset
 	}
 
 	users, err := s.UserRepository.FindUsers(ctx, limit, offset)
@@ -83,11 +88,14 @@ func (s *UserService) ListUsers(ctx context.Context, req dto.ListUsersParams) (*
 	}
 
 	logger.Debug("Users listed successfully from service", slog.Int("count", len(users)), slog.Int("limit", limit), slog.Int("offset", offset))
-	response := dto.ToListUserResponse(users)
-	return &response, nil
+	// Return the domain slice directly as required by the interface
+	if users == nil {
+		return []domain.User{}, nil // Ensure non-nil slice is returned
+	}
+	return users, nil
 }
 
-func (s *UserService) UpdateUser(ctx context.Context, userID string, req dto.UpdateUserRequest, updaterUserID string) (*domain.User, error) {
+func (s *userService) UpdateUser(ctx context.Context, userID string, req dto.UpdateUserRequest, updaterUserID string) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	existingUser, err := s.UserRepository.FindUserByID(ctx, userID)
 	if err != nil {
@@ -125,7 +133,7 @@ func (s *UserService) UpdateUser(ctx context.Context, userID string, req dto.Upd
 	return existingUser, nil
 }
 
-func (s *UserService) DeleteUser(ctx context.Context, userID string, deleterUserID string) error {
+func (s *userService) DeleteUser(ctx context.Context, userID string, deleterUserID string) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	now := time.Now()
 	err := s.UserRepository.MarkUserDeleted(ctx, userID, now, deleterUserID)
@@ -137,6 +145,24 @@ func (s *UserService) DeleteUser(ctx context.Context, userID string, deleterUser
 	}
 	logger.Info("User marked as deleted successfully in service", slog.String("user_id", userID))
 	return nil
+}
+
+// AuthenticateUser checks user credentials.
+// TODO: Implement actual authentication logic (e.g., check password hash)
+func (s *userService) AuthenticateUser(ctx context.Context, email, password string) (*domain.User, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+	logger.Warn("AuthenticateUser not implemented", slog.String("email", email))
+	// Placeholder: Find user by email (assuming email is unique identifier for login)
+	// user, err := s.UserRepository.FindUserByEmail(ctx, email) // Hypothetical repo method
+	// if err != nil {
+	// 	 return nil, err // Propagate NotFound or other errors
+	// }
+	// // Check password hash here
+	// return user, nil
+
+	// --- TEMPORARY: Return error indicating not implemented --- \
+	return nil, fmt.Errorf("authentication not implemented")
+	// --- /TEMPORARY ---
 }
 
 // TODO: Add other user management methods (Update, Delete/Deactivate, List) later
