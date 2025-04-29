@@ -2193,6 +2193,13 @@ const docTemplate = `{
                 "lastUpdatedBy": {
                     "type": "string"
                 },
+                "transactions": {
+                    "description": "Added transactions",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.TransactionResponse"
+                    }
+                },
                 "workplaceID": {
                     "type": "string"
                 }
@@ -2239,6 +2246,39 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.WorkplaceResponse"
                     }
+                }
+            }
+        },
+        "dto.TransactionResponse": {
+            "type": "object",
+            "properties": {
+                "accountID": {
+                    "type": "string"
+                },
+                "amount": {
+                    "description": "Always positive",
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
+                "currencyCode": {
+                    "type": "string"
+                },
+                "journalID": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "transactionID": {
+                    "type": "string"
+                },
+                "transactionType": {
+                    "$ref": "#/definitions/domain.TransactionType"
                 }
             }
         },

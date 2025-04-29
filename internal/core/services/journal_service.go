@@ -290,7 +290,20 @@ func (s *JournalService) GetJournalByID(ctx context.Context, workplaceID string,
 		return nil, apperrors.ErrNotFound // Obscure existence
 	}
 
-	logger.Debug("Journal retrieved successfully", slog.String("journal_id", journalID), slog.String("workplace_id", workplaceID))
+	// Fetch associated transactions
+	transactions, err := s.journalRepo.FindTransactionsByJournalID(ctx, journalID)
+	if err != nil {
+		// Log error but don't necessarily fail the whole request?
+		// Depending on requirements, maybe return journal header even if transactions fail?
+		// For now, let's fail if transactions can't be fetched.
+		logger.Error("Failed to fetch transactions for journal", slog.String("error", err.Error()), slog.String("journal_id", journalID))
+		return nil, fmt.Errorf("failed to retrieve transactions for journal %s: %w", journalID, apperrors.ErrInternal) // Return generic internal error
+	}
+
+	// Populate the transactions field
+	journal.Transactions = transactions
+
+	logger.Debug("Journal and transactions retrieved successfully", slog.String("journal_id", journalID), slog.String("workplace_id", workplaceID), slog.Int("transaction_count", len(transactions)))
 	return journal, nil
 }
 
@@ -309,13 +322,45 @@ func (s *JournalService) ListJournals(ctx context.Context, workplaceID string, l
 		logger.Warn("WorkplaceService not available for authorization check in ListJournals")
 	}
 
-	// TODO: Implement the repository call
-	// journals, err := s.journalRepo.ListJournalsByWorkplace(ctx, workplaceID, limit, offset)
-	// if err != nil { ... }
-	// return journals, nil
+	// Fetch from repository using workplaceID, limit, offset
+	domainJournals, err := s.journalRepo.ListJournalsByWorkplace(ctx, workplaceID, limit, offset)
+	if err != nil {
+		logger.Error("Failed to list journals from repository", slog.String("error", err.Error()), slog.String("workplace_id", workplaceID))
+		return nil, fmt.Errorf("failed to retrieve journals: %w", apperrors.ErrInternal)
+	}
 
-	logger.Warn("ListJournals service method not fully implemented")
-	return []domain.Journal{}, fmt.Errorf("ListJournals not implemented") // Placeholder
+	// If no journals found, return early
+	if len(domainJournals) == 0 {
+		return []domain.Journal{}, nil
+	}
+
+	// Extract journal IDs to fetch their transactions
+	journalIDs := make([]string, len(domainJournals))
+	for i, j := range domainJournals {
+		journalIDs[i] = j.JournalID
+	}
+
+	// Fetch all transactions for these journals in one go
+	transactionsMap, err := s.journalRepo.FindTransactionsByJournalIDs(ctx, journalIDs)
+	if err != nil {
+		logger.Error("Failed to fetch transactions for listed journals", slog.String("error", err.Error()), slog.String("workplace_id", workplaceID))
+		// Non-fatal? Maybe return journals without transactions if this fails?
+		// For now, treat as an internal error and return failure.
+		return nil, fmt.Errorf("failed to retrieve journal details: %w", apperrors.ErrInternal)
+	}
+
+	// Populate transactions into the journal objects
+	for i := range domainJournals {
+		// Use index to modify the slice element directly
+		if txns, ok := transactionsMap[domainJournals[i].JournalID]; ok {
+			domainJournals[i].Transactions = txns
+		} else {
+			// Should not happen if FindTransactionsByJournalIDs ensures all IDs have an entry
+			domainJournals[i].Transactions = []domain.Transaction{} // Ensure it's an empty slice, not nil
+		}
+	}
+
+	return domainJournals, nil
 }
 
 // UpdateJournal updates details of a specific journal entry.

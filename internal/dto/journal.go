@@ -26,7 +26,7 @@ type CreateTransactionRequest struct {
 	// CurrencyCode is inherited from the Journal
 }
 
-// JournalResponse defines the data returned for a journal entry (excluding transactions).
+// JournalResponse defines the data returned for a journal entry.
 type JournalResponse struct {
 	JournalID    string    `json:"journalID"`
 	WorkplaceID  string    `json:"workplaceID"`
@@ -34,10 +34,11 @@ type JournalResponse struct {
 	Description  string    `json:"description"`
 	CurrencyCode string    `json:"currencyCode"`
 	// Status domain.JournalStatus `json:"status"` // Status might not be needed/settable directly via CRUD
-	CreatedAt     time.Time `json:"createdAt"`
-	CreatedBy     string    `json:"createdBy"`
-	LastUpdatedAt time.Time `json:"lastUpdatedAt"`
-	LastUpdatedBy string    `json:"lastUpdatedBy"`
+	CreatedAt     time.Time             `json:"createdAt"`
+	CreatedBy     string                `json:"createdBy"`
+	LastUpdatedAt time.Time             `json:"lastUpdatedAt"`
+	LastUpdatedBy string                `json:"lastUpdatedBy"`
+	Transactions  []TransactionResponse `json:"transactions,omitempty"` // Added transactions
 }
 
 // ToJournalResponse converts domain.Journal to JournalResponse DTO.
@@ -53,6 +54,7 @@ func ToJournalResponse(j *domain.Journal) JournalResponse {
 		CreatedBy:     j.CreatedBy,
 		LastUpdatedAt: j.LastUpdatedAt,
 		LastUpdatedBy: j.LastUpdatedBy,
+		Transactions:  ToTransactionResponses(j.Transactions), // Map transactions
 	}
 }
 

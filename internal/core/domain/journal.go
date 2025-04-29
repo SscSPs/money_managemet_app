@@ -19,4 +19,5 @@ type Journal struct {
 	CurrencyCode string        `json:"currencyCode"` // Primary currency of the Journal (Not Null)
 	Status       JournalStatus `json:"status"`       // Default: Posted
 	AuditFields
+	Transactions []Transaction `json:"transactions,omitempty"` // Added: Holds associated transactions when loaded
 }

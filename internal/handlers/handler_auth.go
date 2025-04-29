@@ -56,7 +56,7 @@ type ErrorResponse struct {
 func registerAuthRoutes(rg *gin.Engine, cfg *config.Config, userService services.UserService) {
 	h := NewAuthHandler(userService, cfg) // Pass full config to extract details
 
-	auth := rg.Group("/auth")
+	auth := rg.Group("/api/v1/auth")
 	{
 		auth.POST("/login", h.Login)
 		auth.POST("/register", h.Register)

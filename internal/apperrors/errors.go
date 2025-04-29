@@ -14,4 +14,7 @@ var ErrDuplicate = errors.New("resource already exists")
 // ErrForbidden indicates that the user is authenticated but does not have permission to perform the action.
 var ErrForbidden = errors.New("forbidden")
 
+// ErrInternal indicates an unexpected server error.
+var ErrInternal = errors.New("internal server error")
+
 // TODO: Add other specific error types as needed (e.g., ErrUnauthorized)

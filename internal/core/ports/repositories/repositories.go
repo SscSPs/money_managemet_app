@@ -30,6 +30,8 @@ type JournalRepository interface {
 	FindJournalByID(ctx context.Context, journalID string) (*domain.Journal, error)
 	FindTransactionsByJournalID(ctx context.Context, journalID string) ([]domain.Transaction, error)
 	FindTransactionsByAccountID(ctx context.Context, workplaceID, accountID string) ([]domain.Transaction, error)
+	ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Journal, error)
+	FindTransactionsByJournalIDs(ctx context.Context, journalIDs []string) (map[string][]domain.Transaction, error)
 	// UpdateJournalStatus(ctx context.Context, journalID string, status domain.JournalStatus) error
 }
 

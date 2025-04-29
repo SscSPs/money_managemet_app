@@ -311,4 +311,122 @@ func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, 
 	return toDomainTransactionSlice(modelTransactions), nil
 }
 
+// ListJournalsByWorkplace retrieves a paginated list of journals for a specific workplace.
+func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Journal, error) {
+	// Default limit and offset handling
+	if limit <= 0 {
+		limit = 20 // Or a configurable default
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	query := `
+		SELECT journal_id, workplace_id, journal_date, description, currency_code, status, created_at, created_by, last_updated_at, last_updated_by
+		FROM journals
+		WHERE workplace_id = $1
+		ORDER BY journal_date DESC, created_at DESC -- Order by date, then creation time
+		LIMIT $2 OFFSET $3;
+	`
+
+	rows, err := r.pool.Query(ctx, query, workplaceID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query journals for workplace %s: %w", workplaceID, err)
+	}
+	defer rows.Close()
+
+	modelJournals := []models.Journal{}
+	for rows.Next() {
+		var modelJournal models.Journal
+		err := rows.Scan(
+			&modelJournal.JournalID,
+			&modelJournal.WorkplaceID,
+			&modelJournal.JournalDate,
+			&modelJournal.Description,
+			&modelJournal.CurrencyCode,
+			&modelJournal.Status,
+			&modelJournal.CreatedAt,
+			&modelJournal.CreatedBy,
+			&modelJournal.LastUpdatedAt,
+			&modelJournal.LastUpdatedBy,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan journal row for workplace %s: %w", workplaceID, err)
+		}
+		modelJournals = append(modelJournals, modelJournal)
+	}
+
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("error iterating journal rows for workplace %s: %w", workplaceID, rows.Err())
+	}
+
+	// Convert models to domain objects
+	domainJournals := make([]domain.Journal, len(modelJournals))
+	for i, mj := range modelJournals {
+		domainJournals[i] = toDomainJournal(mj) // Assuming toDomainJournal exists
+	}
+
+	return domainJournals, nil
+}
+
+// FindTransactionsByJournalIDs retrieves all transactions for a given list of journal IDs.
+// It returns a map where keys are journal IDs and values are slices of transactions.
+func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context, journalIDs []string) (map[string][]domain.Transaction, error) {
+	if len(journalIDs) == 0 {
+		return map[string][]domain.Transaction{}, nil
+	}
+
+	query := `
+		SELECT transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by
+		FROM transactions
+		WHERE journal_id = ANY($1)
+		ORDER BY journal_id, created_at; -- Order by journal_id for grouping, then by time
+	`
+
+	rows, err := r.pool.Query(ctx, query, journalIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query transactions for journal IDs: %w", err)
+	}
+	defer rows.Close()
+
+	transactionsMap := make(map[string][]domain.Transaction)
+	for rows.Next() {
+		var modelTxn models.Transaction
+		var amount decimal.Decimal
+
+		if err := rows.Scan(
+			&modelTxn.TransactionID,
+			&modelTxn.JournalID,
+			&modelTxn.AccountID,
+			&amount,
+			&modelTxn.TransactionType,
+			&modelTxn.CurrencyCode,
+			&modelTxn.Notes,
+			&modelTxn.CreatedAt,
+			&modelTxn.CreatedBy,
+			&modelTxn.LastUpdatedAt,
+			&modelTxn.LastUpdatedBy,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan transaction row during batch fetch: %w", err)
+		}
+		modelTxn.Amount = amount
+
+		domainTxn := toDomainTransaction(modelTxn) // Assuming toDomainTransaction exists
+		transactionsMap[domainTxn.JournalID] = append(transactionsMap[domainTxn.JournalID], domainTxn)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating transaction rows during batch fetch: %w", err)
+	}
+
+	// Ensure even journals with no transactions have an entry (empty slice)
+	for _, jid := range journalIDs {
+		if _, exists := transactionsMap[jid]; !exists {
+			transactionsMap[jid] = []domain.Transaction{}
+		}
+	}
+
+	return transactionsMap, nil
+}
+
 // TODO: Implement UpdateJournalStatus for M4 (Reversals).

@@ -51,6 +51,32 @@ func (m *MockJournalRepository) FindTransactionsByAccountID(ctx context.Context,
 	return args.Get(0).([]domain.Transaction), args.Error(1)
 }
 
+// ListJournalsByWorkplace implements the interface method for the mock.
+func (m *MockJournalRepository) ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Journal, error) {
+	args := m.Called(ctx, workplaceID, limit, offset)
+	if args.Get(0) == nil {
+		// Handle cases where nil slice is expected vs. error
+		if args.Error(1) != nil {
+			return nil, args.Error(1)
+		}
+		return nil, nil // Return nil slice if no error specified
+	}
+	return args.Get(0).([]domain.Journal), args.Error(1)
+}
+
+// FindTransactionsByJournalIDs implements the interface method for the mock.
+func (m *MockJournalRepository) FindTransactionsByJournalIDs(ctx context.Context, journalIDs []string) (map[string][]domain.Transaction, error) {
+	args := m.Called(ctx, journalIDs)
+	if args.Get(0) == nil {
+		// Handle cases where nil map is expected vs. error
+		if args.Error(1) != nil {
+			return nil, args.Error(1)
+		}
+		return nil, nil // Return nil map if no error specified
+	}
+	return args.Get(0).(map[string][]domain.Transaction), args.Error(1)
+}
+
 // --- Mock AccountRepository (Use definition from account_service_test.go) ---
 /* // Remove duplicated definition
 type MockAccountRepository struct {
@@ -457,26 +483,37 @@ func (suite *JournalServiceTestSuite) TestGetJournalByID_Success() {
 	journalID := uuid.NewString()
 	dummyWorkplaceID := uuid.NewString()
 	dummyUserID := uuid.NewString() // Added requesting user ID
-	expectedJournal := &domain.Journal{
+	expectedJournalHeader := &domain.Journal{
 		JournalID:   journalID,
 		WorkplaceID: dummyWorkplaceID,
 		Description: "Found Journal",
+	}
+	expectedTransactions := []domain.Transaction{
+		{TransactionID: uuid.NewString(), JournalID: journalID, AccountID: uuid.NewString(), Amount: decimal.NewFromInt(100), TransactionType: domain.Debit},
+		{TransactionID: uuid.NewString(), JournalID: journalID, AccountID: uuid.NewString(), Amount: decimal.NewFromInt(100), TransactionType: domain.Credit},
 	}
 
 	// Expect AuthorizeUserAction call (assuming success)
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, dummyUserID, dummyWorkplaceID, domain.RoleMember).Return(nil).Once()
 
-	// Expect FindJournalByID repo call
-	suite.mockJournalRepo.On("FindJournalByID", ctx, journalID).Return(expectedJournal, nil).Once()
+	// Expect FindJournalByID repo call (returns header only)
+	suite.mockJournalRepo.On("FindJournalByID", ctx, journalID).Return(expectedJournalHeader, nil).Once()
+
+	// Expect FindTransactionsByJournalID repo call (returns transactions)
+	suite.mockJournalRepo.On("FindTransactionsByJournalID", ctx, journalID).Return(expectedTransactions, nil).Once()
 
 	// Call GetJournalByID with workplaceID and requestingUserID
 	journal, err := suite.service.GetJournalByID(ctx, dummyWorkplaceID, journalID, dummyUserID)
 
 	suite.Require().NoError(err)
-	suite.Equal(expectedJournal, journal)
+	suite.Require().NotNil(journal)
+	suite.Equal(expectedJournalHeader.JournalID, journal.JournalID)
+	suite.Equal(expectedJournalHeader.WorkplaceID, journal.WorkplaceID)
+	suite.Equal(expectedJournalHeader.Description, journal.Description)
+	suite.Equal(expectedTransactions, journal.Transactions) // Assert transactions are populated
+
 	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
-	suite.mockJournalRepo.AssertNotCalled(suite.T(), "FindTransactionsByJournalID", mock.Anything, mock.Anything)
 }
 
 func (suite *JournalServiceTestSuite) TestGetJournalByID_AuthFailed() {

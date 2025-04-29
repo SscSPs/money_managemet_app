@@ -237,6 +237,11 @@ definitions:
         type: string
       lastUpdatedBy:
         type: string
+      transactions:
+        description: Added transactions
+        items:
+          $ref: '#/definitions/dto.TransactionResponse'
+        type: array
       workplaceID:
         type: string
     type: object
@@ -267,6 +272,28 @@ definitions:
         items:
           $ref: '#/definitions/dto.WorkplaceResponse'
         type: array
+    type: object
+  dto.TransactionResponse:
+    properties:
+      accountID:
+        type: string
+      amount:
+        description: Always positive
+        type: number
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      currencyCode:
+        type: string
+      journalID:
+        type: string
+      notes:
+        type: string
+      transactionID:
+        type: string
+      transactionType:
+        $ref: '#/definitions/domain.TransactionType'
     type: object
   dto.UpdateAccountRequest:
     properties:

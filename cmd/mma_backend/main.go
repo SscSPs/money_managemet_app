@@ -13,6 +13,7 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/platform/config"
 	"github.com/SscSPs/money_managemet_app/internal/platform/database"
 	"github.com/SscSPs/money_managemet_app/internal/repositories/database/pgsql"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
 	migrate "github.com/golang-migrate/migrate/v4"
@@ -108,6 +109,16 @@ func setupGinEngine(logger *slog.Logger, cfg *config.Config) *gin.Engine {
 	r := gin.New()
 
 	// Global middleware (logging, recovery)
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowAllOrigins = true // Allow all origins (for development)
+	// You might want to restrict origins in production:
+	// corsConfig.AllowOrigins = []string{\"http://localhost:3000\", \"https://your-frontend.com\"}
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"} // Add Authorization
+	// AllowCredentials can be needed if your frontend sends cookies or auth headers
+	corsConfig.AllowCredentials = true
+
+	r.Use(cors.New(corsConfig)) // Use CORS middleware
 	r.Use(middleware.StructuredLoggingMiddleware(logger), gin.Recovery())
 
 	err := r.SetTrustedProxies(nil) // Set trusted proxies (nil means trust nothing, adjust as needed)

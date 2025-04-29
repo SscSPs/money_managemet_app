@@ -46,12 +46,12 @@ func setupAPIV1Routes(
 	v1 := r.Group("/api/v1", middleware.AuthMiddleware(cfg.JWTSecret))
 
 	// Delegate route registration to specific handlers, passing required services
-	registerJournalRoutes(v1, journalService)           // Pass JournalService
-	registerAccountRoutes(v1, accountService)           // Pass AccountService
-	registerUserRoutes(v1, userService)                 // Pass UserService
-	registerCurrencyRoutes(v1, currencyService)         // Pass CurrencyService
-	registerExchangeRateRoutes(v1, exchangeRateService) // Pass ExchangeRateService
-	registerWorkplaceRoutes(v1, workplaceService)       // pass WorkplaceService
+	// registerJournalRoutes(v1, journalService)           // REMOVED - Will be nested under workplaces
+	registerAccountRoutes(v1, accountService)                     // Pass AccountService
+	registerUserRoutes(v1, userService)                           // Pass UserService
+	registerCurrencyRoutes(v1, currencyService)                   // Pass CurrencyService
+	registerExchangeRateRoutes(v1, exchangeRateService)           // Pass ExchangeRateService
+	registerWorkplaceRoutes(v1, workplaceService, journalService) // Pass WorkplaceService AND JournalService
 }
 
 // setupSwaggerRoutes configures the swagger documentation routes
