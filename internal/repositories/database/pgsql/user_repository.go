@@ -139,26 +139,9 @@ func (r *PgxUserRepository) FindUsers(ctx context.Context, limit int, offset int
 	}
 	defer rows.Close()
 
-	modelUsers := []models.User{}
-	for rows.Next() {
-		var modelUser models.User
-		err := rows.Scan(
-			&modelUser.UserID,
-			&modelUser.Name,
-			&modelUser.CreatedAt,
-			&modelUser.CreatedBy,
-			&modelUser.LastUpdatedAt,
-			&modelUser.LastUpdatedBy,
-			&modelUser.DeletedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan user row: %w", err)
-		}
-		modelUsers = append(modelUsers, modelUser)
-	}
-
-	if rows.Err() != nil {
-		return nil, fmt.Errorf("error iterating user rows: %w", rows.Err())
+	modelUsers, err := pgx.CollectRows(rows, pgx.RowToStructByName[models.User])
+	if err != nil {
+		return nil, fmt.Errorf("failed to collect user rows: %w", err)
 	}
 
 	return toDomainUserSlice(modelUsers), nil
@@ -198,7 +181,7 @@ func (r *PgxUserRepository) MarkUserDeleted(ctx context.Context, userID string, 
 	}
 	if cmdTag.RowsAffected() == 0 {
 		// User might not exist or was already deleted
-		return fmt.Errorf("user not found or already deleted: %w", pgx.ErrNoRows)
+		return fmt.Errorf("user not found or already deleted: %w", apperrors.ErrNotFound)
 	}
 	return nil
 }

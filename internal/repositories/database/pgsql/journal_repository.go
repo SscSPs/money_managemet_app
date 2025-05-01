@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
@@ -206,6 +207,11 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 	}
 
 	// Sort transactions deterministically (e.g., by creation order or ID) if needed for consistent running balance calc within the journal
+	// Sort by TransactionID for deterministic order
+	sort.Slice(transactions, func(i, j int) bool {
+		return transactions[i].TransactionID < transactions[j].TransactionID
+	})
+
 	// For now, we process in the order received.
 	for _, txn := range transactions {
 		modelTxn := toModelTransaction(txn)
@@ -249,9 +255,10 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 		)
 	}
 
+	// 5. Send the batch of transaction inserts
 	br := tx.SendBatch(ctx, batch)
-	// Close the batch results, checking for errors during execution
-	if err := br.Close(); err != nil {
+	err = br.Close() // Important: Close the batch results to check for errors in each command
+	if err != nil {
 		return fmt.Errorf("failed to execute transaction batch for journal %s: %w", modelJournal.JournalID, err)
 	}
 
@@ -311,42 +318,34 @@ func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, 
 	}
 	defer rows.Close()
 
-	modelTransactions := []models.Transaction{}
+	transactions := []models.Transaction{}
 	for rows.Next() {
-		var modelTxn models.Transaction
-		var amount decimal.Decimal
-		var runningBalancePtr *decimal.Decimal // Use pointer for nullable column
-
-		if err := rows.Scan(
-			&modelTxn.TransactionID,
-			&modelTxn.JournalID,
-			&modelTxn.AccountID,
-			&amount,
-			&modelTxn.TransactionType,
-			&modelTxn.CurrencyCode,
-			&modelTxn.Notes,
-			&modelTxn.CreatedAt,
-			&modelTxn.CreatedBy,
-			&modelTxn.LastUpdatedAt,
-			&modelTxn.LastUpdatedBy,
-			&runningBalancePtr, // Scan into pointer
-		); err != nil {
+		var t models.Transaction
+		err := rows.Scan(
+			&t.TransactionID,
+			&t.JournalID,
+			&t.AccountID,
+			&t.Amount,
+			&t.TransactionType,
+			&t.CurrencyCode,
+			&t.Notes,
+			&t.CreatedAt,
+			&t.CreatedBy,
+			&t.LastUpdatedAt,
+			&t.LastUpdatedBy,
+			&t.RunningBalance, // Scan the running balance
+		)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan transaction row for journal %s: %w", journalID, err)
 		}
-		modelTxn.Amount = amount // Assign scanned decimal
-		if runningBalancePtr != nil {
-			modelTxn.RunningBalance = *runningBalancePtr // Assign dereferenced value if not null
-		} else {
-			modelTxn.RunningBalance = decimal.Zero // Assign default value if null
-		}
-		modelTransactions = append(modelTransactions, modelTxn)
+		transactions = append(transactions, t)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating transaction rows for journal %s: %w", journalID, err)
 	}
 
-	return toDomainTransactionSlice(modelTransactions), nil
+	return toDomainTransactionSlice(transactions), nil
 }
 
 // FindTransactionsByAccountID retrieves all transactions associated with a specific account.
@@ -368,42 +367,34 @@ func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, 
 	}
 	defer rows.Close()
 
-	modelTransactions := []models.Transaction{}
+	transactions := []models.Transaction{}
 	for rows.Next() {
-		var modelTxn models.Transaction
-		var amount decimal.Decimal
-		var runningBalancePtr *decimal.Decimal // Use pointer for nullable column
-
-		if err := rows.Scan(
-			&modelTxn.TransactionID,
-			&modelTxn.JournalID,
-			&modelTxn.AccountID,
-			&amount,
-			&modelTxn.TransactionType,
-			&modelTxn.CurrencyCode,
-			&modelTxn.Notes,
-			&modelTxn.CreatedAt,
-			&modelTxn.CreatedBy,
-			&modelTxn.LastUpdatedAt,
-			&modelTxn.LastUpdatedBy,
-			&runningBalancePtr, // Scan into pointer
-		); err != nil {
+		var t models.Transaction
+		err := rows.Scan(
+			&t.TransactionID,
+			&t.JournalID,
+			&t.AccountID,
+			&t.Amount,
+			&t.TransactionType,
+			&t.CurrencyCode,
+			&t.Notes,
+			&t.CreatedAt,
+			&t.CreatedBy,
+			&t.LastUpdatedAt,
+			&t.LastUpdatedBy,
+			&t.RunningBalance, // Scan the running balance
+		)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan transaction row for account %s: %w", accountID, err)
 		}
-		modelTxn.Amount = amount
-		if runningBalancePtr != nil {
-			modelTxn.RunningBalance = *runningBalancePtr // Assign dereferenced value if not null
-		} else {
-			modelTxn.RunningBalance = decimal.Zero // Assign default value if null
-		}
-		modelTransactions = append(modelTransactions, modelTxn)
+		transactions = append(transactions, t)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating transaction rows for account %s: %w", accountID, err)
 	}
 
-	return toDomainTransactionSlice(modelTransactions), nil
+	return toDomainTransactionSlice(transactions), nil
 }
 
 // ListJournalsByWorkplace retrieves a paginated list of journals for a specific workplace.
@@ -432,35 +423,34 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 
 	modelJournals := []models.Journal{}
 	for rows.Next() {
-		var modelJournal models.Journal
+		var m models.Journal
 		err := rows.Scan(
-			&modelJournal.JournalID,
-			&modelJournal.WorkplaceID,
-			&modelJournal.JournalDate,
-			&modelJournal.Description,
-			&modelJournal.CurrencyCode,
-			&modelJournal.Status,
-			&modelJournal.CreatedAt,
-			&modelJournal.CreatedBy,
-			&modelJournal.LastUpdatedAt,
-			&modelJournal.LastUpdatedBy,
+			&m.JournalID,
+			&m.WorkplaceID,
+			&m.JournalDate,
+			&m.Description,
+			&m.CurrencyCode,
+			&m.Status,
+			&m.CreatedAt,
+			&m.CreatedBy,
+			&m.LastUpdatedAt,
+			&m.LastUpdatedBy,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan journal row for workplace %s: %w", workplaceID, err)
 		}
-		modelJournals = append(modelJournals, modelJournal)
+		modelJournals = append(modelJournals, m)
 	}
 
-	if rows.Err() != nil {
-		return nil, fmt.Errorf("error iterating journal rows for workplace %s: %w", workplaceID, rows.Err())
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating journal rows for workplace %s: %w", workplaceID, err)
 	}
 
 	// Convert models to domain objects
 	domainJournals := make([]domain.Journal, len(modelJournals))
-	for i, mj := range modelJournals {
-		domainJournals[i] = toDomainJournal(mj) // Assuming toDomainJournal exists
+	for i, m := range modelJournals {
+		domainJournals[i] = toDomainJournal(m)
 	}
-
 	return domainJournals, nil
 }
 

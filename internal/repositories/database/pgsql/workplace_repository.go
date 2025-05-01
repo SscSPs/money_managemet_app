@@ -136,26 +136,9 @@ func (r *PgxWorkplaceRepository) ListWorkplacesByUserID(ctx context.Context, use
 	}
 	defer rows.Close()
 
-	workplaces := []domain.Workplace{}
-	for rows.Next() {
-		var w domain.Workplace
-		err := rows.Scan(
-			&w.WorkplaceID,
-			&w.Name,
-			&w.Description,
-			&w.CreatedAt,
-			&w.CreatedBy,
-			&w.LastUpdatedAt,
-			&w.LastUpdatedBy,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan workplace row for user %s: %w", userID, err)
-		}
-		workplaces = append(workplaces, w)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating workplace rows for user %s: %w", userID, err)
+	workplaces, err := pgx.CollectRows(rows, pgx.RowToStructByPos[domain.Workplace])
+	if err != nil {
+		return nil, fmt.Errorf("failed to collect workplace rows for user %s: %w", userID, err)
 	}
 
 	return workplaces, nil

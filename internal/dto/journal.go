@@ -133,23 +133,3 @@ type ListTransactionsResponse struct {
 	Transactions []TransactionResponse `json:"transactions"`
 	// TODO: Add pagination metadata (total count, limit, offset)?
 }
-
-// --- Old DTOs (Marked for removal or refactoring) ---
-
-/*
-// CreateJournalAndTxn was used by the old PersistJournal endpoint.
-// Replaced by CreateJournalRequest which embeds CreateTransactionRequest.
-type CreateJournalAndTxn struct {
-	Journal      models.Journal      `json:"journal" binding:"required"`
-	Transactions []models.Transaction `json:"transactions" binding:"required,min=2,dive"` // Ensure at least two entries, validate each
-}
-*/
-
-/*
-// GetJournalResponse combined Journal and Transactions.
-// The new approach might involve separate calls or a different combined DTO if needed.
-type GetJournalResponse struct {
-	Journal      JournalResponse       `json:"journal"`
-	Transactions []TransactionResponse `json:"transactions"`
-}
-*/

@@ -110,7 +110,7 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 		if errors.As(err, &pgErr) {
 			if pgErr.Code == "23505" { // Unique violation
 				// Treat unique violation as a validation error
-				return fmt.Errorf("%w: account with ID %s already exists", apperrors.ErrValidation, modelAcc.AccountID)
+				return fmt.Errorf("%w: account with ID %s already exists", apperrors.ErrDuplicate, modelAcc.AccountID)
 			}
 		}
 		return fmt.Errorf("failed to save account %s: %w", modelAcc.AccountID, err)
@@ -250,10 +250,10 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 	}
 	defer rows.Close()
 
-	modelAccounts := []models.Account{}
+	accounts := []domain.Account{}
 	for rows.Next() {
 		var modelAcc models.Account
-		var parentID sql.NullString // Use sql.NullString
+		var parentID sql.NullString
 		var balance decimal.Decimal
 		err := rows.Scan(
 			&modelAcc.AccountID,
@@ -261,7 +261,7 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 			&modelAcc.Name,
 			&modelAcc.AccountType,
 			&modelAcc.CurrencyCode,
-			&parentID, // Scan into sql.NullString
+			&parentID,
 			&modelAcc.Description,
 			&modelAcc.IsActive,
 			&modelAcc.CreatedAt,
@@ -271,7 +271,7 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 			&balance,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan account row during list for workplace %s: %w", workplaceID, err)
+			return nil, fmt.Errorf("failed to scan account row for workplace %s: %w", workplaceID, err)
 		}
 
 		if parentID.Valid {
@@ -280,14 +280,14 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 			modelAcc.ParentAccountID = ""
 		}
 		modelAcc.Balance = balance
-		modelAccounts = append(modelAccounts, modelAcc)
+		accounts = append(accounts, toDomainAccount(modelAcc))
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating account rows during list for workplace %s: %w", workplaceID, err)
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("error iterating account rows for workplace %s: %w", workplaceID, rows.Err())
 	}
 
-	return toDomainAccountSlice(modelAccounts), nil // Use mapping helper
+	return accounts, nil
 }
 
 // Helper to convert slice of models.Account to slice of domain.Account
