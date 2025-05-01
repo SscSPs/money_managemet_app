@@ -41,6 +41,13 @@ func (m *MockAccountService) GetAccountByID(ctx context.Context, workplaceID str
 	}
 	return args.Get(0).(*domain.Account), args.Error(1)
 }
+func (m *MockAccountService) GetAccountByIDs(ctx context.Context, workplaceID string, accountIDs []string) (map[string]domain.Account, error) {
+	args := m.Called(ctx, workplaceID, accountIDs)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[string]domain.Account), args.Error(1)
+}
 func (m *MockAccountService) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
 	args := m.Called(ctx, workplaceID, limit, offset)
 	if args.Get(0) == nil {

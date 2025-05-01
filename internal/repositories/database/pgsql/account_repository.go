@@ -24,8 +24,8 @@ type PgxAccountRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewPgxAccountRepository creates a new repository for account data.
-func NewPgxAccountRepository(pool *pgxpool.Pool) portsrepo.AccountRepository {
+// newPgxAccountRepository creates a new repository for account data.
+func newPgxAccountRepository(pool *pgxpool.Pool) portsrepo.AccountRepository {
 	return &PgxAccountRepository{pool: pool}
 }
 

@@ -17,8 +17,8 @@ type PgxWorkplaceRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewPgxWorkplaceRepository creates a new repository for workplace data.
-func NewPgxWorkplaceRepository(pool *pgxpool.Pool) portsrepo.WorkplaceRepository {
+// newPgxWorkplaceRepository creates a new repository for workplace data.
+func newPgxWorkplaceRepository(pool *pgxpool.Pool) portsrepo.WorkplaceRepository {
 	return &PgxWorkplaceRepository{pool: pool}
 }
 

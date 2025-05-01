@@ -17,8 +17,8 @@ type PgxCurrencyRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewPgxCurrencyRepository creates a new repository for currency data.
-func NewPgxCurrencyRepository(pool *pgxpool.Pool) portsrepo.CurrencyRepository {
+// newPgxCurrencyRepository creates a new repository for currency data.
+func newPgxCurrencyRepository(pool *pgxpool.Pool) portsrepo.CurrencyRepository {
 	return &PgxCurrencyRepository{pool: pool}
 }
 

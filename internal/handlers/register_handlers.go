@@ -16,18 +16,13 @@ import (
 func RegisterRoutes(
 	r *gin.Engine,
 	cfg *config.Config,
-	userService portssvc.UserService, // Use interface type
-	accountService portssvc.AccountService, // Use interface type
-	currencyService portssvc.CurrencyService, // Use interface type
-	exchangeRateService portssvc.ExchangeRateService, // Use interface type
-	journalService portssvc.JournalService, // Use interface type
-	workplaceService portssvc.WorkplaceService, // Use interface type
+	services *portssvc.ServiceContainer,
 ) {
 	// Register public authentication routes
-	registerAuthRoutes(r, cfg, userService)
+	registerAuthRoutes(r, cfg, services.User)
 
 	// Setup API v1 routes with Auth Middleware, passing service interfaces
-	setupAPIV1Routes(r, cfg, userService, accountService, currencyService, exchangeRateService, journalService, workplaceService)
+	setupAPIV1Routes(r, cfg, services)
 
 	// Swagger routes (typically public or conditionally available)
 	setupSwaggerRoutes(r, cfg)
@@ -37,21 +32,16 @@ func RegisterRoutes(
 func setupAPIV1Routes(
 	r *gin.Engine,
 	cfg *config.Config,
-	userService portssvc.UserService, // Use interface type
-	accountService portssvc.AccountService, // Use interface type
-	currencyService portssvc.CurrencyService, // Use interface type
-	exchangeRateService portssvc.ExchangeRateService, // Use interface type
-	journalService portssvc.JournalService, // Use interface type
-	workplaceService portssvc.WorkplaceService, // Use interface type
+	service *portssvc.ServiceContainer,
 ) {
 	// Apply AuthMiddleware to the entire v1 group
 	v1 := r.Group("/api/v1", middleware.AuthMiddleware(cfg.JWTSecret))
 
 	// Delegate route registration to specific handlers, passing required services
-	registerUserRoutes(v1, userService)
-	registerCurrencyRoutes(v1, currencyService)
-	registerExchangeRateRoutes(v1, exchangeRateService)
-	registerWorkplaceRoutes(v1, workplaceService, journalService, accountService)
+	registerUserRoutes(v1, service.User)
+	registerCurrencyRoutes(v1, service.Currency)
+	registerExchangeRateRoutes(v1, service.ExchangeRate)
+	registerWorkplaceRoutes(v1, service.Workplace, service.Journal, service.Account)
 }
 
 // setupSwaggerRoutes configures the swagger documentation routes

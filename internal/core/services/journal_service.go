@@ -29,16 +29,16 @@ var (
 
 // journalService provides core journal and transaction operations.
 type journalService struct {
-	accountRepo  portsrepo.AccountRepository
+	accountSvc   portssvc.AccountService
 	journalRepo  portsrepo.JournalRepository
 	workplaceSvc portssvc.WorkplaceService // Added for authorization checks
 	// userRepo portsrepo.UserRepository
 }
 
 // NewJournalService creates a new JournalService.
-func NewJournalService(accountRepo portsrepo.AccountRepository, journalRepo portsrepo.JournalRepository, workplaceSvc portssvc.WorkplaceService) portssvc.JournalService {
+func NewJournalService(journalRepo portsrepo.JournalRepository, accountSvc portssvc.AccountService, workplaceSvc portssvc.WorkplaceService) portssvc.JournalService {
 	return &journalService{
-		accountRepo:  accountRepo,
+		accountSvc:   accountSvc,
 		journalRepo:  journalRepo,
 		workplaceSvc: workplaceSvc,
 	}
@@ -202,7 +202,7 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 
 	// --- Fetch Accounts and Validate Further ---
 	uniqueAccountIDs := uniqueStrings(accountIDs)
-	accountsMap, err := s.accountRepo.FindAccountsByIDs(ctx, uniqueAccountIDs)
+	accountsMap, err := s.accountSvc.GetAccountByIDs(ctx, workplaceID, uniqueAccountIDs)
 	if err != nil {
 		logger.Error("Failed to fetch accounts for journal creation", slog.String("error", err.Error()), slog.String("workplace_id", workplaceID))
 		return nil, fmt.Errorf("failed to fetch accounts: %w", err)
@@ -517,7 +517,7 @@ func (s *journalService) ListTransactionsByAccount(ctx context.Context, workplac
 	// --- Optional: Verify account exists and belongs to workplace ---
 	// This prevents querying transactions for accounts the user shouldn't see,
 	// even if they have access to the workplace.
-	_, err := s.accountRepo.FindAccountByID(ctx, accountID)
+	_, err := s.accountSvc.GetAccountByID(ctx, workplaceID, accountID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNotFound) {
 			logger.Warn("Account not found when listing transactions", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
@@ -584,7 +584,7 @@ func (s *journalService) CalculateAccountBalance(ctx context.Context, workplaceI
 	// Or should this service check it? Assume caller handles it for now.
 
 	// 1. Find the account to verify existence, activity, type, and workplace match
-	account, err := s.accountRepo.FindAccountByID(ctx, accountID)
+	account, err := s.accountSvc.GetAccountByID(ctx, workplaceID, accountID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNotFound) {
 			return decimal.Zero, fmt.Errorf("%w: ID %s", ErrAccountNotFound, accountID)

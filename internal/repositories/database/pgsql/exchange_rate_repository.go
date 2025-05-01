@@ -19,8 +19,8 @@ type PgxExchangeRateRepository struct {
 	db *pgxpool.Pool
 }
 
-// NewPgxExchangeRateRepository creates a new PgxExchangeRateRepository.
-func NewPgxExchangeRateRepository(db *pgxpool.Pool) portsrepo.ExchangeRateRepository {
+// newPgxExchangeRateRepository creates a new PgxExchangeRateRepository.
+func newPgxExchangeRateRepository(db *pgxpool.Pool) portsrepo.ExchangeRateRepository {
 	return &PgxExchangeRateRepository{db: db}
 }
 

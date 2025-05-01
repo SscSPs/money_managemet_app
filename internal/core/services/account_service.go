@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
@@ -90,6 +91,25 @@ func (s *accountService) GetAccountByID(ctx context.Context, workplaceID string,
 
 	logger.Debug("Account retrieved successfully from service", slog.String("account_id", account.AccountID), slog.String("workplace_id", account.WorkplaceID))
 	return account, nil
+}
+
+func (s *accountService) GetAccountByIDs(ctx context.Context, workplaceID string, accountIDs []string) (map[string]domain.Account, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+	accounts, err := s.AccountRepository.FindAccountsByIDs(ctx, accountIDs)
+	if err != nil {
+		logger.Error("Failed to find accounts by IDs in repository", slog.String("error", err.Error()), slog.String("account_ids", strings.Join(accountIDs, ",")))
+		return nil, err
+	}
+
+	// Authorization: Check if all accounts belong to the expected workplace
+	for _, account := range accounts {
+		if account.WorkplaceID != workplaceID {
+			logger.Warn("Account found but belongs to different workplace", slog.String("account_id", account.AccountID), slog.String("account_workplace", account.WorkplaceID), slog.String("requested_workplace", workplaceID))
+			return nil, apperrors.ErrNotFound
+		}
+	}
+
+	return accounts, nil
 }
 
 // ListAccounts retrieves a paginated list of active accounts for a specific workplace.

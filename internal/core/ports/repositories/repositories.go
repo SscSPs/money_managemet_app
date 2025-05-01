@@ -9,6 +9,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// RepositoryProvider holds all repository interfaces needed by services.
+// This makes passing dependencies to the service container constructor cleaner.
+type RepositoryProvider struct {
+	AccountRepo      AccountRepository
+	CurrencyRepo     CurrencyRepository
+	ExchangeRateRepo ExchangeRateRepository
+	UserRepo         UserRepository
+	JournalRepo      JournalRepository
+	WorkplaceRepo    WorkplaceRepository
+}
+
 // Note: Specific method signatures might evolve. Context is included for potential cancellation/timeouts.
 
 // AccountRepository defines the persistence operations for Accounts.

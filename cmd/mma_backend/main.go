@@ -60,23 +60,12 @@ func main() {
 	logger.Info("Database connection pool established.")
 
 	// --- Dependency Injection Setup ---
-	logger.Info("Initializing repositories and services...")
+	logger.Info("Initializing repositories...")
+	repoProvider := pgsql.NewRepositoryProvider(dbPool, logger)
 
-	// Repositories
-	accountRepo := pgsql.NewPgxAccountRepository(dbPool)
-	currencyRepo := pgsql.NewPgxCurrencyRepository(dbPool)
-	exchangeRateRepo := pgsql.NewPgxExchangeRateRepository(dbPool)
-	userRepo := pgsql.NewPgxUserRepository(dbPool)
-	journalRepo := pgsql.NewPgxJournalRepository(dbPool, accountRepo)
-	workplaceRepo := pgsql.NewPgxWorkplaceRepository(dbPool)
-
-	// Services
-	accountService := services.NewAccountService(accountRepo)
-	currencyService := services.NewCurrencyService(currencyRepo)
-	exchangeRateService := services.NewExchangeRateService(exchangeRateRepo, currencyService)
-	userService := services.NewUserService(userRepo)
-	workplaceService := services.NewWorkplaceService(workplaceRepo)
-	journalService := services.NewJournalService(accountRepo, journalRepo, workplaceService)
+	// Create Service Container
+	logger.Info("Initializing services...")
+	serviceContainer := services.NewServiceContainer(repoProvider)
 
 	logger.Info("Dependencies initialized.")
 	// --- End Dependency Injection Setup ---
@@ -87,20 +76,18 @@ func main() {
 	// --- Register Custom Validators ---
 	logger.Info("Registering custom validators...")
 	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
-		// Register validation for 'decimal_gtz' tag
 		err := v.RegisterValidation("decimal_gtz", validateDecimalGreaterThanZero)
 		if err != nil {
 			logger.Error("Failed to register 'decimal_gtz' validator", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
 		logger.Info("'decimal_gtz' validator registered successfully.")
-		// Register other custom validators here if needed
 	} else {
 		logger.Warn("Could not get validator engine to register custom validators")
 	}
 
-	// Pass initialized services to route registration
-	handlers.RegisterRoutes(r, cfg, userService, accountService, currencyService, exchangeRateService, journalService, workplaceService)
+	// Pass the service container to route registration
+	handlers.RegisterRoutes(r, cfg, serviceContainer)
 
 	logger.Info("Server starting", slog.String("port", cfg.Port))
 	if err := r.Run(":" + cfg.Port); err != nil {

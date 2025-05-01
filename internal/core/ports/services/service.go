@@ -8,10 +8,21 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// ServiceContainer holds instances of all the application services.
+type ServiceContainer struct {
+	Account      AccountService
+	Currency     CurrencyService
+	ExchangeRate ExchangeRateService
+	User         UserService
+	Journal      JournalService
+	Workplace    WorkplaceService
+}
+
 // AccountService defines the interface for account-related business logic.
 type AccountService interface {
 	CreateAccount(ctx context.Context, workplaceID string, req dto.CreateAccountRequest, userID string) (*domain.Account, error)
 	GetAccountByID(ctx context.Context, workplaceID string, accountID string) (*domain.Account, error)
+	GetAccountByIDs(ctx context.Context, workplaceID string, accountIDs []string) (map[string]domain.Account, error)
 	ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error)
 	UpdateAccount(ctx context.Context, workplaceID string, accountID string, req dto.UpdateAccountRequest, userID string) (*domain.Account, error)
 	DeactivateAccount(ctx context.Context, workplaceID string, accountID string, userID string) error

@@ -7,12 +7,10 @@ import (
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
-	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -70,42 +68,37 @@ func (m *MockJournalRepository) FindTransactionsByJournalIDs(ctx context.Context
 }
 
 // --- Mock AccountRepository (as used by JournalService) ---
-type MockAccountRepository2 struct {
+type MockAccountService2 struct {
 	mock.Mock
 }
 
-var _ portsrepo.AccountRepository = (*MockAccountRepository2)(nil)
+var _ portssvc.AccountService = (*MockAccountService2)(nil)
 
-func (m *MockAccountRepository2) SaveAccount(ctx context.Context, account domain.Account) error {
-	args := m.Called(ctx, account)
-	return args.Error(0)
-}
-
-func (m *MockAccountRepository2) FindAccountByID(ctx context.Context, accountID string) (*domain.Account, error) {
-	args := m.Called(ctx, accountID)
+func (m *MockAccountService2) CreateAccount(ctx context.Context, workplaceID string, req dto.CreateAccountRequest, userID string) (*domain.Account, error) {
+	args := m.Called(ctx, workplaceID, req, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*domain.Account), args.Error(1)
 }
 
-func (m *MockAccountRepository2) FindAccountsByIDs(ctx context.Context, accountIDs []string) (map[string]domain.Account, error) {
-	args := m.Called(ctx, accountIDs)
+func (m *MockAccountService2) GetAccountByID(ctx context.Context, workplaceID string, accountID string) (*domain.Account, error) {
+	args := m.Called(ctx, workplaceID, accountID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Account), args.Error(1)
+}
+
+func (m *MockAccountService2) GetAccountByIDs(ctx context.Context, workplaceID string, accountIDs []string) (map[string]domain.Account, error) {
+	args := m.Called(ctx, workplaceID, accountIDs)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(map[string]domain.Account), args.Error(1)
 }
 
-func (m *MockAccountRepository2) FindAccountsByIDsForUpdate(ctx context.Context, tx pgx.Tx, accountIDs []string) (map[string]domain.Account, error) {
-	args := m.Called(ctx, tx, accountIDs)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(map[string]domain.Account), args.Error(1)
-}
-
-func (m *MockAccountRepository2) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
+func (m *MockAccountService2) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
 	args := m.Called(ctx, workplaceID, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -113,19 +106,25 @@ func (m *MockAccountRepository2) ListAccounts(ctx context.Context, workplaceID s
 	return args.Get(0).([]domain.Account), args.Error(1)
 }
 
-func (m *MockAccountRepository2) UpdateAccount(ctx context.Context, account domain.Account) error {
-	args := m.Called(ctx, account)
+func (m *MockAccountService2) UpdateAccount(ctx context.Context, workplaceID string, accountID string, req dto.UpdateAccountRequest, userID string) (*domain.Account, error) {
+	args := m.Called(ctx, workplaceID, accountID, req, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Account), args.Error(1)
+}
+
+func (m *MockAccountService2) DeactivateAccount(ctx context.Context, workplaceID string, accountID string, userID string) error {
+	args := m.Called(ctx, workplaceID, accountID, userID)
 	return args.Error(0)
 }
 
-func (m *MockAccountRepository2) UpdateAccountBalancesInTx(ctx context.Context, tx pgx.Tx, balanceChanges map[string]decimal.Decimal, userID string, now time.Time) error {
-	args := m.Called(ctx, tx, balanceChanges, userID, now)
-	return args.Error(0)
-}
-
-func (m *MockAccountRepository2) DeactivateAccount(ctx context.Context, accountID string, userID string, now time.Time) error {
-	args := m.Called(ctx, accountID, userID, now)
-	return args.Error(0)
+func (m *MockAccountService2) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
+	args := m.Called(ctx, workplaceID, accountID)
+	if args.Get(0) == nil {
+		return decimal.Zero, args.Error(1)
+	}
+	return args.Get(0).(decimal.Decimal), args.Error(1)
 }
 
 // --- Mock WorkplaceService ---
@@ -175,7 +174,7 @@ func (m *MockWorkplaceService) FindWorkplaceByID(ctx context.Context, workplaceI
 type JournalServiceTestSuite struct {
 	suite.Suite
 	mockJournalRepo  *MockJournalRepository
-	mockAccountRepo  *MockAccountRepository2
+	mockAccountRepo  *MockAccountService2
 	mockWorkplaceSvc *MockWorkplaceService
 	service          portssvc.JournalService
 	assetAccount     domain.Account
@@ -188,9 +187,9 @@ type JournalServiceTestSuite struct {
 
 func (suite *JournalServiceTestSuite) SetupTest() {
 	suite.mockJournalRepo = new(MockJournalRepository)
-	suite.mockAccountRepo = new(MockAccountRepository2)
+	suite.mockAccountRepo = new(MockAccountService2)
 	suite.mockWorkplaceSvc = new(MockWorkplaceService)
-	suite.service = services.NewJournalService(suite.mockAccountRepo, suite.mockJournalRepo, suite.mockWorkplaceSvc)
+	suite.service = services.NewJournalService(suite.mockJournalRepo, suite.mockAccountRepo, suite.mockWorkplaceSvc)
 
 	suite.workplaceID = uuid.NewString()
 	suite.userID = uuid.NewString()
@@ -247,7 +246,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_Success() {
 		suite.assetAccount.AccountID:     suite.assetAccount,
 		suite.liabilityAccount.AccountID: suite.liabilityAccount, // Use liability account
 	}
-	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, []string{suite.assetAccount.AccountID, suite.liabilityAccount.AccountID}).Return(accountsMap, nil).Once()
+	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, []string{suite.assetAccount.AccountID, suite.liabilityAccount.AccountID}).Return(accountsMap, nil).Once()
 
 	// Mock saving journal
 	suite.mockJournalRepo.On("SaveJournal", ctx, mock.AnythingOfType("domain.Journal"), mock.AnythingOfType("[]domain.Transaction"), mock.AnythingOfType("map[string]decimal.Decimal")).Return(nil).Once()
@@ -280,7 +279,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_AuthorizationFail() {
 	suite.Require().Error(err)
 	suite.ErrorIs(err, authErr)
 	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
-	suite.mockAccountRepo.AssertNotCalled(suite.T(), "FindAccountsByIDs", mock.Anything, mock.Anything)
+	suite.mockAccountRepo.AssertNotCalled(suite.T(), "GetAccountByIDs", mock.Anything, mock.Anything, mock.Anything)
 	suite.mockJournalRepo.AssertNotCalled(suite.T(), "SaveJournal", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
@@ -327,7 +326,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_FindAccountsError() {
 	}
 	repoErr := assert.AnError
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.Anything).Return(nil, repoErr).Once()
+	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(nil, repoErr).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
@@ -352,7 +351,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_AccountNotFound() {
 		// unknownAccountID is missing
 	}
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
@@ -383,7 +382,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_AccountWrongWorkplace() 
 		wrongWorkplaceAccount.AccountID: wrongWorkplaceAccount,
 	}
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
@@ -414,7 +413,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_AccountInactive() {
 		inactiveAccount.AccountID:    inactiveAccount,
 	}
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
@@ -445,7 +444,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_CurrencyMismatch() {
 		mismatchCurrencyAccount.AccountID: mismatchCurrencyAccount,
 	}
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
@@ -469,7 +468,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_Unbalanced() {
 		suite.incomeAccount.AccountID: suite.incomeAccount,
 	}
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
@@ -495,7 +494,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_SaveError() {
 	}
 	repoErr := assert.AnError
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("FindAccountsByIDs", ctx, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 	// Expect SaveJournal AFTER successful validation
 	suite.mockJournalRepo.On("SaveJournal", ctx, mock.Anything, mock.Anything, mock.Anything).Return(repoErr).Once()
 

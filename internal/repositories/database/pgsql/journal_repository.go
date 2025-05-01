@@ -19,8 +19,8 @@ type PgxJournalRepository struct {
 	accountRepo portsrepo.AccountRepository
 }
 
-// NewPgxJournalRepository creates a new repository for journal and transaction data.
-func NewPgxJournalRepository(pool *pgxpool.Pool, accountRepo portsrepo.AccountRepository) portsrepo.JournalRepository {
+// newPgxJournalRepository creates a new repository for journal and transaction data.
+func newPgxJournalRepository(pool *pgxpool.Pool, accountRepo portsrepo.AccountRepository) portsrepo.JournalRepository {
 	return &PgxJournalRepository{
 		pool:        pool,
 		accountRepo: accountRepo,
