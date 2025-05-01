@@ -20,7 +20,7 @@ type CreateJournalRequest struct {
 // CreateTransactionRequest defines data for a single transaction within a journal creation request.
 type CreateTransactionRequest struct {
 	AccountID       string                 `json:"accountID" binding:"required,uuid"`
-	Amount          decimal.Decimal        `json:"amount" binding:"required,gt=0"` // Must be positive
+	Amount          decimal.Decimal        `json:"amount" binding:"required,decimal_gtz"` // Use custom validator
 	TransactionType domain.TransactionType `json:"transactionType" binding:"required,oneof=DEBIT CREDIT"`
 	Notes           string                 `json:"notes"`
 	// CurrencyCode is inherited from the Journal
@@ -90,6 +90,7 @@ type TransactionResponse struct {
 	Notes           string                 `json:"notes"`
 	CreatedAt       time.Time              `json:"createdAt"`
 	CreatedBy       string                 `json:"createdBy"`
+	RunningBalance  decimal.Decimal        `json:"runningBalance,omitempty"` // Added running balance
 }
 
 // ToTransactionResponse converts domain.Transaction to TransactionResponse DTO.
@@ -104,14 +105,18 @@ func ToTransactionResponse(t *domain.Transaction) TransactionResponse {
 		Notes:           t.Notes,
 		CreatedAt:       t.CreatedAt,
 		CreatedBy:       t.CreatedBy,
+		RunningBalance:  t.RunningBalance, // Added running balance
 	}
 }
 
 // ToTransactionResponses converts a slice of domain.Transaction to DTOs.
 func ToTransactionResponses(ts []domain.Transaction) []TransactionResponse {
 	list := make([]TransactionResponse, len(ts))
-	for i, t := range ts {
-		list[i] = ToTransactionResponse(&t)
+	// Use index directly instead of ranging over value
+	for i := range ts {
+		// Create a pointer to the transaction in the slice
+		tPtr := &ts[i] // Get address of element directly
+		list[i] = ToTransactionResponse(tPtr)
 	}
 	return list
 }

@@ -218,11 +218,25 @@ func (s *AccountService) DeactivateAccount(ctx context.Context, accountID string
 */
 
 // CalculateAccountBalance calculates the current balance for a given account.
-// It requires access to transaction data, likely via JournalService or a dedicated TransactionRepository/Service.
-// TODO: Implement balance calculation logic.
+// Now that balance is persisted on the account, this primarily reads the value.
+// The transaction-based calculation logic is kept commented for potential validation/reconciliation.
 func (s *accountService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	logger.Warn("CalculateAccountBalance not implemented", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
+
+	// TODO: Authorization: Check user can access workplaceID/accountID (partially done by GetAccountByID)
+
+	// Fetch the account, which now includes the persisted balance
+	account, err := s.GetAccountByID(ctx, workplaceID, accountID)
+	if err != nil {
+		// GetAccountByID handles NotFound and logging
+		return decimal.Zero, fmt.Errorf("failed to get account %s for balance calculation: %w", accountID, err)
+	}
+
+	logger.Debug("Retrieved persisted balance for account", slog.String("account_id", accountID), slog.String("balance", account.Balance.String()))
+	return account.Balance, nil
+
+	/* --- OLD CALCULATION LOGIC (Keep for reference/validation?) ---
+	logger.Warn("CalculateAccountBalance currently returns zero - IMPLEMENTATION NEEDED", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
 
 	// 1. Authorization: Check user can access workplaceID (maybe done implicitly if called by other authorized services)
 	// 2. Fetch account to verify it belongs to workplaceID (redundant if called after GetAccountByID?)
@@ -230,9 +244,11 @@ func (s *accountService) CalculateAccountBalance(ctx context.Context, workplaceI
 	// 4. Sum transactions based on account type (debit/credit).
 	// 5. Return balance.
 
-	// --- TEMPORARY: Return zero and error indicating not implemented --- \
-	return decimal.Zero, fmt.Errorf("account balance calculation not implemented")
+	// --- TEMPORARY: Return zero and nil error --- \
+	// Replace this with actual calculation logic
+	return decimal.Zero, nil
 	// --- /TEMPORARY ---
+	*/
 }
 
 // Remove the outdated TODO

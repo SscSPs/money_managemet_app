@@ -5,23 +5,26 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/models"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
-
-	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 )
 
 type PgxJournalRepository struct {
-	pool *pgxpool.Pool
+	pool        *pgxpool.Pool
+	accountRepo portsrepo.AccountRepository
 }
 
 // NewPgxJournalRepository creates a new repository for journal and transaction data.
-func NewPgxJournalRepository(pool *pgxpool.Pool) portsrepo.JournalRepository {
-	return &PgxJournalRepository{pool: pool}
+func NewPgxJournalRepository(pool *pgxpool.Pool, accountRepo portsrepo.AccountRepository) portsrepo.JournalRepository {
+	return &PgxJournalRepository{
+		pool:        pool,
+		accountRepo: accountRepo,
+	}
 }
 
 // Ensure PgxJournalRepository implements portsrepo.JournalRepository
@@ -77,6 +80,7 @@ func toModelTransaction(d domain.Transaction) models.Transaction {
 			LastUpdatedAt: d.LastUpdatedAt,
 			LastUpdatedBy: d.LastUpdatedBy,
 		},
+		// RunningBalance is set during save
 	}
 }
 
@@ -95,6 +99,7 @@ func toDomainTransaction(m models.Transaction) domain.Transaction {
 			LastUpdatedAt: m.LastUpdatedAt,
 			LastUpdatedBy: m.LastUpdatedBy,
 		},
+		RunningBalance: m.RunningBalance,
 	}
 }
 
@@ -108,8 +113,34 @@ func toDomainTransactionSlice(ms []models.Transaction) []domain.Transaction {
 
 // --- End Mapping Helpers ---
 
-// SaveJournal saves a journal and its associated transactions within a DB transaction.
-func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.Journal, transactions []domain.Transaction) error {
+// getSignedAmountInternal calculates the signed amount for a transaction based on account type.
+// This is an internal helper duplicating the logic from journalService to be used within the transaction boundary.
+// NOTE: Consider refactoring this logic into a shared utility or finding a way to use the service's method
+// without creating circular dependencies or needing service instances here.
+func getSignedAmountInternal(txn domain.Transaction, accountType domain.AccountType) (decimal.Decimal, error) {
+	signedAmount := txn.Amount
+	isDebit := txn.TransactionType == domain.Debit
+
+	switch accountType {
+	case domain.Asset, domain.Expense:
+		if !isDebit { // Credit to Asset/Expense
+			signedAmount = signedAmount.Neg()
+		}
+	case domain.Liability, domain.Equity, domain.Income:
+		if isDebit { // Debit to Liability/Equity/Income
+			signedAmount = signedAmount.Neg()
+		}
+	default:
+		return decimal.Zero, fmt.Errorf("unknown account type '%s' encountered for account ID %s", accountType, txn.AccountID)
+	}
+	return signedAmount, nil
+}
+
+// SaveJournal saves a journal, updates account balances, and saves associated transactions within a DB transaction.
+func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.Journal, transactions []domain.Transaction, balanceChanges map[string]decimal.Decimal) error {
+	// Use the injected account repository dependency
+	accountRepo := r.accountRepo
+
 	// Start a database transaction
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -120,10 +151,11 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 		_ = tx.Rollback(ctx) // Ignore rollback error
 	}()
 
-	// Convert domain journal to model for insertion
-	modelJournal := toModelJournal(journal)
+	now := journal.CreatedAt // Use consistent time from journal
+	userID := journal.CreatedBy
 
-	// 1. Insert the Journal entry
+	// 1. Insert the Journal entry using the transaction tx
+	modelJournal := toModelJournal(journal)
 	journalQuery := `
 		INSERT INTO journals (journal_id, workplace_id, journal_date, description, currency_code, status, created_at, created_by, last_updated_at, last_updated_by)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
@@ -144,15 +176,63 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 		return fmt.Errorf("failed to insert journal %s: %w", modelJournal.JournalID, err)
 	}
 
-	// 2. Insert all Transaction entries
-	// Use pgx batching for potential performance improvement with many transactions
+	// 2. Lock accounts and get current balances
+	accountIDs := make([]string, 0, len(balanceChanges))
+	for accID := range balanceChanges {
+		accountIDs = append(accountIDs, accID)
+	}
+
+	lockedAccounts, err := accountRepo.FindAccountsByIDsForUpdate(ctx, tx, accountIDs)
+	if err != nil {
+		// Error includes ErrNotFound if any account is missing
+		return fmt.Errorf("failed to lock accounts for update: %w", err)
+	}
+
+	// 3. Update account balances using the transaction tx
+	if err := accountRepo.UpdateAccountBalancesInTx(ctx, tx, balanceChanges, userID, now); err != nil {
+		return fmt.Errorf("failed to update account balances: %w", err)
+	}
+
+	// 4. Prepare and Insert Transaction entries with calculated running balances
 	batch := &pgx.Batch{}
 	txnQuery := `
-		INSERT INTO transactions (transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+		INSERT INTO transactions (transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by, running_balance)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
 	`
+	// Keep track of running balance calculation per account within this journal context
+	currentRunningBalances := make(map[string]decimal.Decimal)
+	for accID, lockedAcc := range lockedAccounts {
+		currentRunningBalances[accID] = lockedAcc.Balance // Start with the balance *before* this journal's changes
+	}
+
+	// Sort transactions deterministically (e.g., by creation order or ID) if needed for consistent running balance calc within the journal
+	// For now, we process in the order received.
 	for _, txn := range transactions {
 		modelTxn := toModelTransaction(txn)
+		modelTxn.CreatedAt = now
+		modelTxn.LastUpdatedAt = now
+		modelTxn.CreatedBy = userID
+		modelTxn.LastUpdatedBy = userID
+
+		// Calculate running balance for this specific transaction line
+		accountID := txn.AccountID
+		lockedAccount, ok := lockedAccounts[accountID]
+		if !ok {
+			// This should not happen due to the locking step finding all accounts
+			return fmt.Errorf("internal error: locked account %s not found during transaction processing", accountID)
+		}
+
+		signedAmount, err := getSignedAmountInternal(txn, lockedAccount.AccountType)
+		if err != nil {
+			return fmt.Errorf("failed to calculate signed amount for transaction %s: %w", txn.TransactionID, err)
+		}
+
+		// Calculate the running balance *after* this transaction
+		// Uses the balance fetched *before* the bulk update, plus the effect of this single line
+		newRunningBalance := currentRunningBalances[accountID].Add(signedAmount)
+		modelTxn.RunningBalance = newRunningBalance
+		currentRunningBalances[accountID] = newRunningBalance // Update the running balance for the next txn affecting this account *in this journal*
+
 		batch.Queue(txnQuery,
 			modelTxn.TransactionID,
 			modelTxn.JournalID,
@@ -165,6 +245,7 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 			modelTxn.CreatedBy,
 			modelTxn.LastUpdatedAt,
 			modelTxn.LastUpdatedBy,
+			modelTxn.RunningBalance, // Store the calculated running balance
 		)
 	}
 
@@ -174,7 +255,7 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 		return fmt.Errorf("failed to execute transaction batch for journal %s: %w", modelJournal.JournalID, err)
 	}
 
-	// If all inserts were successful, commit the transaction
+	// 5. If all inserts/updates were successful, commit the transaction
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction for journal %s: %w", modelJournal.JournalID, err)
 	}
@@ -219,7 +300,7 @@ func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID st
 // FindTransactionsByJournalID retrieves all transactions associated with a specific journal.
 func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, journalID string) ([]domain.Transaction, error) {
 	query := `
-		SELECT transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by
+		SELECT transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by, running_balance
 		FROM transactions
 		WHERE journal_id = $1
 		ORDER BY created_at; -- Or potentially transaction_id for deterministic order
@@ -233,8 +314,8 @@ func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, 
 	modelTransactions := []models.Transaction{}
 	for rows.Next() {
 		var modelTxn models.Transaction
-		// Need to scan decimal correctly
 		var amount decimal.Decimal
+		var runningBalancePtr *decimal.Decimal // Use pointer for nullable column
 
 		if err := rows.Scan(
 			&modelTxn.TransactionID,
@@ -248,10 +329,16 @@ func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, 
 			&modelTxn.CreatedBy,
 			&modelTxn.LastUpdatedAt,
 			&modelTxn.LastUpdatedBy,
+			&runningBalancePtr, // Scan into pointer
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan transaction row for journal %s: %w", journalID, err)
 		}
 		modelTxn.Amount = amount // Assign scanned decimal
+		if runningBalancePtr != nil {
+			modelTxn.RunningBalance = *runningBalancePtr // Assign dereferenced value if not null
+		} else {
+			modelTxn.RunningBalance = decimal.Zero // Assign default value if null
+		}
 		modelTransactions = append(modelTransactions, modelTxn)
 	}
 
@@ -269,7 +356,7 @@ func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, 
 	// Optional check: _, err := r.pool.Exec(ctx, "SELECT 1 FROM accounts WHERE account_id = $1 AND workplace_id = $2", accountID, workplaceID)
 
 	query := `
-        SELECT t.transaction_id, t.journal_id, t.account_id, t.amount, t.transaction_type, t.currency_code, t.notes, t.created_at, t.created_by, t.last_updated_at, t.last_updated_by
+        SELECT t.transaction_id, t.journal_id, t.account_id, t.amount, t.transaction_type, t.currency_code, t.notes, t.created_at, t.created_by, t.last_updated_at, t.last_updated_by, t.running_balance
         FROM transactions t
         JOIN journals j ON t.journal_id = j.journal_id
         WHERE t.account_id = $1 AND j.workplace_id = $2
@@ -285,6 +372,8 @@ func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, 
 	for rows.Next() {
 		var modelTxn models.Transaction
 		var amount decimal.Decimal
+		var runningBalancePtr *decimal.Decimal // Use pointer for nullable column
+
 		if err := rows.Scan(
 			&modelTxn.TransactionID,
 			&modelTxn.JournalID,
@@ -297,10 +386,16 @@ func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, 
 			&modelTxn.CreatedBy,
 			&modelTxn.LastUpdatedAt,
 			&modelTxn.LastUpdatedBy,
+			&runningBalancePtr, // Scan into pointer
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan transaction row for account %s: %w", accountID, err)
 		}
 		modelTxn.Amount = amount
+		if runningBalancePtr != nil {
+			modelTxn.RunningBalance = *runningBalancePtr // Assign dereferenced value if not null
+		} else {
+			modelTxn.RunningBalance = decimal.Zero // Assign default value if null
+		}
 		modelTransactions = append(modelTransactions, modelTxn)
 	}
 
@@ -377,7 +472,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context,
 	}
 
 	query := `
-		SELECT transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by
+		SELECT transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by, running_balance
 		FROM transactions
 		WHERE journal_id = ANY($1)
 		ORDER BY journal_id, created_at; -- Order by journal_id for grouping, then by time
@@ -393,6 +488,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context,
 	for rows.Next() {
 		var modelTxn models.Transaction
 		var amount decimal.Decimal
+		var runningBalancePtr *decimal.Decimal // Use pointer for nullable column
 
 		if err := rows.Scan(
 			&modelTxn.TransactionID,
@@ -406,12 +502,18 @@ func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context,
 			&modelTxn.CreatedBy,
 			&modelTxn.LastUpdatedAt,
 			&modelTxn.LastUpdatedBy,
+			&runningBalancePtr, // Scan into pointer
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan transaction row during batch fetch: %w", err)
 		}
 		modelTxn.Amount = amount
+		if runningBalancePtr != nil {
+			modelTxn.RunningBalance = *runningBalancePtr // Assign dereferenced value if not null
+		} else {
+			modelTxn.RunningBalance = decimal.Zero // Assign default value if null
+		}
 
-		domainTxn := toDomainTransaction(modelTxn) // Assuming toDomainTransaction exists
+		domainTxn := toDomainTransaction(modelTxn) // Includes RunningBalance now
 		transactionsMap[domainTxn.JournalID] = append(transactionsMap[domainTxn.JournalID], domainTxn)
 	}
 

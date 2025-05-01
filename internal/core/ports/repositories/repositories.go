@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
+	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 )
 
 // Note: Specific method signatures might evolve. Context is included for potential cancellation/timeouts.
@@ -14,19 +16,22 @@ type AccountRepository interface {
 	SaveAccount(ctx context.Context, account domain.Account) error
 	FindAccountByID(ctx context.Context, accountID string) (*domain.Account, error)
 	FindAccountsByIDs(ctx context.Context, accountIDs []string) (map[string]domain.Account, error)
+	// FindAccountsByIDsForUpdate selects accounts and locks them for update within a transaction.
+	// Requires the transaction (tx) as an argument.
+	FindAccountsByIDsForUpdate(ctx context.Context, tx pgx.Tx, accountIDs []string) (map[string]domain.Account, error)
 	ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error)
 	UpdateAccount(ctx context.Context, account domain.Account) error
-	// Add methods for updating (inactivation), listing etc. in later milestones
-	// ListAccounts(ctx context.Context) ([]domain.Account, error)
-	// UpdateAccount(ctx context.Context, account domain.Account) error
-	// DeactivateAccount(ctx context.Context, accountID string, userID string) error // Consider deactivate vs delete
+	// UpdateAccountBalancesInTx updates the balance for multiple accounts within a given transaction.
+	// It expects a map of accountID to the *change* in balance (delta).
+	UpdateAccountBalancesInTx(ctx context.Context, tx pgx.Tx, balanceChanges map[string]decimal.Decimal, userID string, now time.Time) error
 	DeactivateAccount(ctx context.Context, accountID string, userID string, now time.Time) error
 }
 
 // JournalRepository defines the persistence operations for Journals and their Transactions.
 // Saving a Journal implies saving its associated Transactions atomically.
 type JournalRepository interface {
-	SaveJournal(ctx context.Context, journal domain.Journal, transactions []domain.Transaction) error
+	// SaveJournal now requires balanceChanges map[accountID]delta
+	SaveJournal(ctx context.Context, journal domain.Journal, transactions []domain.Transaction, balanceChanges map[string]decimal.Decimal) error
 	FindJournalByID(ctx context.Context, journalID string) (*domain.Journal, error)
 	FindTransactionsByJournalID(ctx context.Context, journalID string) ([]domain.Transaction, error)
 	FindTransactionsByAccountID(ctx context.Context, workplaceID, accountID string) ([]domain.Transaction, error)

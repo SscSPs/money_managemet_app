@@ -213,7 +213,19 @@ func (h *accountHandler) listAccounts(c *gin.Context) {
 
 	accountResponses := make([]dto.AccountResponse, len(respAccounts))
 	for i, acc := range respAccounts {
-		accountResponses[i] = dto.ToAccountResponse(&acc)
+		// Calculate balance for each account
+		balance, err := h.accountService.CalculateAccountBalance(c.Request.Context(), workplaceID, acc.AccountID)
+		if err != nil {
+			// Log error and set balance to 0 for this account, but continue with others
+			logger.Error("Failed to calculate balance for account", slog.String("account_id", acc.AccountID), slog.String("error", err.Error()))
+			// balance = decimal.Zero // Balance is already zero initialized if using decimal.Decimal
+		}
+
+		// Convert domain account to DTO response
+		accResponse := dto.ToAccountResponse(&acc)
+		// Set the calculated balance
+		accResponse.Balance = balance
+		accountResponses[i] = accResponse
 	}
 
 	logger.Info("Accounts listed successfully", slog.Int("count", len(accountResponses)))

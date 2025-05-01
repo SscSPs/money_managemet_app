@@ -195,6 +195,7 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 				LastUpdatedAt: now,
 				LastUpdatedBy: creatorUserID,
 			},
+			// RunningBalance will be calculated and set by the repository
 		}
 		accountIDs = append(accountIDs, txnReq.AccountID)
 	}
@@ -227,9 +228,26 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 		accountTypes[id] = acc.AccountType
 	}
 
-	// Validate Balance
+	// Validate Balance (double-entry check)
 	if err = s.validateJournalBalance(domainTransactions, accountTypes); err != nil {
 		return nil, err
+	}
+
+	// --- Calculate Net Balance Changes for Accounts ---
+	balanceChanges := make(map[string]decimal.Decimal)
+	for _, txn := range domainTransactions {
+		accountType := accountTypes[txn.AccountID] // We know this exists from validation
+		signedAmount, err := s.getSignedAmount(txn, accountType)
+		if err != nil {
+			// Should not happen after validation, but handle defensively
+			logger.Error("Error calculating signed amount during balance change calculation", slog.String("error", err.Error()), slog.String("transaction_id", txn.TransactionID))
+			return nil, fmt.Errorf("internal error calculating balance changes: %w", err)
+		}
+		if currentChange, ok := balanceChanges[txn.AccountID]; ok {
+			balanceChanges[txn.AccountID] = currentChange.Add(signedAmount)
+		} else {
+			balanceChanges[txn.AccountID] = signedAmount
+		}
 	}
 
 	// --- Persistence ---
@@ -248,13 +266,17 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 		},
 	}
 
-	err = s.journalRepo.SaveJournal(ctx, domainJournal, domainTransactions)
+	// Pass balance changes to the repository method
+	err = s.journalRepo.SaveJournal(ctx, domainJournal, domainTransactions, balanceChanges)
 	if err != nil {
 		logger.Error("Failed to save journal", slog.String("error", err.Error()), slog.String("workplace_id", workplaceID))
 		return nil, fmt.Errorf("failed to save journal: %w", err)
 	}
 
 	logger.Info("Journal created successfully", slog.String("journal_id", domainJournal.JournalID), slog.String("workplace_id", workplaceID))
+	// Return the journal without transactions populated by default (as per GetJournalByID)
+	// Caller can fetch transactions separately if needed.
+	domainJournal.Transactions = nil // Clear transactions before returning
 	return &domainJournal, nil
 }
 

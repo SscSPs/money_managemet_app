@@ -2,8 +2,10 @@ package pgsql
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
@@ -11,7 +13,9 @@ import (
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/models"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	// Import pgx specifically for error handling like ErrNoRows if needed
 	// "github.com/jackc/pgx/v5"
 )
@@ -45,6 +49,7 @@ func toModelAccount(d domain.Account) models.Account {
 			LastUpdatedAt: d.LastUpdatedAt,
 			LastUpdatedBy: d.LastUpdatedBy,
 		},
+		Balance: d.Balance,
 	}
 }
 
@@ -65,24 +70,23 @@ func toDomainAccount(m models.Account) domain.Account {
 			LastUpdatedAt: m.LastUpdatedAt,
 			LastUpdatedBy: m.LastUpdatedBy,
 		},
+		Balance: m.Balance,
 	}
 }
 
 // SaveAccount inserts a new account.
 // Note: Update/Inactivate logic will be added in later milestones/methods.
 func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.Account) error {
-	// Convert domain object to model for DB interaction
 	modelAcc := toModelAccount(account)
-	creatorUserID := modelAcc.CreatedBy
 
 	query := `
-		INSERT INTO accounts (account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+		INSERT INTO accounts (account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by, balance)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
 	`
-	// Handle potential nil parentAccountID if DB requires NULL explicitly
-	var parentID *string
+	// Use sql.NullString for potentially NULL parent_account_id
+	var parentID sql.NullString
 	if modelAcc.ParentAccountID != "" {
-		parentID = &modelAcc.ParentAccountID
+		parentID = sql.NullString{String: modelAcc.ParentAccountID, Valid: true}
 	}
 
 	_, err := r.pool.Exec(ctx, query,
@@ -91,17 +95,24 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 		modelAcc.Name,
 		modelAcc.AccountType,
 		modelAcc.CurrencyCode,
-		parentID,
+		parentID, // Pass sql.NullString
 		modelAcc.Description,
 		modelAcc.IsActive,
 		modelAcc.CreatedAt,
-		creatorUserID,
+		modelAcc.CreatedBy,
 		modelAcc.LastUpdatedAt,
-		creatorUserID,
+		modelAcc.CreatedBy, // Corrected: Should use CreatedBy here too
+		modelAcc.Balance,
 	)
 
 	if err != nil {
-		// TODO: Check for specific errors like unique constraint violation or FK violation (workplace_id)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23505" { // Unique violation
+				// Treat unique violation as a validation error
+				return fmt.Errorf("%w: account with ID %s already exists", apperrors.ErrValidation, modelAcc.AccountID)
+			}
+		}
 		return fmt.Errorf("failed to save account %s: %w", modelAcc.AccountID, err)
 	}
 	return nil
@@ -110,12 +121,13 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 // FindAccountByID retrieves an account by its ID.
 func (r *PgxAccountRepository) FindAccountByID(ctx context.Context, accountID string) (*domain.Account, error) {
 	query := `
-		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by
+		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by, balance
 		FROM accounts
 		WHERE account_id = $1;
 	`
-	var modelAcc models.Account // Scan into model struct
-	var parentID *string
+	var modelAcc models.Account
+	var parentID sql.NullString // Use sql.NullString for scanning
+	var balance decimal.Decimal
 
 	err := r.pool.QueryRow(ctx, query, accountID).Scan(
 		&modelAcc.AccountID,
@@ -123,31 +135,30 @@ func (r *PgxAccountRepository) FindAccountByID(ctx context.Context, accountID st
 		&modelAcc.Name,
 		&modelAcc.AccountType,
 		&modelAcc.CurrencyCode,
-		&parentID,
+		&parentID, // Scan into sql.NullString
 		&modelAcc.Description,
 		&modelAcc.IsActive,
 		&modelAcc.CreatedAt,
 		&modelAcc.CreatedBy,
 		&modelAcc.LastUpdatedAt,
 		&modelAcc.LastUpdatedBy,
+		&balance,
 	)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// Map db not found error to application specific error
 			return nil, apperrors.ErrNotFound
 		}
-		// Wrap other potential errors
 		return nil, fmt.Errorf("failed to find account by ID %s: %w", accountID, err)
 	}
 
-	if parentID != nil {
-		modelAcc.ParentAccountID = *parentID
+	if parentID.Valid {
+		modelAcc.ParentAccountID = parentID.String
 	} else {
 		modelAcc.ParentAccountID = ""
 	}
 
-	// Convert model object to domain object before returning
+	modelAcc.Balance = balance
 	domainAcc := toDomainAccount(modelAcc)
 	return &domainAcc, nil
 }
@@ -161,10 +172,10 @@ func (r *PgxAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs
 	}
 
 	query := `
-		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by
+		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by, balance
 		FROM accounts
 		WHERE account_id = ANY($1);
-	` // Use ANY for array matching
+	`
 
 	rows, err := r.pool.Query(ctx, query, accountIDs)
 	if err != nil {
@@ -175,33 +186,34 @@ func (r *PgxAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs
 	accountsMap := make(map[string]domain.Account)
 	for rows.Next() {
 		var modelAcc models.Account
-		var parentID *string
+		var parentID sql.NullString // Use sql.NullString
+		var balance decimal.Decimal
 		err := rows.Scan(
 			&modelAcc.AccountID,
 			&modelAcc.WorkplaceID,
 			&modelAcc.Name,
 			&modelAcc.AccountType,
 			&modelAcc.CurrencyCode,
-			&parentID,
+			&parentID, // Scan into sql.NullString
 			&modelAcc.Description,
 			&modelAcc.IsActive,
 			&modelAcc.CreatedAt,
 			&modelAcc.CreatedBy,
 			&modelAcc.LastUpdatedAt,
 			&modelAcc.LastUpdatedBy,
+			&balance,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan account row during batch fetch: %w", err)
 		}
 
-		if parentID != nil {
-			modelAcc.ParentAccountID = *parentID
+		if parentID.Valid {
+			modelAcc.ParentAccountID = parentID.String
 		} else {
 			modelAcc.ParentAccountID = ""
 		}
-
-		domainAcc := toDomainAccount(modelAcc)
-		accountsMap[domainAcc.AccountID] = domainAcc
+		modelAcc.Balance = balance
+		accountsMap[modelAcc.AccountID] = toDomainAccount(modelAcc)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -225,7 +237,7 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 	}
 
 	query := `
-		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by
+		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by, balance
 		FROM accounts
 		WHERE is_active = TRUE AND workplace_id = $1 -- Filter by workplace
 		ORDER BY name
@@ -241,30 +253,33 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 	modelAccounts := []models.Account{}
 	for rows.Next() {
 		var modelAcc models.Account
-		var parentID *string
+		var parentID sql.NullString // Use sql.NullString
+		var balance decimal.Decimal
 		err := rows.Scan(
 			&modelAcc.AccountID,
 			&modelAcc.WorkplaceID,
 			&modelAcc.Name,
 			&modelAcc.AccountType,
 			&modelAcc.CurrencyCode,
-			&parentID,
+			&parentID, // Scan into sql.NullString
 			&modelAcc.Description,
 			&modelAcc.IsActive,
 			&modelAcc.CreatedAt,
 			&modelAcc.CreatedBy,
 			&modelAcc.LastUpdatedAt,
 			&modelAcc.LastUpdatedBy,
+			&balance,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan account row during list for workplace %s: %w", workplaceID, err)
 		}
 
-		if parentID != nil {
-			modelAcc.ParentAccountID = *parentID
+		if parentID.Valid {
+			modelAcc.ParentAccountID = parentID.String
 		} else {
 			modelAcc.ParentAccountID = ""
 		}
+		modelAcc.Balance = balance
 		modelAccounts = append(modelAccounts, modelAcc)
 	}
 
@@ -350,3 +365,149 @@ func (r *PgxAccountRepository) DeactivateAccount(ctx context.Context, accountID 
 }
 
 // TODO: Implement methods for UpdateAccount (for editing fields)
+
+// FindAccountsByIDsForUpdate retrieves multiple accounts by IDs and locks the rows for update.
+// Must be called within a transaction.
+func (r *PgxAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, tx pgx.Tx, accountIDs []string) (map[string]domain.Account, error) {
+	if len(accountIDs) == 0 {
+		return map[string]domain.Account{}, nil
+	}
+
+	query := `
+		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by, balance
+		FROM accounts
+		WHERE account_id = ANY($1)
+		FOR UPDATE;
+	`
+
+	rows, err := tx.Query(ctx, query, accountIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query accounts by IDs for update: %w", err)
+	}
+	defer rows.Close()
+
+	accountsMap := make(map[string]domain.Account)
+	for rows.Next() {
+		var modelAcc models.Account
+		var parentID sql.NullString // Use sql.NullString
+		var balance decimal.Decimal
+		err := rows.Scan(
+			&modelAcc.AccountID,
+			&modelAcc.WorkplaceID,
+			&modelAcc.Name,
+			&modelAcc.AccountType,
+			&modelAcc.CurrencyCode,
+			&parentID, // Scan into sql.NullString
+			&modelAcc.Description,
+			&modelAcc.IsActive,
+			&modelAcc.CreatedAt,
+			&modelAcc.CreatedBy,
+			&modelAcc.LastUpdatedAt,
+			&modelAcc.LastUpdatedBy,
+			&balance,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan locked account row: %w", err)
+		}
+
+		if parentID.Valid {
+			modelAcc.ParentAccountID = parentID.String
+		} else {
+			modelAcc.ParentAccountID = ""
+		}
+		modelAcc.Balance = balance
+		accountsMap[modelAcc.AccountID] = toDomainAccount(modelAcc)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating locked account rows: %w", err)
+	}
+
+	// Check if all requested accounts were found and locked
+	if len(accountsMap) != len(accountIDs) {
+		// Identify missing accounts (could be due to deletion or incorrect IDs)
+		missing := []string{}
+		requested := make(map[string]bool)
+		for _, id := range accountIDs {
+			requested[id] = true
+		}
+		for id := range requested {
+			if _, found := accountsMap[id]; !found {
+				missing = append(missing, id)
+			}
+		}
+		// Log the missing accounts for debugging
+		slog.WarnContext(ctx, "Some accounts requested for update lock were not found", "missing_accounts", missing)
+		// Return a specific error indicating not all accounts could be locked/found
+		return nil, fmt.Errorf("%w: could not find or lock all requested accounts, missing: %v", apperrors.ErrNotFound, missing)
+	}
+
+	return accountsMap, nil
+}
+
+// UpdateAccountBalancesInTx updates balances for multiple accounts within a transaction.
+func (r *PgxAccountRepository) UpdateAccountBalancesInTx(ctx context.Context, tx pgx.Tx, balanceChanges map[string]decimal.Decimal, userID string, now time.Time) error {
+	if len(balanceChanges) == 0 {
+		return nil // Nothing to update
+	}
+
+	// Prepare the update statement
+	// Use COALESCE to handle potential NULL balances if the default wasn't set correctly
+	query := `
+		UPDATE accounts
+		SET balance = COALESCE(balance, 0) + $2, last_updated_at = $3, last_updated_by = $4
+		WHERE account_id = $1;
+	`
+
+	batch := &pgx.Batch{}
+	accountIDs := make([]string, 0, len(balanceChanges))
+	for accountID, delta := range balanceChanges {
+		if !delta.IsZero() { // Only queue updates if there's a change
+			batch.Queue(query, accountID, delta, now, userID)
+			accountIDs = append(accountIDs, accountID)
+		}
+	}
+
+	if batch.Len() == 0 {
+		return nil // No non-zero changes
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	// Important: Check result for each update
+	var batchErr error
+	updatedCount := 0
+	for i := 0; i < batch.Len(); i++ {
+		ct, err := br.Exec()
+		if err != nil {
+			// Capture the first error encountered
+			if batchErr == nil {
+				batchErr = fmt.Errorf("failed to update balance for account %s: %w", accountIDs[i], err)
+			}
+		} else if ct.RowsAffected() == 0 {
+			// Capture the first error if an account wasn't found (shouldn't happen if locked)
+			if batchErr == nil {
+				batchErr = fmt.Errorf("%w: account %s not found during balance update", apperrors.ErrNotFound, accountIDs[i])
+			}
+		} else {
+			updatedCount++
+		}
+	}
+
+	err := br.Close()
+	if err != nil && batchErr == nil {
+		batchErr = fmt.Errorf("failed to close balance update batch: %w", err)
+	}
+
+	if batchErr != nil {
+		return batchErr // Return the captured error
+	}
+
+	// Optional check: Ensure all expected accounts were updated
+	if updatedCount != batch.Len() {
+		// This case might indicate a problem, but the individual errors should have been caught above.
+		slog.WarnContext(ctx, "Mismatch between expected and actual account balance updates", "expected", batch.Len(), "actual", updatedCount)
+		// Consider returning an error here if strict consistency is required.
+	}
+
+	return nil
+}

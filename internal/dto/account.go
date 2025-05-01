@@ -34,6 +34,7 @@ type AccountResponse struct {
 	LastUpdatedAt   time.Time          `json:"lastUpdatedAt"`
 	LastUpdatedBy   string             `json:"lastUpdatedBy"` // UserID
 	// Balance is not typically included directly; might be a separate endpoint or calculation
+	Balance decimal.Decimal `json:"balance"`
 }
 
 // UpdateAccountRequest defines the data allowed for updating an account.
@@ -60,6 +61,7 @@ func ToAccountResponse(acc *domain.Account) AccountResponse {
 		CreatedBy:       acc.CreatedBy,
 		LastUpdatedAt:   acc.LastUpdatedAt,
 		LastUpdatedBy:   acc.LastUpdatedBy,
+		Balance:         acc.Balance,
 	}
 }
 

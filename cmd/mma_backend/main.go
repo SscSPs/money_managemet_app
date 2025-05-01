@@ -15,12 +15,15 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/repositories/database/pgsql"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	validator "github.com/go-playground/validator/v10"
 
 	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/shopspring/decimal"
 )
 
 // @title MMA Backend API
@@ -64,7 +67,7 @@ func main() {
 	currencyRepo := pgsql.NewPgxCurrencyRepository(dbPool)
 	exchangeRateRepo := pgsql.NewPgxExchangeRateRepository(dbPool)
 	userRepo := pgsql.NewPgxUserRepository(dbPool)
-	journalRepo := pgsql.NewPgxJournalRepository(dbPool)
+	journalRepo := pgsql.NewPgxJournalRepository(dbPool, accountRepo)
 	workplaceRepo := pgsql.NewPgxWorkplaceRepository(dbPool)
 
 	// Services
@@ -80,6 +83,21 @@ func main() {
 
 	// Initialize Gin engine
 	r := setupGinEngine(logger, cfg)
+
+	// --- Register Custom Validators ---
+	logger.Info("Registering custom validators...")
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		// Register validation for 'decimal_gtz' tag
+		err := v.RegisterValidation("decimal_gtz", validateDecimalGreaterThanZero)
+		if err != nil {
+			logger.Error("Failed to register 'decimal_gtz' validator", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		logger.Info("'decimal_gtz' validator registered successfully.")
+		// Register other custom validators here if needed
+	} else {
+		logger.Warn("Could not get validator engine to register custom validators")
+	}
 
 	// Pass initialized services to route registration
 	handlers.RegisterRoutes(r, cfg, userService, accountService, currencyService, exchangeRateService, journalService, workplaceService)
@@ -196,4 +214,15 @@ func runDatabaseMigrations(logger *slog.Logger, cfg *config.Config) {
 		// Only log success if migrations were actually applied (err was nil initially)
 		logger.Info("Database migrations applied successfully.")
 	}
+}
+
+// validateDecimalGreaterThanZero implements validator.Func for decimal > 0
+func validateDecimalGreaterThanZero(fl validator.FieldLevel) bool {
+	// Check if the field is the correct type
+	if field, ok := fl.Field().Interface().(decimal.Decimal); ok {
+		return field.GreaterThan(decimal.Zero)
+	}
+	// Log or handle incorrect type if necessary, but return false for safety
+	slog.Warn("Validator 'decimal_gtz' used on non-decimal.Decimal type", "fieldType", fl.Field().Type())
+	return false
 }

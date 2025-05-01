@@ -20,4 +20,8 @@ type Transaction struct {
 	CurrencyCode    string          `json:"currencyCode"`    // Must match Journal currency (Not Null)
 	Notes           string          `json:"notes"`           // Nullable
 	AuditFields
+	// RunningBalance represents the balance of the AccountID *after* this transaction was applied.
+	// This needs to be calculated and stored by the repository during SaveJournal.
+	// Note: Database schema (transactions table) needs a corresponding 'running_balance' column.
+	RunningBalance decimal.Decimal `json:"runningBalance"`
 }

@@ -12,17 +12,18 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
 // MockAccountRepository is a mock type for the AccountRepository interface
+// --- Mock AccountRepository ---
 type MockAccountRepository struct {
 	mock.Mock
 }
-
-// --- Implement mock methods for AccountRepository ---
 
 func (m *MockAccountRepository) SaveAccount(ctx context.Context, account domain.Account) error {
 	args := m.Called(ctx, account)
@@ -45,6 +46,18 @@ func (m *MockAccountRepository) FindAccountsByIDs(ctx context.Context, accountID
 	return args.Get(0).(map[string]domain.Account), args.Error(1)
 }
 
+// Mock for FindAccountsByIDsForUpdate
+func (m *MockAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, tx pgx.Tx, accountIDs []string) (map[string]domain.Account, error) {
+	// Note: Mocking the pgx.Tx might be tricky or unnecessary depending on test focus.
+	// Often, you might assert this is called but not deeply mock the transaction itself.
+	// Passing mock.Anything for tx might be suitable in many cases.
+	args := m.Called(ctx, tx, accountIDs)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[string]domain.Account), args.Error(1)
+}
+
 func (m *MockAccountRepository) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
 	args := m.Called(ctx, workplaceID, limit, offset)
 	if args.Get(0) == nil {
@@ -55,6 +68,12 @@ func (m *MockAccountRepository) ListAccounts(ctx context.Context, workplaceID st
 
 func (m *MockAccountRepository) UpdateAccount(ctx context.Context, account domain.Account) error {
 	args := m.Called(ctx, account)
+	return args.Error(0)
+}
+
+// Mock for UpdateAccountBalancesInTx
+func (m *MockAccountRepository) UpdateAccountBalancesInTx(ctx context.Context, tx pgx.Tx, balanceChanges map[string]decimal.Decimal, userID string, now time.Time) error {
+	args := m.Called(ctx, tx, balanceChanges, userID, now)
 	return args.Error(0)
 }
 

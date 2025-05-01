@@ -1994,6 +1994,10 @@ const docTemplate = `{
                 "accountType": {
                     "$ref": "#/definitions/domain.AccountType"
                 },
+                "balance": {
+                    "description": "Balance is not typically included directly; might be a separate endpoint or calculation",
+                    "type": "number"
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -2171,7 +2175,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "amount": {
-                    "description": "Must be positive",
+                    "description": "Use custom validator",
                     "type": "number"
                 },
                 "notes": {
@@ -2380,6 +2384,10 @@ const docTemplate = `{
                 },
                 "notes": {
                     "type": "string"
+                },
+                "runningBalance": {
+                    "description": "Added running balance",
+                    "type": "number"
                 },
                 "transactionID": {
                     "type": "string"

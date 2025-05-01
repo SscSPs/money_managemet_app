@@ -21,4 +21,5 @@ type Transaction struct {
 	CurrencyCode    string          `json:"currencyCode"`    // Must match Journal currency (Not Null)
 	Notes           string          `json:"notes"`           // Nullable
 	AuditFields
+	RunningBalance decimal.Decimal `json:"runningBalance"` // Added: Balance after this transaction
 }
