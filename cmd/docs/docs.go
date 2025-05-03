@@ -2212,6 +2212,11 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "precision": {
+                    "type": "integer",
+                    "maximum": 30,
+                    "minimum": 0
+                },
                 "symbol": {
                     "type": "string"
                 }
@@ -2337,6 +2342,9 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "precision": {
+                    "type": "integer"
                 },
                 "symbol": {
                     "type": "string"

@@ -34,6 +34,7 @@ func (s *currencyService) CreateCurrency(ctx context.Context, req dto.CreateCurr
 		CurrencyCode: req.CurrencyCode,
 		Symbol:       req.Symbol,
 		Name:         req.Name,
+		Precision:    req.Precision,
 		AuditFields: domain.AuditFields{
 			CreatedAt:     now,
 			CreatedBy:     creatorUserID,

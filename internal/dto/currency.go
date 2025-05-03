@@ -9,6 +9,7 @@ type CreateCurrencyRequest struct {
 	CurrencyCode string `json:"currencyCode" binding:"required,uppercase,len=3"`
 	Symbol       string `json:"symbol" binding:"required"`
 	Name         string `json:"name" binding:"required"`
+	Precision    int    `json:"precision" binding:"min=0,max=30"`
 }
 
 // CurrencyResponse defines the data returned for a currency.
@@ -16,6 +17,7 @@ type CurrencyResponse struct {
 	CurrencyCode string `json:"currencyCode"`
 	Symbol       string `json:"symbol"`
 	Name         string `json:"name"`
+	Precision    int    `json:"precision"`
 }
 
 // ToCurrencyResponse converts a domain.Currency to CurrencyResponse DTO
@@ -24,6 +26,7 @@ func ToCurrencyResponse(curr *domain.Currency) CurrencyResponse {
 		CurrencyCode: curr.CurrencyCode,
 		Symbol:       curr.Symbol,
 		Name:         curr.Name,
+		Precision:    curr.Precision,
 	}
 }
 

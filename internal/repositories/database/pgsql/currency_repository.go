@@ -31,6 +31,7 @@ func toModelCurrency(d domain.Currency) models.Currency {
 		CurrencyCode: d.CurrencyCode,
 		Symbol:       d.Symbol,
 		Name:         d.Name,
+		Precision:    d.Precision,
 		AuditFields: models.AuditFields{
 			CreatedAt:     d.CreatedAt,
 			CreatedBy:     d.CreatedBy,
@@ -46,6 +47,7 @@ func toDomainCurrency(m models.Currency) domain.Currency {
 		CurrencyCode: m.CurrencyCode,
 		Symbol:       m.Symbol,
 		Name:         m.Name,
+		Precision:    m.Precision,
 		AuditFields: domain.AuditFields{
 			CreatedAt:     m.CreatedAt,
 			CreatedBy:     m.CreatedBy,
@@ -70,11 +72,12 @@ func (r *PgxCurrencyRepository) SaveCurrency(ctx context.Context, currency domai
 	creatorUserID := modelCurr.CreatedBy
 
 	query := `
-		INSERT INTO currencies (currency_code, symbol, name, created_at, created_by, last_updated_at, last_updated_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO currencies (currency_code, symbol, name, precision, created_at, created_by, last_updated_at, last_updated_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (currency_code) DO UPDATE SET
 			symbol = EXCLUDED.symbol,
 			name = EXCLUDED.name,
+			precision = EXCLUDED.precision,
 			last_updated_at = EXCLUDED.last_updated_at,
 			last_updated_by = EXCLUDED.last_updated_by;
 	`
@@ -83,6 +86,7 @@ func (r *PgxCurrencyRepository) SaveCurrency(ctx context.Context, currency domai
 		modelCurr.CurrencyCode,
 		modelCurr.Symbol,
 		modelCurr.Name,
+		modelCurr.Precision,
 		modelCurr.CreatedAt,
 		creatorUserID,
 		modelCurr.LastUpdatedAt,
@@ -98,7 +102,7 @@ func (r *PgxCurrencyRepository) SaveCurrency(ctx context.Context, currency domai
 // FindCurrencyByCode retrieves a currency by its 3-letter code.
 func (r *PgxCurrencyRepository) FindCurrencyByCode(ctx context.Context, currencyCode string) (*domain.Currency, error) {
 	query := `
-		SELECT currency_code, symbol, name, created_at, created_by, last_updated_at, last_updated_by
+		SELECT currency_code, symbol, name, precision, created_at, created_by, last_updated_at, last_updated_by
 		FROM currencies
 		WHERE currency_code = $1;
 	`
@@ -107,6 +111,7 @@ func (r *PgxCurrencyRepository) FindCurrencyByCode(ctx context.Context, currency
 		&modelCurr.CurrencyCode,
 		&modelCurr.Symbol,
 		&modelCurr.Name,
+		&modelCurr.Precision,
 		&modelCurr.CreatedAt,
 		&modelCurr.CreatedBy,
 		&modelCurr.LastUpdatedAt,
@@ -127,7 +132,7 @@ func (r *PgxCurrencyRepository) FindCurrencyByCode(ctx context.Context, currency
 // ListCurrencies retrieves all currencies.
 func (r *PgxCurrencyRepository) ListCurrencies(ctx context.Context) ([]domain.Currency, error) {
 	query := `
-		SELECT currency_code, symbol, name, created_at, created_by, last_updated_at, last_updated_by
+		SELECT currency_code, symbol, name, precision, created_at, created_by, last_updated_at, last_updated_by
 		FROM currencies
 		ORDER BY currency_code;
 	`
@@ -143,6 +148,7 @@ func (r *PgxCurrencyRepository) ListCurrencies(ctx context.Context) ([]domain.Cu
 			&currency.CurrencyCode,
 			&currency.Symbol,
 			&currency.Name,
+			&currency.Precision,
 			&currency.CreatedAt,
 			&currency.CreatedBy,
 			&currency.LastUpdatedAt,
