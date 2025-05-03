@@ -36,15 +36,16 @@ type JournalService interface {
 	// Replaces GetJournalWithTransactions (just returns journal now)
 	GetJournalByID(ctx context.Context, workplaceID string, journalID string, requestingUserID string) (*domain.Journal, error)
 	// New method for listing journals in a workplace
-	ListJournals(ctx context.Context, workplaceID string, limit int, offset int, requestingUserID string) ([]domain.Journal, error)
+	ListJournals(ctx context.Context, workplaceID string, userID string, params dto.ListJournalsParams) (*dto.ListJournalsResponse, error)
 	// New method for updating journal details (excluding transactions)
 	UpdateJournal(ctx context.Context, workplaceID string, journalID string, req dto.UpdateJournalRequest, requestingUserID string) (*domain.Journal, error)
 	// New method for deactivating (soft deleting) a journal
 	DeactivateJournal(ctx context.Context, workplaceID string, journalID string, requestingUserID string) error
 	// New method for listing transactions for a specific account
-	ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, limit int, offset int, requestingUserID string) ([]domain.Transaction, error)
+	ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, userID string, params dto.ListTransactionsParams) (*dto.ListTransactionsResponse, error)
 	// New method for calculating account balance
 	CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error)
+	ReverseJournal(ctx context.Context, workplaceID string, journalID string, userID string) (*domain.Journal, error)
 }
 
 // WorkplaceService defines the interface for workplace and membership logic.

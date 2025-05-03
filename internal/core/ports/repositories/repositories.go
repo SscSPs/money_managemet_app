@@ -48,7 +48,8 @@ type JournalRepository interface {
 	FindTransactionsByAccountID(ctx context.Context, workplaceID, accountID string) ([]domain.Transaction, error)
 	ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Journal, error)
 	FindTransactionsByJournalIDs(ctx context.Context, journalIDs []string) (map[string][]domain.Transaction, error)
-	// UpdateJournalStatus(ctx context.Context, journalID string, status domain.JournalStatus) error
+	UpdateJournalStatusAndLinks(ctx context.Context, journalID string, status domain.JournalStatus, reversingJournalID *string, originalJournalID *string, updatedByUserID string, updatedAt time.Time) error
+	UpdateJournal(ctx context.Context, journal domain.Journal) error
 }
 
 // CurrencyRepository defines persistence operations for Currencies.

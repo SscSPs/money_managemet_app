@@ -40,6 +40,7 @@ func registerJournalRoutes(rg *gin.RouterGroup, journalService portssvc.JournalS
 		journals.GET("", h.listJournals)   // Path: /workplaces/{workplace_id}/journals
 		journals.PUT("/:id", h.updateJournal)
 		journals.DELETE("/:id", h.deleteJournal)
+		journals.POST("/:id/reverse", h.reverseJournal) // Add route for reversal
 	}
 }
 
@@ -176,17 +177,17 @@ func (h *journalHandler) getJournal(c *gin.Context) {
 func (h *journalHandler) listJournals(c *gin.Context) {
 	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 
-	loggedInUserID, ok := middleware.GetUserIDFromContext(c)
-	if !ok {
-		logger.Error("Logged-in user ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
 	workplaceID := c.Param("workplace_id") // Get from path
 	if workplaceID == "" {
 		logger.Error("Workplace ID missing from request path for listJournals")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Workplace ID required in path"})
+		return
+	}
+
+	loggedInUserID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		logger.Error("Logged-in user ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
@@ -200,9 +201,12 @@ func (h *journalHandler) listJournals(c *gin.Context) {
 	logger = logger.With(slog.String("user_id", loggedInUserID), slog.String("workplace_id", workplaceID))
 	logger.Info("Received request to list journals", slog.Int("limit", params.Limit), slog.Int("offset", params.Offset))
 
-	respJournals, err := h.journalService.ListJournals(c.Request.Context(), workplaceID, params.Limit, params.Offset, loggedInUserID)
+	resp, err := h.journalService.ListJournals(c.Request.Context(), workplaceID, loggedInUserID, params)
 	if err != nil {
-		if errors.Is(err, apperrors.ErrForbidden) {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("User forbidden from workplace for list journals")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Workplace not found or access denied"})
+		} else if errors.Is(err, apperrors.ErrForbidden) {
 			logger.Warn("User forbidden to list journals for workplace", slog.String("user_id", loggedInUserID), slog.String("workplace_id", workplaceID))
 			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 		} else {
@@ -212,13 +216,8 @@ func (h *journalHandler) listJournals(c *gin.Context) {
 		return
 	}
 
-	journalResponses := make([]dto.JournalResponse, len(respJournals))
-	for i, jnl := range respJournals {
-		journalResponses[i] = dto.ToJournalResponse(&jnl)
-	}
-
-	logger.Info("Journals listed successfully", slog.Int("count", len(journalResponses)))
-	c.JSON(http.StatusOK, dto.ListJournalsResponse{Journals: journalResponses})
+	logger.Info("Journals listed successfully", slog.Int("count", len(resp.Journals)))
+	c.JSON(http.StatusOK, resp)
 }
 
 // updateJournal godoc
@@ -343,6 +342,64 @@ func (h *journalHandler) deleteJournal(c *gin.Context) {
 
 	logger.Info("Journal deleted successfully")
 	c.Status(http.StatusNoContent)
+}
+
+// reverseJournal godoc
+// @Summary Reverse a journal entry in workplace
+// @Description Reverses a specific journal entry by creating a new journal with opposite transaction types.
+// @Tags journals
+// @Produce  json
+// @Param   workplace_id path string true "Workplace ID"
+// @Param   id path string true "Journal ID to reverse"
+// @Success 200 {object} dto.JournalResponse "The newly created reversing journal entry"
+// @Failure 400 {object} map[string]string "Missing Workplace or Journal ID"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 403 {object} map[string]string "Forbidden (User cannot reverse)"
+// @Failure 404 {object} map[string]string "Journal not found in this workplace"
+// @Failure 409 {object} map[string]string "Conflict (e.g., journal already reversed or not posted)"
+// @Failure 500 {object} map[string]string "Failed to reverse journal"
+// @Security BearerAuth
+// @Router /workplaces/{workplace_id}/journals/{id}/reverse [post]
+func (h *journalHandler) reverseJournal(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	workplaceID := c.Param("workplace_id")
+	journalID := c.Param("id")
+	if workplaceID == "" || journalID == "" {
+		logger.Error("Workplace ID or Journal ID missing from path for reverseJournal")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Workplace and Journal ID required in path"})
+		return
+	}
+
+	loggedInUserID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		logger.Error("Logged-in user ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	logger = logger.With(slog.String("target_journal_id", journalID), slog.String("workplace_id", workplaceID), slog.String("reverser_user_id", loggedInUserID))
+	logger.Info("Received request to reverse journal")
+
+	reversingJournal, err := h.journalService.ReverseJournal(c.Request.Context(), workplaceID, journalID, loggedInUserID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Journal not found for reversal (or in wrong workplace)")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Journal not found"})
+		} else if errors.Is(err, apperrors.ErrForbidden) {
+			logger.Warn("User forbidden to reverse journal", slog.String("user_id", loggedInUserID), slog.String("journal_id", journalID))
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		} else if errors.Is(err, apperrors.ErrConflict) {
+			logger.Warn("Conflict reversing journal (e.g., already reversed)", slog.String("error", err.Error()))
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		} else {
+			logger.Error("Failed to reverse journal in service", slog.String("error", err.Error()))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reverse journal"})
+		}
+		return
+	}
+
+	logger.Info("Journal reversed successfully", slog.String("reversing_journal_id", reversingJournal.JournalID))
+	c.JSON(http.StatusOK, dto.ToJournalResponse(reversingJournal))
 }
 
 /* // Placeholder: Balance endpoint likely belongs with Accounts handler

@@ -330,62 +330,45 @@ func (s *journalService) GetJournalByID(ctx context.Context, workplaceID string,
 }
 
 // ListJournals retrieves a paginated list of journals for a specific workplace.
-// Implements portssvc.JournalService
-func (s *journalService) ListJournals(ctx context.Context, workplaceID string, limit int, offset int, requestingUserID string) ([]domain.Journal, error) {
+// TODO: Update implementation details based on DTO and pagination needs.
+func (j *journalService) ListJournals(ctx context.Context, workplaceID string, userID string, params dto.ListJournalsParams) (*dto.ListJournalsResponse, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
-	// --- Authorization Check --- (Requires WorkplaceService injection)
-	if s.workplaceSvc != nil {
-		if err := s.workplaceSvc.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleMember); err != nil {
-			logger.Warn("Authorization failed for ListJournals", slog.String("user_id", requestingUserID), slog.String("workplace_id", workplaceID), slog.String("error", err.Error()))
-			return nil, err // Return NotFound or Forbidden
-		}
-	} else {
-		logger.Warn("WorkplaceService not available for authorization check in ListJournals")
+	// Authorize user action (at least member required to list journals)
+	if err := j.workplaceSvc.AuthorizeUserAction(ctx, userID, workplaceID, domain.RoleMember); err != nil {
+		logger.Warn("Authorization failed for ListJournals", "error", err)
+		return nil, err
 	}
 
-	// Fetch from repository using workplaceID, limit, offset
-	domainJournals, err := s.journalRepo.ListJournalsByWorkplace(ctx, workplaceID, limit, offset)
+	// Fetch journals from repository using params
+	journals, err := j.journalRepo.ListJournalsByWorkplace(ctx, workplaceID, params.Limit, params.Offset)
 	if err != nil {
-		logger.Error("Failed to list journals from repository", slog.String("error", err.Error()), slog.String("workplace_id", workplaceID))
-		return nil, fmt.Errorf("failed to retrieve journals: %w", apperrors.ErrInternal)
+		logger.Error("Failed to list journals from repository", "error", err)
+		// Don't wrap; return specific error if needed, otherwise the original error
+		return nil, err
 	}
 
-	// If no journals found, return early
-	if len(domainJournals) == 0 {
-		return []domain.Journal{}, nil
+	// Convert domain journals to DTO responses
+	journalResponses := make([]dto.JournalResponse, len(journals))
+	for i, journal := range journals {
+		// Ensure transactions are nil/empty for list view unless specifically requested later
+		journal.Transactions = nil
+		journalResponses[i] = dto.ToJournalResponse(&journal)
 	}
 
-	// Extract journal IDs to fetch their transactions
-	journalIDs := make([]string, len(domainJournals))
-	for i, j := range domainJournals {
-		journalIDs[i] = j.JournalID
+	// TODO: Fetch total count for pagination metadata
+	resp := &dto.ListJournalsResponse{
+		Journals: journalResponses,
+		// TotalCount: total, // Add total count here later
+		// Limit: params.Limit,
+		// Offset: params.Offset,
 	}
 
-	// Fetch all transactions for these journals in one go
-	transactionsMap, err := s.journalRepo.FindTransactionsByJournalIDs(ctx, journalIDs)
-	if err != nil {
-		logger.Error("Failed to fetch transactions for listed journals", slog.String("error", err.Error()), slog.String("workplace_id", workplaceID))
-		// Non-fatal? Maybe return journals without transactions if this fails?
-		// For now, treat as an internal error and return failure.
-		return nil, fmt.Errorf("failed to retrieve journal details: %w", apperrors.ErrInternal)
-	}
-
-	// Populate transactions into the journal objects
-	for i := range domainJournals {
-		// Use index to modify the slice element directly
-		if txns, ok := transactionsMap[domainJournals[i].JournalID]; ok {
-			domainJournals[i].Transactions = txns
-		} else {
-			// Should not happen if FindTransactionsByJournalIDs ensures all IDs have an entry
-			domainJournals[i].Transactions = []domain.Transaction{} // Ensure it's an empty slice, not nil
-		}
-	}
-
-	return domainJournals, nil
+	logger.Info("Journals listed successfully", "count", len(journals))
+	return resp, nil
 }
 
-// UpdateJournal updates details of a specific journal entry.
+// UpdateJournal updates the description and date of a journal entry.
 // Implements portssvc.JournalService
 func (s *journalService) UpdateJournal(ctx context.Context, workplaceID string, journalID string, req dto.UpdateJournalRequest, requestingUserID string) (*domain.Journal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
@@ -442,13 +425,17 @@ func (s *journalService) UpdateJournal(ctx context.Context, workplaceID string, 
 	journal.LastUpdatedBy = requestingUserID
 
 	// TODO: Add and call s.journalRepo.UpdateJournal(ctx, *journal)
-	// err = s.journalRepo.UpdateJournal(ctx, *journal)
-	// if err != nil { ... }
+	err = s.journalRepo.UpdateJournal(ctx, *journal)
+	if err != nil {
+		logger.Error("Failed to save journal update to repository", slog.String("error", err.Error()), slog.String("journal_id", journalID))
+		// Propagate potential ErrNotFound from repo
+		return nil, fmt.Errorf("failed to save journal update: %w", err)
+	}
 
-	logger.Warn("UpdateJournal service method not fully implemented - repo call missing")
-	// Return the potentially modified journal for now, but indicate it's not saved
-	// return journal, nil // Incorrect - should return error until repo call implemented
-	return nil, fmt.Errorf("UpdateJournal repository call not implemented") // Placeholder Error
+	logger.Info("Journal updated successfully in repository", slog.String("journal_id", journalID))
+	// Return the updated journal (without transactions)
+	journal.Transactions = nil
+	return journal, nil
 }
 
 // DeactivateJournal marks a journal as inactive (conceptually; might involve changing status).
@@ -500,65 +487,43 @@ func (s *journalService) DeactivateJournal(ctx context.Context, workplaceID stri
 	return fmt.Errorf("DeactivateJournal repository call not implemented") // Placeholder Error
 }
 
-// ListTransactionsByAccount retrieves a paginated list of transactions for a specific account within a workplace.
-func (s *journalService) ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, limit int, offset int, requestingUserID string) ([]domain.Transaction, error) {
+// ListTransactionsByAccount retrieves transactions for a specific account within a workplace.
+// TODO: Implement pagination and filtering based on params.
+func (j *journalService) ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, userID string, params dto.ListTransactionsParams) (*dto.ListTransactionsResponse, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
-	// --- Authorization Check --- (User must be member of workplace)
-	if s.workplaceSvc != nil {
-		if err := s.workplaceSvc.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleMember); err != nil {
-			logger.Warn("Authorization failed for ListTransactionsByAccount", slog.String("user_id", requestingUserID), slog.String("workplace_id", workplaceID), slog.String("account_id", accountID), slog.String("error", err.Error()))
-			return nil, err // Return NotFound or Forbidden
-		}
-	} else {
-		logger.Warn("WorkplaceService not available for authorization check in ListTransactionsByAccount")
+	// Authorize user action (at least member required to list transactions)
+	if err := j.workplaceSvc.AuthorizeUserAction(ctx, userID, workplaceID, domain.RoleMember); err != nil {
+		logger.Warn("Authorization failed for ListTransactionsByAccount", "error", err)
+		return nil, err
 	}
 
-	// --- Optional: Verify account exists and belongs to workplace ---
-	// This prevents querying transactions for accounts the user shouldn't see,
-	// even if they have access to the workplace.
-	_, err := s.accountSvc.GetAccountByID(ctx, workplaceID, accountID)
+	// Validate Account belongs to workplace (optional, repo might handle)
+	// _, err := j.accountSvc.GetAccountByID(ctx, workplaceID, accountID)
+	// if err != nil {
+	// 	 logger.Warn("Failed to verify account for ListTransactionsByAccount", "error", err)
+	// 	 return nil, err // Could be ErrNotFound or other error
+	// }
+
+	// Fetch transactions from repository
+	// TODO: Pass limit/offset from params to the repository call eventually
+	transactions, err := j.journalRepo.FindTransactionsByAccountID(ctx, workplaceID, accountID)
 	if err != nil {
-		if errors.Is(err, apperrors.ErrNotFound) {
-			logger.Warn("Account not found when listing transactions", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
-			return nil, apperrors.ErrNotFound // Account not found
-		}
-		logger.Error("Failed to verify account existence before listing transactions", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID), slog.String("error", err.Error()))
-		return nil, fmt.Errorf("failed to verify account %s: %w", accountID, err)
-	}
-	// We might add an explicit check here: if account.WorkplaceID != workplaceID { return nil, apperrors.ErrNotFound }
-	// However, FindTransactionsByAccountID in the repo already filters by workplaceID,
-	// so this check might be redundant depending on desired error message/behavior.
-	// Let's rely on the repo's filter for now.
-
-	// --- Fetch Transactions ---
-	// TODO: Adapt repository method or add new one to handle pagination (limit, offset)
-	// Current FindTransactionsByAccountID does not support pagination.
-	transactions, err := s.journalRepo.FindTransactionsByAccountID(ctx, workplaceID, accountID)
-	if err != nil {
-		logger.Error("Failed to list transactions by account from repository", slog.String("error", err.Error()), slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
-		return nil, fmt.Errorf("failed to retrieve transactions: %w", apperrors.ErrInternal)
+		logger.Error("Failed to list transactions by account from repository", "error", err)
+		return nil, fmt.Errorf("failed to retrieve transactions: %w", err)
 	}
 
-	// Apply pagination manually for now until repo is updated
-	totalTransactions := len(transactions)
-	startIndex := offset
-	endIndex := offset + limit
+	// Convert domain transactions to DTOs
+	transactionResponses := dto.ToTransactionResponses(transactions)
 
-	if startIndex < 0 {
-		startIndex = 0
-	}
-	if startIndex >= totalTransactions {
-		return []domain.Transaction{}, nil // Offset is beyond the total number of transactions
-	}
-	if endIndex > totalTransactions {
-		endIndex = totalTransactions
+	// TODO: Fetch total count for pagination metadata
+	resp := &dto.ListTransactionsResponse{
+		Transactions: transactionResponses,
+		// Add pagination fields later
 	}
 
-	pagedTransactions := transactions[startIndex:endIndex]
-
-	logger.Debug("Transactions listed successfully for account", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID), slog.Int("count", len(pagedTransactions)))
-	return pagedTransactions, nil
+	logger.Info("Transactions listed successfully for account", "count", len(transactions))
+	return resp, nil
 }
 
 // uniqueStrings returns a slice containing only the unique strings from the input.
@@ -574,7 +539,7 @@ func uniqueStrings(input []string) []string {
 	return result
 }
 
-// CalculateAccountBalance calculates the current balance of a given account within its workplace.
+// CalculateAccountBalance calculates the current balance for a specific account.
 // Note: This might be better placed in AccountService if it doesn't need journal specifics beyond transactions.
 func (s *journalService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
@@ -623,6 +588,148 @@ func (s *journalService) CalculateAccountBalance(ctx context.Context, workplaceI
 
 	logger.Debug("Account balance calculated successfully", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID), slog.String("balance", balance.String()))
 	return balance, nil
+}
+
+// ReverseJournal creates a new journal entry that reverses a previously posted journal.
+func (j *journalService) ReverseJournal(ctx context.Context, workplaceID string, journalID string, userID string) (*domain.Journal, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+
+	// 1. Authorize user action (e.g., require member role)
+	if err := j.workplaceSvc.AuthorizeUserAction(ctx, userID, workplaceID, domain.RoleMember); err != nil {
+		logger.Warn("Authorization failed for ReverseJournal", "error", err)
+		return nil, err // Error already contains appropriate type (e.g., ErrForbidden)
+	}
+
+	// 2. Fetch the original journal
+	originalJournal, err := j.journalRepo.FindJournalByID(ctx, journalID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Original journal not found for reversal")
+			return nil, apperrors.ErrNotFound
+		}
+		logger.Error("Failed to fetch original journal for reversal", "error", err)
+		return nil, fmt.Errorf("failed to retrieve original journal: %w", err)
+	}
+
+	// 3. Validate the original journal
+	if originalJournal.WorkplaceID != workplaceID {
+		logger.Warn("Attempted to reverse journal from wrong workplace")
+		return nil, apperrors.ErrNotFound // Treat as not found in this context
+	}
+	if originalJournal.Status != domain.Posted {
+		logger.Warn("Attempted to reverse non-posted journal", "status", originalJournal.Status)
+		return nil, fmt.Errorf("%w: journal status is %s, expected POSTED", apperrors.ErrConflict, originalJournal.Status)
+	}
+
+	// 4. Fetch original transactions
+	originalTransactions, err := j.journalRepo.FindTransactionsByJournalID(ctx, journalID)
+	if err != nil {
+		logger.Error("Failed to fetch original transactions for reversal", "error", err)
+		return nil, fmt.Errorf("failed to retrieve original transactions: %w", err)
+	}
+	if len(originalTransactions) < 2 {
+		// This should ideally not happen for a POSTED journal, but check anyway
+		logger.Error("Original posted journal has less than 2 transactions", "transaction_count", len(originalTransactions))
+		return nil, fmt.Errorf("internal consistency error: original journal %s has insufficient transactions", journalID)
+	}
+
+	now := time.Now()
+	newJournalID := uuid.NewString()
+
+	// 5. Create the reversing journal domain object
+	reversingJournal := domain.Journal{
+		JournalID:         newJournalID,
+		WorkplaceID:       workplaceID,
+		JournalDate:       now, // Use current time for reversal date
+		Description:       fmt.Sprintf("Reversal of Journal: %s", originalJournal.JournalID),
+		CurrencyCode:      originalJournal.CurrencyCode,
+		Status:            domain.Posted,
+		OriginalJournalID: &originalJournal.JournalID, // Link back to original
+		AuditFields: domain.AuditFields{
+			CreatedAt:     now,
+			CreatedBy:     userID,
+			LastUpdatedAt: now,
+			LastUpdatedBy: userID,
+		},
+	}
+
+	// 6. Create reversed transaction domain objects
+	reversingTransactions := make([]domain.Transaction, len(originalTransactions))
+	accountIDs := make(map[string]struct{})
+	for i, origTx := range originalTransactions {
+		accountIDs[origTx.AccountID] = struct{}{}
+		newTxType := domain.Credit // Flip type
+		if origTx.TransactionType == domain.Credit {
+			newTxType = domain.Debit
+		}
+
+		reversingTransactions[i] = domain.Transaction{
+			TransactionID:   uuid.NewString(),
+			JournalID:       newJournalID,
+			AccountID:       origTx.AccountID,
+			Amount:          origTx.Amount, // Amount stays positive
+			TransactionType: newTxType,
+			CurrencyCode:    origTx.CurrencyCode,
+			Notes:           origTx.Notes, // Copy original notes
+			AuditFields: domain.AuditFields{
+				CreatedAt:     now,
+				CreatedBy:     userID,
+				LastUpdatedAt: now,
+				LastUpdatedBy: userID,
+			},
+			// RunningBalance will be calculated by SaveJournal repo method
+		}
+	}
+
+	// 7. Fetch accounts involved to calculate balance changes
+	accIDList := make([]string, 0, len(accountIDs))
+	for id := range accountIDs {
+		accIDList = append(accIDList, id)
+	}
+	accountsMap, err := j.accountSvc.GetAccountByIDs(ctx, workplaceID, accIDList)
+	if err != nil {
+		logger.Error("Failed to fetch accounts for reversal balance calculation", "error", err)
+		return nil, fmt.Errorf("failed to get account details for reversal: %w", err)
+	}
+
+	// 8. Calculate balance changes for the reversing journal
+	balanceChanges := make(map[string]decimal.Decimal)
+	for _, revTx := range reversingTransactions {
+		acc, ok := accountsMap[revTx.AccountID]
+		if !ok {
+			// Should not happen if GetAccountByIDs worked
+			logger.Error("Account missing from map during reversal balance calculation", "accountID", revTx.AccountID)
+			return nil, fmt.Errorf("internal error: account %s not found during balance calculation", revTx.AccountID)
+		}
+		signedAmount, err := j.getSignedAmount(revTx, acc.AccountType) // Use existing helper
+		if err != nil {
+			logger.Error("Failed to calculate signed amount for reversal transaction", "transactionID", revTx.TransactionID, "error", err)
+			return nil, fmt.Errorf("failed to calculate signed amount for reversal: %w", err)
+		}
+		balanceChanges[revTx.AccountID] = balanceChanges[revTx.AccountID].Add(signedAmount)
+	}
+
+	// 9. Save the reversing journal and its transactions atomically
+	if err := j.journalRepo.SaveJournal(ctx, reversingJournal, reversingTransactions, balanceChanges); err != nil {
+		logger.Error("Failed to save reversing journal entry", "error", err)
+		return nil, fmt.Errorf("failed to save reversing journal: %w", err)
+	}
+
+	// 10. Update the original journal's status and link to the new reversing journal
+	if err := j.journalRepo.UpdateJournalStatusAndLinks(ctx, originalJournal.JournalID, domain.Reversed, &newJournalID, nil, userID, now); err != nil {
+		// Log this error, as the reversal DID succeed, but the linking failed.
+		// This is a state inconsistency that might need manual correction or a retry mechanism.
+		logger.Error("CRITICAL: Failed to update original journal status after successful reversal", "originalJournalID", originalJournal.JournalID, "reversingJournalID", newJournalID, "error", err)
+		// We might still return the reversing journal, but log the critical error.
+		// Or return a specific error indicating partial success.
+		// For now, let's return the created journal but log heavily.
+		// return nil, fmt.Errorf("reversal created but failed to update original journal status: %w", err)
+	}
+
+	logger.Info("Journal reversed successfully", "reversingJournalID", newJournalID)
+	// Return the newly created reversing journal (without transactions populated)
+	reversingJournal.Transactions = nil // Ensure transactions aren't returned by default
+	return &reversingJournal, nil
 }
 
 // TODO: Add methods for:

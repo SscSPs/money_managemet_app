@@ -401,7 +401,7 @@ func (h *accountHandler) listTransactionsByAccount(c *gin.Context) {
 	logger = logger.With(slog.String("user_id", loggedInUserID), slog.String("workplace_id", workplaceID), slog.String("account_id", accountID))
 	logger.Info("Received request to list transactions for account", slog.Int("limit", params.Limit), slog.Int("offset", params.Offset))
 
-	respTransactions, err := h.journalService.ListTransactionsByAccount(c.Request.Context(), workplaceID, accountID, params.Limit, params.Offset, loggedInUserID)
+	resp, err := h.journalService.ListTransactionsByAccount(c.Request.Context(), workplaceID, accountID, loggedInUserID, params)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNotFound) {
 			logger.Warn("Account not found or user forbidden from workplace for list transactions")
@@ -416,10 +416,8 @@ func (h *accountHandler) listTransactionsByAccount(c *gin.Context) {
 		return
 	}
 
-	transactionResponses := dto.ToTransactionResponses(respTransactions)
-
-	logger.Info("Transactions listed successfully for account", slog.Int("count", len(transactionResponses)))
-	c.JSON(http.StatusOK, dto.ListTransactionsResponse{Transactions: transactionResponses})
+	logger.Info("Transactions listed successfully for account", slog.Int("count", len(resp.Transactions)))
+	c.JSON(http.StatusOK, resp)
 }
 
 /* Potential Balance Endpoint - better in account service?

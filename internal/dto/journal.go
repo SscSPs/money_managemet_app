@@ -28,33 +28,37 @@ type CreateTransactionRequest struct {
 
 // JournalResponse defines the data returned for a journal entry.
 type JournalResponse struct {
-	JournalID    string    `json:"journalID"`
-	WorkplaceID  string    `json:"workplaceID"`
-	Date         time.Time `json:"date"`
-	Description  string    `json:"description"`
-	CurrencyCode string    `json:"currencyCode"`
-	// Status domain.JournalStatus `json:"status"` // Status might not be needed/settable directly via CRUD
-	CreatedAt     time.Time             `json:"createdAt"`
-	CreatedBy     string                `json:"createdBy"`
-	LastUpdatedAt time.Time             `json:"lastUpdatedAt"`
-	LastUpdatedBy string                `json:"lastUpdatedBy"`
-	Transactions  []TransactionResponse `json:"transactions,omitempty"` // Added transactions
+	JournalID          string                `json:"journalID"`
+	WorkplaceID        string                `json:"workplaceID"`
+	Date               time.Time             `json:"date"`
+	Description        string                `json:"description"`
+	CurrencyCode       string                `json:"currencyCode"`
+	Status             domain.JournalStatus  `json:"status"` // Status (e.g., POSTED, REVERSED)
+	OriginalJournalID  *string               `json:"originalJournalID,omitempty"`
+	ReversingJournalID *string               `json:"reversingJournalID,omitempty"`
+	CreatedAt          time.Time             `json:"createdAt"`
+	CreatedBy          string                `json:"createdBy"`
+	LastUpdatedAt      time.Time             `json:"lastUpdatedAt"`
+	LastUpdatedBy      string                `json:"lastUpdatedBy"`
+	Transactions       []TransactionResponse `json:"transactions,omitempty"` // Added transactions
 }
 
 // ToJournalResponse converts domain.Journal to JournalResponse DTO.
 func ToJournalResponse(j *domain.Journal) JournalResponse {
 	return JournalResponse{
-		JournalID:    j.JournalID,
-		WorkplaceID:  j.WorkplaceID,
-		Date:         j.JournalDate,
-		Description:  j.Description,
-		CurrencyCode: j.CurrencyCode,
-		// Status: j.Status,
-		CreatedAt:     j.CreatedAt,
-		CreatedBy:     j.CreatedBy,
-		LastUpdatedAt: j.LastUpdatedAt,
-		LastUpdatedBy: j.LastUpdatedBy,
-		Transactions:  ToTransactionResponses(j.Transactions), // Map transactions
+		JournalID:          j.JournalID,
+		WorkplaceID:        j.WorkplaceID,
+		Date:               j.JournalDate,
+		Description:        j.Description,
+		CurrencyCode:       j.CurrencyCode,
+		Status:             j.Status,             // Map status
+		OriginalJournalID:  j.OriginalJournalID,  // Map link
+		ReversingJournalID: j.ReversingJournalID, // Map link
+		CreatedAt:          j.CreatedAt,
+		CreatedBy:          j.CreatedBy,
+		LastUpdatedAt:      j.LastUpdatedAt,
+		LastUpdatedBy:      j.LastUpdatedBy,
+		Transactions:       ToTransactionResponses(j.Transactions), // Map transactions
 	}
 }
 

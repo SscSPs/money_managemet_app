@@ -2,9 +2,11 @@ package pgsql
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
@@ -34,12 +36,14 @@ var _ portsrepo.JournalRepository = (*PgxJournalRepository)(nil)
 // --- Mapping Helpers ---
 func toModelJournal(d domain.Journal) models.Journal {
 	return models.Journal{
-		JournalID:    d.JournalID,
-		WorkplaceID:  d.WorkplaceID,
-		JournalDate:  d.JournalDate,
-		Description:  d.Description,
-		CurrencyCode: d.CurrencyCode,
-		Status:       models.JournalStatus(d.Status),
+		JournalID:          d.JournalID,
+		WorkplaceID:        d.WorkplaceID,
+		JournalDate:        d.JournalDate,
+		Description:        d.Description,
+		CurrencyCode:       d.CurrencyCode,
+		Status:             models.JournalStatus(d.Status),
+		OriginalJournalID:  d.OriginalJournalID,
+		ReversingJournalID: d.ReversingJournalID,
 		AuditFields: models.AuditFields{
 			CreatedAt:     d.CreatedAt,
 			CreatedBy:     d.CreatedBy,
@@ -51,12 +55,14 @@ func toModelJournal(d domain.Journal) models.Journal {
 
 func toDomainJournal(m models.Journal) domain.Journal {
 	return domain.Journal{
-		JournalID:    m.JournalID,
-		WorkplaceID:  m.WorkplaceID,
-		JournalDate:  m.JournalDate,
-		Description:  m.Description,
-		CurrencyCode: m.CurrencyCode,
-		Status:       domain.JournalStatus(m.Status),
+		JournalID:          m.JournalID,
+		WorkplaceID:        m.WorkplaceID,
+		JournalDate:        m.JournalDate,
+		Description:        m.Description,
+		CurrencyCode:       m.CurrencyCode,
+		Status:             domain.JournalStatus(m.Status),
+		OriginalJournalID:  m.OriginalJournalID,
+		ReversingJournalID: m.ReversingJournalID,
 		AuditFields: domain.AuditFields{
 			CreatedAt:     m.CreatedAt,
 			CreatedBy:     m.CreatedBy,
@@ -158,8 +164,12 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 	// 1. Insert the Journal entry using the transaction tx
 	modelJournal := toModelJournal(journal)
 	journalQuery := `
-		INSERT INTO journals (journal_id, workplace_id, journal_date, description, currency_code, status, created_at, created_by, last_updated_at, last_updated_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+		INSERT INTO journals (
+			journal_id, workplace_id, journal_date, description, currency_code, status, 
+			original_journal_id, reversing_journal_id, -- Add new columns
+			created_at, created_by, last_updated_at, last_updated_by
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12); -- Update placeholders
 	`
 	_, err = tx.Exec(ctx, journalQuery,
 		modelJournal.JournalID,
@@ -168,6 +178,8 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 		modelJournal.Description,
 		modelJournal.CurrencyCode,
 		modelJournal.Status,
+		modelJournal.OriginalJournalID,
+		modelJournal.ReversingJournalID,
 		modelJournal.CreatedAt,
 		modelJournal.CreatedBy,
 		modelJournal.LastUpdatedAt,
@@ -273,11 +285,16 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 // FindJournalByID retrieves a journal by its ID.
 func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID string) (*domain.Journal, error) {
 	query := `
-		SELECT journal_id, workplace_id, journal_date, description, currency_code, status, created_at, created_by, last_updated_at, last_updated_by
+		SELECT journal_id, workplace_id, journal_date, description, currency_code, status, 
+		       original_journal_id, reversing_journal_id, -- Add new columns
+		       created_at, created_by, last_updated_at, last_updated_by
 		FROM journals
 		WHERE journal_id = $1;
 	`
 	var modelJournal models.Journal
+	var originalID sql.NullString  // Use sql.NullString for nullable text
+	var reversingID sql.NullString // Use sql.NullString for nullable text
+
 	err := r.pool.QueryRow(ctx, query, journalID).Scan(
 		&modelJournal.JournalID,
 		&modelJournal.WorkplaceID,
@@ -285,6 +302,8 @@ func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID st
 		&modelJournal.Description,
 		&modelJournal.CurrencyCode,
 		&modelJournal.Status,
+		&originalID,  // Scan into NullString
+		&reversingID, // Scan into NullString
 		&modelJournal.CreatedAt,
 		&modelJournal.CreatedBy,
 		&modelJournal.LastUpdatedAt,
@@ -298,6 +317,14 @@ func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID st
 		}
 		// Wrap other potential errors
 		return nil, fmt.Errorf("failed to find journal by ID %s: %w", journalID, err)
+	}
+
+	// Manually assign scanned nullable strings to model pointers before conversion
+	if originalID.Valid {
+		modelJournal.OriginalJournalID = &originalID.String
+	}
+	if reversingID.Valid {
+		modelJournal.ReversingJournalID = &reversingID.String
 	}
 
 	domainJournal := toDomainJournal(modelJournal)
@@ -410,7 +437,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 	query := `
 		SELECT journal_id, workplace_id, journal_date, description, currency_code, status, created_at, created_by, last_updated_at, last_updated_by
 		FROM journals
-		WHERE workplace_id = $1
+		WHERE workplace_id = $1 AND status != 'REVERSED' AND reversing_journal_id IS NULL and original_journal_id is null
 		ORDER BY journal_date DESC, created_at DESC -- Order by date, then creation time
 		LIMIT $2 OFFSET $3;
 	`
@@ -522,3 +549,71 @@ func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context,
 }
 
 // TODO: Implement UpdateJournalStatus for M4 (Reversals).
+
+// UpdateJournalStatusAndLinks updates the status and reversal links for a journal.
+func (r *PgxJournalRepository) UpdateJournalStatusAndLinks(ctx context.Context, journalID string, status domain.JournalStatus, reversingJournalID *string, originalJournalID *string, updatedByUserID string, updatedAt time.Time) error {
+	query := `
+		UPDATE journals
+		SET status = $2,
+		    reversing_journal_id = $3,
+		    original_journal_id = $4,
+		    last_updated_at = $5,
+		    last_updated_by = $6
+		WHERE journal_id = $1;
+	`
+
+	cmdTag, err := r.pool.Exec(ctx, query,
+		journalID,
+		status,
+		reversingJournalID,
+		originalJournalID,
+		updatedAt,
+		updatedByUserID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update journal status/links for %s: %w", journalID, err)
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		// Journal with the given ID was not found
+		return fmt.Errorf("%w: journal %s not found for update", apperrors.ErrNotFound, journalID)
+	}
+
+	return nil
+}
+
+// UpdateJournal updates non-transaction details of a journal entry.
+func (r *PgxJournalRepository) UpdateJournal(ctx context.Context, journal domain.Journal) error {
+	modelJournal := toModelJournal(journal)
+
+	query := `
+		UPDATE journals
+		SET journal_date = $2,
+		    description = $3,
+		    last_updated_at = $4,
+		    last_updated_by = $5
+		WHERE journal_id = $1;
+	`
+	// Note: Status, CurrencyCode, OriginalJournalID, ReversingJournalID are not updated here.
+	// Status updates should go through UpdateJournalStatusAndLinks or similar specific methods.
+
+	cmdTag, err := r.pool.Exec(ctx, query,
+		modelJournal.JournalID,
+		modelJournal.JournalDate,
+		modelJournal.Description,
+		modelJournal.LastUpdatedAt,
+		modelJournal.LastUpdatedBy,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to execute update journal %s: %w", modelJournal.JournalID, err)
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		// Journal with the given ID was not found
+		return fmt.Errorf("%w: journal %s not found for update", apperrors.ErrNotFound, modelJournal.JournalID)
+	}
+
+	return nil
+}

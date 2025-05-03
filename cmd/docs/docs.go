@@ -1856,6 +1856,101 @@ const docTemplate = `{
                 }
             }
         },
+        "/workplaces/{workplace_id}/journals/{id}/reverse": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Reverses a specific journal entry by creating a new journal with opposite transaction types.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "journals"
+                ],
+                "summary": "Reverse a journal entry in workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Journal ID to reverse",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The newly created reversing journal entry",
+                        "schema": {
+                            "$ref": "#/definitions/dto.JournalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing Workplace or Journal ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User cannot reverse)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Journal not found in this workplace",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict (e.g., journal already reversed or not posted)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to reverse journal",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/workplaces/{workplace_id}/users": {
             "post": {
                 "security": [
@@ -1961,6 +2056,17 @@ const docTemplate = `{
                 "Equity",
                 "Income",
                 "Expense"
+            ]
+        },
+        "domain.JournalStatus": {
+            "type": "string",
+            "enum": [
+                "POSTED",
+                "REVERSED"
+            ],
+            "x-enum-varnames": [
+                "Posted",
+                "Reversed"
             ]
         },
         "domain.TransactionType": {
@@ -2269,7 +2375,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "createdAt": {
-                    "description": "Status domain.JournalStatus ` + "`" + `json:\"status\"` + "`" + ` // Status might not be needed/settable directly via CRUD",
                     "type": "string"
                 },
                 "createdBy": {
@@ -2292,6 +2397,20 @@ const docTemplate = `{
                 },
                 "lastUpdatedBy": {
                     "type": "string"
+                },
+                "originalJournalID": {
+                    "type": "string"
+                },
+                "reversingJournalID": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status (e.g., POSTED, REVERSED)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.JournalStatus"
+                        }
+                    ]
                 },
                 "transactions": {
                     "description": "Added transactions",

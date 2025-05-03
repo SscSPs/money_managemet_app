@@ -14,6 +14,14 @@ definitions:
     - Equity
     - Income
     - Expense
+  domain.JournalStatus:
+    enum:
+    - POSTED
+    - REVERSED
+    type: string
+    x-enum-varnames:
+    - Posted
+    - Reversed
   domain.TransactionType:
     enum:
     - DEBIT
@@ -221,8 +229,6 @@ definitions:
   dto.JournalResponse:
     properties:
       createdAt:
-        description: Status domain.JournalStatus `json:"status"` // Status might not
-          be needed/settable directly via CRUD
         type: string
       createdBy:
         type: string
@@ -238,6 +244,14 @@ definitions:
         type: string
       lastUpdatedBy:
         type: string
+      originalJournalID:
+        type: string
+      reversingJournalID:
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/domain.JournalStatus'
+        description: Status (e.g., POSTED, REVERSED)
       transactions:
         description: Added transactions
         items:
@@ -1592,6 +1606,69 @@ paths:
       security:
       - BearerAuth: []
       summary: Update a journal entry in workplace
+      tags:
+      - journals
+  /workplaces/{workplace_id}/journals/{id}/reverse:
+    post:
+      description: Reverses a specific journal entry by creating a new journal with
+        opposite transaction types.
+      parameters:
+      - description: Workplace ID
+        in: path
+        name: workplace_id
+        required: true
+        type: string
+      - description: Journal ID to reverse
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The newly created reversing journal entry
+          schema:
+            $ref: '#/definitions/dto.JournalResponse'
+        "400":
+          description: Missing Workplace or Journal ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden (User cannot reverse)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Journal not found in this workplace
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict (e.g., journal already reversed or not posted)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to reverse journal
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Reverse a journal entry in workplace
       tags:
       - journals
   /workplaces/{workplace_id}/users:
