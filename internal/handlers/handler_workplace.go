@@ -94,8 +94,13 @@ func (h *workplaceHandler) createWorkplace(c *gin.Context) {
 	logger = logger.With(slog.String("creator_user_id", creatorUserID))
 	logger.Info("Received request to create workplace", slog.String("workplace_name", req.Name))
 
-	newWorkplace, err := h.workplaceService.CreateWorkplace(c.Request.Context(), req.Name, req.Description, creatorUserID)
+	newWorkplace, err := h.workplaceService.CreateWorkplace(c.Request.Context(), req.Name, req.Description, req.DefaultCurrencyCode, creatorUserID)
 	if err != nil {
+		if errors.Is(err, apperrors.ErrValidation) {
+			logger.Warn("Validation error creating workplace", slog.String("error", err.Error()))
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		logger.Error("Failed to create workplace in service", slog.String("error", err.Error()))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create workplace"})
 		return

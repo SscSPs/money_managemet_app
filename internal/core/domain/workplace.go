@@ -4,10 +4,11 @@ import "time"
 
 // Workplace represents an isolated environment containing accounts, journals, etc.
 type Workplace struct {
-	WorkplaceID string `json:"workplaceID"` // Primary Key (e.g., UUID)
-	Name        string `json:"name"`        // User-defined name for the workplace
-	Description string `json:"description"` // Optional description
-	AuditFields        // Embed common audit fields
+	WorkplaceID         string  `json:"workplaceID"`         // Primary Key (e.g., UUID)
+	Name                string  `json:"name"`                // User-defined name for the workplace
+	Description         string  `json:"description"`         // Optional description
+	DefaultCurrencyCode *string `json:"defaultCurrencyCode"` // Default currency code for this workplace (e.g., "USD")
+	AuditFields                 // Embed common audit fields
 }
 
 // UserWorkplaceRole defines the possible roles a user can have within a workplace.

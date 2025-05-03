@@ -110,6 +110,17 @@ func (s *journalService) validateJournalBalance(transactions []domain.Transactio
 	return nil
 }
 
+// calculateJournalAmount computes the total amount of a journal by summing all debit transactions
+func calculateJournalAmount(transactions []domain.Transaction) decimal.Decimal {
+	totalAmount := decimal.Zero
+	for _, txn := range transactions {
+		if txn.TransactionType == domain.Debit {
+			totalAmount = totalAmount.Add(txn.Amount)
+		}
+	}
+	return totalAmount
+}
+
 // Helper to convert []models.Transaction to []domain.Transaction
 func modelToDomainTransactions(ms []models.Transaction) []domain.Transaction {
 	ds := make([]domain.Transaction, len(ms))
@@ -266,6 +277,10 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 		},
 	}
 
+	// Calculate the total amount of the journal (sum of all debit transactions)
+	totalAmount := calculateJournalAmount(domainTransactions)
+	domainJournal.Amount = totalAmount
+
 	// Pass balance changes to the repository method
 	err = s.journalRepo.SaveJournal(ctx, domainJournal, domainTransactions, balanceChanges)
 	if err != nil {
@@ -325,6 +340,12 @@ func (s *journalService) GetJournalByID(ctx context.Context, workplaceID string,
 	// Populate the transactions field
 	journal.Transactions = transactions
 
+	// Calculate the total amount of the journal (sum of all debit transactions)
+	if len(transactions) > 0 {
+		totalAmount := calculateJournalAmount(transactions)
+		journal.Amount = totalAmount
+	}
+
 	logger.Debug("Journal and transactions retrieved successfully", slog.String("journal_id", journalID), slog.String("workplace_id", workplaceID), slog.Int("transaction_count", len(transactions)))
 	return journal, nil
 }
@@ -355,6 +376,30 @@ func (j *journalService) ListJournals(ctx context.Context, workplaceID string, u
 		logger.Error("Failed to list journals from repository", "error", err)
 		// Don't wrap; return specific error if needed, otherwise the original error
 		return nil, err
+	}
+
+	// Extract journal IDs for bulk transaction fetch
+	journalIDs := make([]string, len(journals))
+	for i, journal := range journals {
+		journalIDs[i] = journal.JournalID
+	}
+
+	// Fetch transactions for all journals to calculate amounts
+	if len(journalIDs) > 0 {
+		transactionsMap, err := j.journalRepo.FindTransactionsByJournalIDs(ctx, journalIDs)
+		if err != nil {
+			logger.Error("Failed to fetch transactions for journals", "error", err)
+			// Continue without amounts if transaction fetch fails
+		} else {
+			// Calculate amount for each journal
+			for i := range journals {
+				txns, exists := transactionsMap[journals[i].JournalID]
+				if exists {
+					totalAmount := calculateJournalAmount(txns)
+					journals[i].Amount = totalAmount
+				}
+			}
+		}
 	}
 
 	// Convert domain journals to DTO responses
@@ -687,6 +732,10 @@ func (j *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 			// RunningBalance will be calculated by SaveJournal repo method
 		}
 	}
+
+	// Calculate the total amount of the reversal journal (sum of all debit transactions)
+	totalAmount := calculateJournalAmount(reversingTransactions)
+	reversingJournal.Amount = totalAmount
 
 	// 7. Fetch accounts involved to calculate balance changes
 	accIDList := make([]string, 0, len(accountIDs))

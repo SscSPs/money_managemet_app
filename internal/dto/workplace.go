@@ -10,31 +10,34 @@ import (
 
 // CreateWorkplaceRequest defines data for creating a new workplace.
 type CreateWorkplaceRequest struct {
-	Name        string `json:"name" binding:"required"`
-	Description string `json:"description"`
+	Name                string `json:"name" binding:"required"`
+	Description         string `json:"description"`
+	DefaultCurrencyCode string `json:"defaultCurrencyCode" binding:"required,iso4217"`
 }
 
 // WorkplaceResponse defines data returned for a workplace.
 type WorkplaceResponse struct {
-	WorkplaceID   string    `json:"workplaceID"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	CreatedAt     time.Time `json:"createdAt"`
-	CreatedBy     string    `json:"createdBy"` // UserID
-	LastUpdatedAt time.Time `json:"lastUpdatedAt"`
-	LastUpdatedBy string    `json:"lastUpdatedBy"` // UserID
+	WorkplaceID         string    `json:"workplaceID"`
+	Name                string    `json:"name"`
+	Description         string    `json:"description"`
+	DefaultCurrencyCode *string   `json:"defaultCurrencyCode,omitempty"`
+	CreatedAt           time.Time `json:"createdAt"`
+	CreatedBy           string    `json:"createdBy"` // UserID
+	LastUpdatedAt       time.Time `json:"lastUpdatedAt"`
+	LastUpdatedBy       string    `json:"lastUpdatedBy"` // UserID
 }
 
 // ToWorkplaceResponse converts domain.Workplace to DTO.
 func ToWorkplaceResponse(w *domain.Workplace) WorkplaceResponse {
 	return WorkplaceResponse{
-		WorkplaceID:   w.WorkplaceID,
-		Name:          w.Name,
-		Description:   w.Description,
-		CreatedAt:     w.CreatedAt,
-		CreatedBy:     w.CreatedBy,
-		LastUpdatedAt: w.LastUpdatedAt,
-		LastUpdatedBy: w.LastUpdatedBy,
+		WorkplaceID:         w.WorkplaceID,
+		Name:                w.Name,
+		Description:         w.Description,
+		DefaultCurrencyCode: w.DefaultCurrencyCode,
+		CreatedAt:           w.CreatedAt,
+		CreatedBy:           w.CreatedBy,
+		LastUpdatedAt:       w.LastUpdatedAt,
+		LastUpdatedBy:       w.LastUpdatedBy,
 	}
 }
 

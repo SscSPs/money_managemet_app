@@ -36,6 +36,7 @@ type JournalResponse struct {
 	Status             domain.JournalStatus  `json:"status"` // Status (e.g., POSTED, REVERSED)
 	OriginalJournalID  *string               `json:"originalJournalID,omitempty"`
 	ReversingJournalID *string               `json:"reversingJournalID,omitempty"`
+	Amount             decimal.Decimal       `json:"amount,omitempty"` // Total movement amount in the journal
 	CreatedAt          time.Time             `json:"createdAt"`
 	CreatedBy          string                `json:"createdBy"`
 	LastUpdatedAt      time.Time             `json:"lastUpdatedAt"`
@@ -54,6 +55,7 @@ func ToJournalResponse(j *domain.Journal) JournalResponse {
 		Status:             j.Status,             // Map status
 		OriginalJournalID:  j.OriginalJournalID,  // Map link
 		ReversingJournalID: j.ReversingJournalID, // Map link
+		Amount:             j.Amount,             // Map amount
 		CreatedAt:          j.CreatedAt,
 		CreatedBy:          j.CreatedBy,
 		LastUpdatedAt:      j.LastUpdatedAt,

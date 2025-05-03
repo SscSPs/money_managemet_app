@@ -189,11 +189,14 @@ definitions:
     type: object
   dto.CreateWorkplaceRequest:
     properties:
+      defaultCurrencyCode:
+        type: string
       description:
         type: string
       name:
         type: string
     required:
+    - defaultCurrencyCode
     - name
     type: object
   dto.CurrencyResponse:
@@ -228,6 +231,9 @@ definitions:
     type: object
   dto.JournalResponse:
     properties:
+      amount:
+        description: Total movement amount in the journal
+        type: number
       createdAt:
         type: string
       createdBy:
@@ -371,6 +377,8 @@ definitions:
         type: string
       createdBy:
         description: UserID
+        type: string
+      defaultCurrencyCode:
         type: string
       description:
         type: string

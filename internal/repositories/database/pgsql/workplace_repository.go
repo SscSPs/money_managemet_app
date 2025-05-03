@@ -2,6 +2,7 @@ package pgsql
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -27,13 +28,17 @@ var _ portsrepo.WorkplaceRepository = (*PgxWorkplaceRepository)(nil)
 
 func (r *PgxWorkplaceRepository) SaveWorkplace(ctx context.Context, workplace domain.Workplace) error {
 	query := `
-		INSERT INTO workplaces (workplace_id, name, description, created_at, created_by, last_updated_at, last_updated_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7);
+		INSERT INTO workplaces (
+			workplace_id, name, description, default_currency_code, 
+			created_at, created_by, last_updated_at, last_updated_by
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 	`
 	_, err := r.pool.Exec(ctx, query,
 		workplace.WorkplaceID,
 		workplace.Name,
 		workplace.Description,
+		workplace.DefaultCurrencyCode,
 		workplace.CreatedAt,
 		workplace.CreatedBy,
 		workplace.LastUpdatedAt,
@@ -46,6 +51,10 @@ func (r *PgxWorkplaceRepository) SaveWorkplace(ctx context.Context, workplace do
 			if pgErr.Code == "23505" { // unique_violation
 				return fmt.Errorf("%w: workplace ID %s already exists", apperrors.ErrDuplicate, workplace.WorkplaceID)
 			}
+			// Handle foreign key violation for currency
+			if pgErr.Code == "23503" && pgErr.ConstraintName == "fk_workplace_default_currency" { // foreign_key_violation
+				return fmt.Errorf("%w: currency code does not exist", apperrors.ErrValidation)
+			}
 		}
 		return fmt.Errorf("failed to save workplace %s: %w", workplace.WorkplaceID, err)
 	}
@@ -54,15 +63,19 @@ func (r *PgxWorkplaceRepository) SaveWorkplace(ctx context.Context, workplace do
 
 func (r *PgxWorkplaceRepository) FindWorkplaceByID(ctx context.Context, workplaceID string) (*domain.Workplace, error) {
 	query := `
-		SELECT workplace_id, name, description, created_at, created_by, last_updated_at, last_updated_by
+		SELECT workplace_id, name, description, default_currency_code,
+		       created_at, created_by, last_updated_at, last_updated_by
 		FROM workplaces
 		WHERE workplace_id = $1;
 	`
 	var w domain.Workplace
+	var defaultCurrencyCode sql.NullString
+
 	err := r.pool.QueryRow(ctx, query, workplaceID).Scan(
 		&w.WorkplaceID,
 		&w.Name,
 		&w.Description,
+		&defaultCurrencyCode,
 		&w.CreatedAt,
 		&w.CreatedBy,
 		&w.LastUpdatedAt,
@@ -75,6 +88,11 @@ func (r *PgxWorkplaceRepository) FindWorkplaceByID(ctx context.Context, workplac
 		}
 		return nil, fmt.Errorf("failed to find workplace by ID %s: %w", workplaceID, err)
 	}
+
+	if defaultCurrencyCode.Valid {
+		w.DefaultCurrencyCode = &defaultCurrencyCode.String
+	}
+
 	return &w, nil
 }
 
@@ -124,7 +142,8 @@ func (r *PgxWorkplaceRepository) FindUserWorkplaceRole(ctx context.Context, user
 
 func (r *PgxWorkplaceRepository) ListWorkplacesByUserID(ctx context.Context, userID string) ([]domain.Workplace, error) {
 	query := `
-		SELECT w.workplace_id, w.name, w.description, w.created_at, w.created_by, w.last_updated_at, w.last_updated_by
+		SELECT w.workplace_id, w.name, w.description, w.default_currency_code,
+		       w.created_at, w.created_by, w.last_updated_at, w.last_updated_by
 		FROM workplaces w
 		JOIN user_workplaces uw ON w.workplace_id = uw.workplace_id
 		WHERE uw.user_id = $1
@@ -136,9 +155,31 @@ func (r *PgxWorkplaceRepository) ListWorkplacesByUserID(ctx context.Context, use
 	}
 	defer rows.Close()
 
-	workplaces, err := pgx.CollectRows(rows, pgx.RowToStructByPos[domain.Workplace])
-	if err != nil {
-		return nil, fmt.Errorf("failed to collect workplace rows for user %s: %w", userID, err)
+	var workplaces []domain.Workplace
+	for rows.Next() {
+		var w domain.Workplace
+		var defaultCurrencyCode sql.NullString
+		err := rows.Scan(
+			&w.WorkplaceID,
+			&w.Name,
+			&w.Description,
+			&defaultCurrencyCode,
+			&w.CreatedAt,
+			&w.CreatedBy,
+			&w.LastUpdatedAt,
+			&w.LastUpdatedBy,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan workplace row: %w", err)
+		}
+		if defaultCurrencyCode.Valid {
+			w.DefaultCurrencyCode = &defaultCurrencyCode.String
+		}
+		workplaces = append(workplaces, w)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating workplace rows: %w", err)
 	}
 
 	return workplaces, nil

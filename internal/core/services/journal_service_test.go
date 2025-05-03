@@ -150,8 +150,8 @@ type MockWorkplaceService struct {
 // Ensure MockWorkplaceService implements the full interface
 var _ portssvc.WorkplaceService = (*MockWorkplaceService)(nil)
 
-func (m *MockWorkplaceService) CreateWorkplace(ctx context.Context, name, description, creatorUserID string) (*domain.Workplace, error) {
-	args := m.Called(ctx, name, description, creatorUserID)
+func (m *MockWorkplaceService) CreateWorkplace(ctx context.Context, name, description, defaultCurrencyCode, creatorUserID string) (*domain.Workplace, error) {
+	args := m.Called(ctx, name, description, defaultCurrencyCode, creatorUserID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

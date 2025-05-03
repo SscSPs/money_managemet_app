@@ -46,6 +46,7 @@ func toModelJournal(d domain.Journal) models.Journal {
 		Status:             models.JournalStatus(d.Status),
 		OriginalJournalID:  d.OriginalJournalID,
 		ReversingJournalID: d.ReversingJournalID,
+		Amount:             d.Amount,
 		AuditFields: models.AuditFields{
 			CreatedAt:     d.CreatedAt,
 			CreatedBy:     d.CreatedBy,
@@ -65,6 +66,7 @@ func toDomainJournal(m models.Journal) domain.Journal {
 		Status:             domain.JournalStatus(m.Status),
 		OriginalJournalID:  m.OriginalJournalID,
 		ReversingJournalID: m.ReversingJournalID,
+		Amount:             m.Amount,
 		AuditFields: domain.AuditFields{
 			CreatedAt:     m.CreatedAt,
 			CreatedBy:     m.CreatedBy,
@@ -168,10 +170,10 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 	journalQuery := `
 		INSERT INTO journals (
 			journal_id, workplace_id, journal_date, description, currency_code, status, 
-			original_journal_id, reversing_journal_id, -- Add new columns
+			original_journal_id, reversing_journal_id, amount,
 			created_at, created_by, last_updated_at, last_updated_by
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12); -- Update placeholders
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13); -- Update placeholders
 	`
 	_, err = tx.Exec(ctx, journalQuery,
 		modelJournal.JournalID,
@@ -182,6 +184,7 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 		modelJournal.Status,
 		modelJournal.OriginalJournalID,
 		modelJournal.ReversingJournalID,
+		modelJournal.Amount,
 		modelJournal.CreatedAt,
 		modelJournal.CreatedBy,
 		modelJournal.LastUpdatedAt,
@@ -288,7 +291,7 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID string) (*domain.Journal, error) {
 	query := `
 		SELECT journal_id, workplace_id, journal_date, description, currency_code, status, 
-		       original_journal_id, reversing_journal_id, -- Add new columns
+		       original_journal_id, reversing_journal_id, amount,
 		       created_at, created_by, last_updated_at, last_updated_by
 		FROM journals
 		WHERE journal_id = $1;
@@ -306,6 +309,7 @@ func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID st
 		&modelJournal.Status,
 		&originalID,  // Scan into NullString
 		&reversingID, // Scan into NullString
+		&modelJournal.Amount,
 		&modelJournal.CreatedAt,
 		&modelJournal.CreatedBy,
 		&modelJournal.LastUpdatedAt,
@@ -476,7 +480,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 	// Base query
 	baseQuery := `
 		SELECT journal_id, workplace_id, journal_date, description, currency_code, status, 
-		       original_journal_id, reversing_journal_id, 
+		       original_journal_id, reversing_journal_id, amount,
 		       created_at, created_by, last_updated_at, last_updated_by
 		FROM journals
 	`
@@ -545,6 +549,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 			&m.Status,
 			&originalID,
 			&reversingID,
+			&m.Amount,
 			&m.CreatedAt,
 			&m.CreatedBy,
 			&m.LastUpdatedAt,

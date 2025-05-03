@@ -12,7 +12,7 @@ func NewServiceContainer(repos portsrepo.RepositoryProvider) *portssvc.ServiceCo
 	accountSvc := NewAccountService(repos.AccountRepo)
 	currencySvc := NewCurrencyService(repos.CurrencyRepo)
 	userSvc := NewUserService(repos.UserRepo)
-	workplaceSvc := NewWorkplaceService(repos.WorkplaceRepo)
+	workplaceSvc := NewWorkplaceService(repos.WorkplaceRepo, repos.CurrencyRepo)
 	// Add StaticDataService initialization if/when implemented
 
 	// Initialize services that depend on other services

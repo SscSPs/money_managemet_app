@@ -18,13 +18,15 @@ import (
 // WorkplaceService handles business logic related to workplaces and memberships.
 type WorkplaceService struct {
 	workplaceRepo portsrepo.WorkplaceRepository
+	currencyRepo  portsrepo.CurrencyRepository
 	// userRepo portsrepo.UserRepository // Might be needed for user validation
 }
 
 // NewWorkplaceService creates a new WorkplaceService.
-func NewWorkplaceService(wr portsrepo.WorkplaceRepository) portssvc.WorkplaceService {
+func NewWorkplaceService(wr portsrepo.WorkplaceRepository, cr portsrepo.CurrencyRepository) portssvc.WorkplaceService {
 	return &WorkplaceService{
 		workplaceRepo: wr,
+		currencyRepo:  cr,
 	}
 }
 
@@ -32,8 +34,21 @@ func NewWorkplaceService(wr portsrepo.WorkplaceRepository) portssvc.WorkplaceSer
 var _ portssvc.WorkplaceService = (*WorkplaceService)(nil)
 
 // CreateWorkplace creates a new workplace and makes the creator the initial admin.
-func (s *WorkplaceService) CreateWorkplace(ctx context.Context, name, description, creatorUserID string) (*domain.Workplace, error) {
+func (s *WorkplaceService) CreateWorkplace(ctx context.Context, name, description, defaultCurrencyCode, creatorUserID string) (*domain.Workplace, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
+
+	// Validate that the currency exists
+	if defaultCurrencyCode != "" {
+		_, err := s.currencyRepo.FindCurrencyByCode(ctx, defaultCurrencyCode)
+		if err != nil {
+			if errors.Is(err, apperrors.ErrNotFound) {
+				logger.Warn("Invalid default currency code provided", slog.String("currency_code", defaultCurrencyCode))
+				return nil, fmt.Errorf("%w: currency code %s not found", apperrors.ErrValidation, defaultCurrencyCode)
+			}
+			logger.Error("Failed to check currency code existence", slog.String("error", err.Error()), slog.String("currency_code", defaultCurrencyCode))
+			return nil, fmt.Errorf("failed to validate currency code: %w", err)
+		}
+	}
 
 	now := time.Now()
 	newWorkplaceID := uuid.NewString()
@@ -48,6 +63,11 @@ func (s *WorkplaceService) CreateWorkplace(ctx context.Context, name, descriptio
 			LastUpdatedAt: now,
 			LastUpdatedBy: creatorUserID,
 		},
+	}
+
+	// Only set default currency if provided (otherwise will be NULL in DB)
+	if defaultCurrencyCode != "" {
+		workplace.DefaultCurrencyCode = &defaultCurrencyCode
 	}
 
 	// Save the workplace

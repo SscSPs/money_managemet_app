@@ -2314,9 +2314,13 @@ const docTemplate = `{
         "dto.CreateWorkplaceRequest": {
             "type": "object",
             "required": [
+                "defaultCurrencyCode",
                 "name"
             ],
             "properties": {
+                "defaultCurrencyCode": {
+                    "type": "string"
+                },
                 "description": {
                     "type": "string"
                 },
@@ -2374,6 +2378,10 @@ const docTemplate = `{
         "dto.JournalResponse": {
             "type": "object",
             "properties": {
+                "amount": {
+                    "description": "Total movement amount in the journal",
+                    "type": "number"
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -2591,6 +2599,9 @@ const docTemplate = `{
                 },
                 "createdBy": {
                     "description": "UserID",
+                    "type": "string"
+                },
+                "defaultCurrencyCode": {
                     "type": "string"
                 },
                 "description": {

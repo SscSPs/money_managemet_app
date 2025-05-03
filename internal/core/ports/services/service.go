@@ -50,7 +50,7 @@ type JournalService interface {
 
 // WorkplaceService defines the interface for workplace and membership logic.
 type WorkplaceService interface {
-	CreateWorkplace(ctx context.Context, name, description, creatorUserID string) (*domain.Workplace, error)
+	CreateWorkplace(ctx context.Context, name, description, defaultCurrencyCode, creatorUserID string) (*domain.Workplace, error)
 	AddUserToWorkplace(ctx context.Context, addingUserID, targetUserID, workplaceID string, role domain.UserWorkplaceRole) error
 	ListUserWorkplaces(ctx context.Context, userID string) ([]domain.Workplace, error)
 	AuthorizeUserAction(ctx context.Context, userID, workplaceID string, requiredRole domain.UserWorkplaceRole) error
