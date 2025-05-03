@@ -65,8 +65,9 @@ func ToJournalResponse(j *domain.Journal) JournalResponse {
 // ListJournalsParams defines query parameters for listing journals.
 // Uses token-based pagination.
 type ListJournalsParams struct {
-	Limit     int     `form:"limit" binding:"omitempty,gte=1,lte=100"` // Limit results, default 20, max 100
-	NextToken *string `form:"nextToken"`                               // Token for the next page
+	Limit            int     `form:"limit" binding:"omitempty,gte=1,lte=100"` // Limit results, default 20, max 100
+	NextToken        *string `form:"nextToken"`                               // Token for the next page
+	IncludeReversals bool    `form:"includeReversals"`                        // Whether to include reversed and reversing journals
 }
 
 // ListJournalsResponse wraps a list of journal responses.

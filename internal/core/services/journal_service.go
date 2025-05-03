@@ -350,7 +350,7 @@ func (j *journalService) ListJournals(ctx context.Context, workplaceID string, u
 
 	// Fetch journals from repository using token
 	// Note: Assuming params dto.ListJournalsParams is updated to include NextToken
-	journals, nextToken, err := j.journalRepo.ListJournalsByWorkplace(ctx, workplaceID, params.Limit, params.NextToken)
+	journals, nextToken, err := j.journalRepo.ListJournalsByWorkplace(ctx, workplaceID, params.Limit, params.NextToken, params.IncludeReversals)
 	if err != nil {
 		logger.Error("Failed to list journals from repository", "error", err)
 		// Don't wrap; return specific error if needed, otherwise the original error
@@ -651,7 +651,7 @@ func (j *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 		Description:       fmt.Sprintf("Reversal of Journal: %s", originalJournal.JournalID),
 		CurrencyCode:      originalJournal.CurrencyCode,
 		Status:            domain.Posted,
-		OriginalJournalID: &originalJournal.JournalID, // Link back to original
+		OriginalJournalID: &originalJournal.JournalID, // Direct link to the journal being reversed (regardless of whether it's an original or a reversal itself)
 		AuditFields: domain.AuditFields{
 			CreatedAt:     now,
 			CreatedBy:     userID,
@@ -723,7 +723,8 @@ func (j *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 	}
 
 	// 10. Update the original journal's status and link to the new reversing journal
-	if err := j.journalRepo.UpdateJournalStatusAndLinks(ctx, originalJournal.JournalID, domain.Reversed, &newJournalID, nil, userID, now); err != nil {
+	// Keep the original journal's OriginalJournalID - preserving the reversal chain
+	if err := j.journalRepo.UpdateJournalStatusAndLinks(ctx, originalJournal.JournalID, domain.Reversed, &newJournalID, originalJournal.OriginalJournalID, userID, now); err != nil {
 		// Log this error, as the reversal DID succeed, but the linking failed.
 		// This is a state inconsistency that might need manual correction or a retry mechanism.
 		logger.Error("CRITICAL: Failed to update original journal status after successful reversal", "originalJournalID", originalJournal.JournalID, "reversingJournalID", newJournalID, "error", err)
@@ -742,23 +743,17 @@ func (j *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 // ListJournalsByWorkplace retrieves a paginated list of journals for a workplace.
 // It now uses token-based pagination.
 func (j *journalService) ListJournalsByWorkplace(ctx context.Context, params ListJournalsParams) ([]domain.Journal, *string, error) {
-	// Basic validation (could be more extensive)
-	if params.WorkplaceID == "" {
-		// Assuming apperrors.NewValidationError exists or similar validation error mechanism
-		return nil, nil, fmt.Errorf("WorkplaceID is required") // Replace with actual validation error
-	}
-	if params.Limit <= 0 {
-		params.Limit = 20 // Apply default limit
-	}
+	logger := middleware.GetLoggerFromCtx(ctx)
 
-	// Call the repository method with the token
-	// Correctly handle 3 return values and pass NextToken
-	journals, nextToken, err := j.journalRepo.ListJournalsByWorkplace(ctx, params.WorkplaceID, params.Limit, params.NextToken)
+	// Authorize user against workplace (requires UserWorkplaceRepo later)
+	// TODO: Add workspace authorization check
+
+	// Fetch journals directly from repository (could add filtering, etc. later)
+	journals, nextToken, err := j.journalRepo.ListJournalsByWorkplace(ctx, params.WorkplaceID, params.Limit, params.NextToken, false) // Add a parameter for includeReversals
 	if err != nil {
 		// Log the error for debugging
-		// log.Printf("Error listing journals from repository: %v", err)
-		// Return a generic error or wrap the specific error
-		return nil, nil, fmt.Errorf("failed to list journals: %w", err)
+		logger.Error("Failed to list journals", "error", err, "workplace_id", params.WorkplaceID)
+		return nil, nil, fmt.Errorf("Error fetching journals: %w", err)
 	}
 
 	// Potentially enrich journal data here if needed

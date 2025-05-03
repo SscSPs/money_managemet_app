@@ -13,8 +13,7 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
-	"github.com/SscSPs/money_managemet_app/internal/models"
-	"github.com/google/uuid" // Assuming journal_id is UUID
+	"github.com/SscSPs/money_managemet_app/internal/models" // Assuming journal_id is UUID
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
@@ -431,42 +430,42 @@ func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, 
 
 const timeFormat = time.RFC3339Nano // Use a precise time format
 
-// encodeToken creates a base64 encoded token from journal date and ID.
-func encodeToken(t time.Time, id string) string {
-	tokenStr := fmt.Sprintf("%s|%s", t.Format(timeFormat), id)
+// encodeToken creates a base64 encoded token from journal date and creation time.
+func encodeToken(journalDate time.Time, createdAt time.Time) string {
+	tokenStr := fmt.Sprintf("%s|%s", journalDate.Format(timeFormat), createdAt.Format(timeFormat))
 	return base64.StdEncoding.EncodeToString([]byte(tokenStr))
 }
 
-// decodeToken parses the base64 encoded token back into journal date and ID.
-func decodeToken(token string) (time.Time, string, error) {
+// decodeToken parses the base64 encoded token back into journal date and creation time.
+func decodeToken(token string) (time.Time, time.Time, error) {
 	decodedBytes, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
-		return time.Time{}, "", fmt.Errorf("invalid pagination token format (base64 decode): %w", err)
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid pagination token format (base64 decode): %w", err)
 	}
 	tokenStr := string(decodedBytes)
 	parts := strings.SplitN(tokenStr, "|", 2)
 	if len(parts) != 2 {
-		return time.Time{}, "", fmt.Errorf("invalid pagination token format (split)")
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid pagination token format (split)")
 	}
 
-	t, err := time.Parse(timeFormat, parts[0])
+	journalDate, err := time.Parse(timeFormat, parts[0])
 	if err != nil {
-		return time.Time{}, "", fmt.Errorf("invalid pagination token format (time parse): %w", err)
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid pagination token format (journal date parse): %w", err)
 	}
 
-	// Optional: Validate if parts[1] is a valid UUID format if needed
-	if _, err := uuid.Parse(parts[1]); err != nil {
-		return time.Time{}, "", fmt.Errorf("invalid pagination token format (uuid parse): %w", err)
+	createdAt, err := time.Parse(timeFormat, parts[1])
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid pagination token format (created_at parse): %w", err)
 	}
 
-	return t, parts[1], nil
+	return journalDate, createdAt, nil
 }
 
 // --- End Token Pagination Helpers ---
 
 // ListJournalsByWorkplace retrieves a paginated list of journals for a specific workplace using token-based pagination.
 // It returns the list of journals, a token for the next page (if any), and an error.
-func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, nextToken *string) ([]domain.Journal, *string, error) {
+func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, nextToken *string, includeReversals bool) ([]domain.Journal, *string, error) {
 	// Default limit handling
 	if limit <= 0 {
 		limit = 20 // Or a configurable default
@@ -481,13 +480,16 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 		       created_at, created_by, last_updated_at, last_updated_by
 		FROM journals
 	`
-	// Consistent filtering criteria
-	filterClause := `WHERE workplace_id = $1 AND status != 'REVERSED' AND reversing_journal_id IS NULL and original_journal_id is null`
+	// Filtering criteria - conditionally include/exclude reversed and reversing journals
+	filterClause := `WHERE workplace_id = $1`
+	if !includeReversals {
+		filterClause += ` AND status != 'REVERSED' AND reversing_journal_id IS NULL AND original_journal_id IS NULL`
+	}
 
 	// Ordering is crucial and must be stable
-	// We use journal_date DESC, and journal_id DESC as a tie-breaker.
+	// We use journal_date DESC, and created_at DESC as a tie-breaker.
 	// Ensure journal_id is sortable (UUIDs can be compared lexicographically in Postgres).
-	orderByClause := `ORDER BY journal_date DESC, journal_id DESC`
+	orderByClause := `ORDER BY journal_date DESC, created_at DESC`
 
 	var rows pgx.Rows
 	var err error
@@ -495,7 +497,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 
 	if nextToken != nil && *nextToken != "" {
 		// Decode the token to get the cursor values
-		lastDate, lastID, decodeErr := decodeToken(*nextToken)
+		lastDate, lastCreatedAt, decodeErr := decodeToken(*nextToken)
 		if decodeErr != nil {
 			// Consider logging the error but return a user-friendly error
 			// Or potentially treat as if no token was provided if lenient
@@ -504,8 +506,8 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 
 		// Add cursor condition to WHERE clause
 		// Tuple comparison is concise and efficient in Postgres
-		cursorClause := `AND (journal_date, journal_id) < ($2, $3)`
-		args = append(args, lastDate, lastID)
+		cursorClause := `AND (journal_date, created_at) < ($2, $3)`
+		args = append(args, lastDate, lastCreatedAt)
 
 		// Construct the full query with cursor
 		query := fmt.Sprintf("%s %s %s %s LIMIT $%d;", baseQuery, filterClause, cursorClause, orderByClause, len(args)+1)
@@ -575,7 +577,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 		lastJournal := modelJournals[limit-1] // The *actual* last item of the *current* page
 		// The token points to the *last item included* in this response page.
 		// The next query will start *after* this item.
-		newToken := encodeToken(lastJournal.JournalDate, lastJournal.JournalID)
+		newToken := encodeToken(lastJournal.JournalDate, lastJournal.CreatedAt)
 		nextTokenVal = &newToken
 		// Trim the extra item fetched
 		results = modelJournals[:limit]

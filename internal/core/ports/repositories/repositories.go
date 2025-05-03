@@ -49,7 +49,7 @@ type JournalRepository interface {
 
 	// ListJournalsByWorkplace retrieves a paginated list of journals for a given workplace using token-based pagination.
 	// It returns the journals, a token for the next page, and an error.
-	ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, nextToken *string) ([]domain.Journal, *string, error)
+	ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, nextToken *string, includeReversals bool) ([]domain.Journal, *string, error)
 
 	// FindTransactionsByJournalID retrieves all transactions associated with a single journal ID.
 	FindTransactionsByJournalID(ctx context.Context, journalID string) ([]domain.Transaction, error)

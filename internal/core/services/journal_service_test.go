@@ -51,8 +51,8 @@ func (m *MockJournalRepository) FindTransactionsByAccountID(ctx context.Context,
 	return args.Get(0).([]domain.Transaction), args.Error(1)
 }
 
-func (m *MockJournalRepository) ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, nextToken *string) ([]domain.Journal, *string, error) {
-	args := m.Called(ctx, workplaceID, limit, nextToken)
+func (m *MockJournalRepository) ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, nextToken *string, includeReversals bool) ([]domain.Journal, *string, error) {
+	args := m.Called(ctx, workplaceID, limit, nextToken, includeReversals)
 	if args.Get(0) == nil {
 		return nil, nil, args.Error(2)
 	}
