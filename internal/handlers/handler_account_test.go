@@ -93,12 +93,12 @@ func (m *MockJournalService) GetJournalByID(ctx context.Context, workplaceID str
 	}
 	return args.Get(0).(*domain.Journal), args.Error(1)
 }
-func (m *MockJournalService) ListJournals(ctx context.Context, workplaceID string, limit int, offset int, requestingUserID string) ([]domain.Journal, error) {
-	args := m.Called(ctx, workplaceID, limit, offset, requestingUserID)
+func (m *MockJournalService) ListJournals(ctx context.Context, workplaceID string, userID string, params dto.ListJournalsParams) (*dto.ListJournalsResponse, error) {
+	args := m.Called(ctx, workplaceID, userID, params)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]domain.Journal), args.Error(1)
+	return args.Get(0).(*dto.ListJournalsResponse), args.Error(1)
 }
 func (m *MockJournalService) UpdateJournal(ctx context.Context, workplaceID string, journalID string, req dto.UpdateJournalRequest, requestingUserID string) (*domain.Journal, error) {
 	args := m.Called(ctx, workplaceID, journalID, req, requestingUserID)
@@ -111,12 +111,12 @@ func (m *MockJournalService) DeactivateJournal(ctx context.Context, workplaceID 
 	args := m.Called(ctx, workplaceID, journalID, requestingUserID)
 	return args.Error(0)
 }
-func (m *MockJournalService) ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, limit int, offset int, requestingUserID string) ([]domain.Transaction, error) {
-	args := m.Called(ctx, workplaceID, accountID, limit, offset, requestingUserID)
+func (m *MockJournalService) ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, userID string, params dto.ListTransactionsParams) (*dto.ListTransactionsResponse, error) {
+	args := m.Called(ctx, workplaceID, accountID, userID, params)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]domain.Transaction), args.Error(1)
+	return args.Get(0).(*dto.ListTransactionsResponse), args.Error(1)
 }
 func (m *MockJournalService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
 	args := m.Called(ctx, workplaceID, accountID)
@@ -124,6 +124,13 @@ func (m *MockJournalService) CalculateAccountBalance(ctx context.Context, workpl
 		return decimal.Decimal{}, args.Error(1)
 	}
 	return args.Get(0).(decimal.Decimal), args.Error(1)
+}
+func (m *MockJournalService) ReverseJournal(ctx context.Context, workplaceID string, journalID string, userID string) (*domain.Journal, error) {
+	args := m.Called(ctx, workplaceID, journalID, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Journal), args.Error(1)
 }
 
 // Ensure mock implements the interface
@@ -184,26 +191,30 @@ func (suite *AccountHandlerTestSuite) TestListTransactionsByAccount_Success() {
 	accountID := uuid.NewString()
 	requestingUserID := uuid.NewString() // Use a UUID for the test user ID
 	limit := 10
-	offset := 0
 
-	// Prepare expected transactions from service
-	expectedTransactions := []domain.Transaction{
-		{TransactionID: uuid.NewString(), JournalID: uuid.NewString(), AccountID: accountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit, CurrencyCode: "USD", AuditFields: domain.AuditFields{CreatedAt: time.Now()}},
-		{TransactionID: uuid.NewString(), JournalID: uuid.NewString(), AccountID: accountID, Amount: decimal.NewFromInt(50), TransactionType: domain.Credit, CurrencyCode: "USD", AuditFields: domain.AuditFields{CreatedAt: time.Now().Add(-time.Hour)}},
+	// Prepare expected transactions
+	expectedTransactions := []dto.TransactionResponse{
+		{TransactionID: uuid.NewString(), JournalID: uuid.NewString(), AccountID: accountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit, CurrencyCode: "USD", CreatedAt: time.Now()},
+		{TransactionID: uuid.NewString(), JournalID: uuid.NewString(), AccountID: accountID, Amount: decimal.NewFromInt(50), TransactionType: domain.Credit, CurrencyCode: "USD", CreatedAt: time.Now().Add(-time.Hour)},
+	}
+	expectedResponse := &dto.ListTransactionsResponse{
+		Transactions: expectedTransactions,
+		NextToken:    nil, // No more pages in test
 	}
 
-	// Setup mock expectation
+	// Setup mock expectation with new signature
 	suite.mockJournalService.On("ListTransactionsByAccount",
 		mock.AnythingOfType("*context.valueCtx"), // Context will now have values from middleware
 		workplaceID,
 		accountID,
-		limit,
-		offset,
 		requestingUserID, // Expect the user ID from the token
-	).Return(expectedTransactions, nil).Once()
+		mock.MatchedBy(func(p dto.ListTransactionsParams) bool {
+			return p.Limit == limit
+		}),
+	).Return(expectedResponse, nil).Once()
 
-	// Create request
-	url := fmt.Sprintf("/api/v1/workplaces/%s/accounts/%s/transactions?limit=%d&offset=%d", workplaceID, accountID, limit, offset)
+	// Create request with updated query parameters
+	url := fmt.Sprintf("/api/v1/workplaces/%s/accounts/%s/transactions?limit=%d", workplaceID, accountID, limit)
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
 	// Add the generated token to the Authorization header
 	token := suite.generateTestToken(requestingUserID)
@@ -223,11 +234,10 @@ func (suite *AccountHandlerTestSuite) TestListTransactionsByAccount_Success() {
 	err := json.Unmarshal(w.Body.Bytes(), &responseBody)
 	suite.NoError(err, "Failed to unmarshal response body")
 	suite.Len(responseBody.Transactions, len(expectedTransactions))
-	// Compare transaction details (can be more granular)
+	// Compare transaction details
 	if len(responseBody.Transactions) == len(expectedTransactions) {
 		suite.Equal(expectedTransactions[0].TransactionID, responseBody.Transactions[0].TransactionID)
 		suite.Equal(expectedTransactions[1].TransactionID, responseBody.Transactions[1].TransactionID)
-		// Compare other relevant fields...
 	}
 
 	// Assert mock calls

@@ -63,16 +63,17 @@ func ToJournalResponse(j *domain.Journal) JournalResponse {
 }
 
 // ListJournalsParams defines query parameters for listing journals.
+// Uses token-based pagination.
 type ListJournalsParams struct {
-	Limit  int `form:"limit,default=20"`
-	Offset int `form:"offset,default=0"`
-	// TODO: Add filtering options like date range, status?
+	Limit     int     `form:"limit" binding:"omitempty,gte=1,lte=100"` // Limit results, default 20, max 100
+	NextToken *string `form:"nextToken"`                               // Token for the next page
 }
 
 // ListJournalsResponse wraps a list of journal responses.
+// Uses token-based pagination.
 type ListJournalsResponse struct {
-	Journals []JournalResponse `json:"journals"`
-	// TODO: Add pagination metadata (total count, limit, offset)?
+	Journals  []JournalResponse `json:"journals"`
+	NextToken *string           `json:"nextToken,omitempty"` // Token to fetch the next page
 }
 
 // UpdateJournalRequest defines data for updating a journal entry's details.
@@ -126,14 +127,17 @@ func ToTransactionResponses(ts []domain.Transaction) []TransactionResponse {
 }
 
 // ListTransactionsParams defines query parameters for listing transactions.
+// TODO: Implement pagination (likely token-based).
 type ListTransactionsParams struct {
-	Limit  int `form:"limit,default=20"`
-	Offset int `form:"offset,default=0"`
-	// TODO: Add filtering options like date range?
+	// Pagination params (e.g., Limit, NextToken) to be added
+	Limit     int     `form:"limit" binding:"omitempty,gte=1,lte=100"` // Limit results, default 20, max 100
+	NextToken *string `form:"nextToken"`                               // Token for the next page
 }
 
 // ListTransactionsResponse wraps a list of transaction responses.
+// TODO: Implement pagination (likely token-based).
 type ListTransactionsResponse struct {
 	Transactions []TransactionResponse `json:"transactions"`
-	// TODO: Add pagination metadata (total count, limit, offset)?
+	// Pagination metadata (e.g., NextToken) to be added
+	NextToken *string `json:"nextToken,omitempty"` // Token to fetch the next page
 }

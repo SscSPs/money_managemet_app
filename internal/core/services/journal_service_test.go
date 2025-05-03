@@ -51,12 +51,17 @@ func (m *MockJournalRepository) FindTransactionsByAccountID(ctx context.Context,
 	return args.Get(0).([]domain.Transaction), args.Error(1)
 }
 
-func (m *MockJournalRepository) ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Journal, error) {
-	args := m.Called(ctx, workplaceID, limit, offset)
+func (m *MockJournalRepository) ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, nextToken *string) ([]domain.Journal, *string, error) {
+	args := m.Called(ctx, workplaceID, limit, nextToken)
 	if args.Get(0) == nil {
-		return nil, args.Error(1)
+		return nil, nil, args.Error(2)
 	}
-	return args.Get(0).([]domain.Journal), args.Error(1)
+	var returnedNextToken *string
+	if args.Get(1) != nil {
+		tokenVal := args.Get(1).(string)
+		returnedNextToken = &tokenVal
+	}
+	return args.Get(0).([]domain.Journal), returnedNextToken, args.Error(2)
 }
 
 func (m *MockJournalRepository) FindTransactionsByJournalIDs(ctx context.Context, journalIDs []string) (map[string][]domain.Transaction, error) {
@@ -65,6 +70,16 @@ func (m *MockJournalRepository) FindTransactionsByJournalIDs(ctx context.Context
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(map[string][]domain.Transaction), args.Error(1)
+}
+
+func (m *MockJournalRepository) UpdateJournal(ctx context.Context, journal domain.Journal) error {
+	args := m.Called(ctx, journal)
+	return args.Error(0)
+}
+
+func (m *MockJournalRepository) UpdateJournalStatusAndLinks(ctx context.Context, journalID string, status domain.JournalStatus, reversingJournalID *string, originalJournalID *string, updatedByUserID string, updatedAt time.Time) error {
+	args := m.Called(ctx, journalID, status, reversingJournalID, originalJournalID, updatedByUserID, updatedAt)
+	return args.Error(0)
 }
 
 // --- Mock AccountRepository (as used by JournalService) ---

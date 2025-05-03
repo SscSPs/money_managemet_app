@@ -375,9 +375,9 @@ func (h *accountHandler) deleteAccount(c *gin.Context) {
 // @Router /workplaces/{workplace_id}/accounts/{id}/transactions [get]
 func (h *accountHandler) listTransactionsByAccount(c *gin.Context) {
 	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+
 	workplaceID := c.Param("workplace_id")
 	accountID := c.Param("id")
-
 	if workplaceID == "" || accountID == "" {
 		logger.Error("Workplace ID or Account ID missing from path for listTransactionsByAccount")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Workplace and Account ID required in path"})
@@ -391,6 +391,7 @@ func (h *accountHandler) listTransactionsByAccount(c *gin.Context) {
 		return
 	}
 
+	// Bind query parameters for pagination
 	var params dto.ListTransactionsParams
 	if err := c.ShouldBindQuery(&params); err != nil {
 		logger.Warn("Failed to bind query params for ListTransactionsByAccount", slog.String("error", err.Error()))
@@ -399,16 +400,18 @@ func (h *accountHandler) listTransactionsByAccount(c *gin.Context) {
 	}
 
 	logger = logger.With(slog.String("user_id", loggedInUserID), slog.String("workplace_id", workplaceID), slog.String("account_id", accountID))
-	logger.Info("Received request to list transactions for account", slog.Int("limit", params.Limit), slog.Int("offset", params.Offset))
+	logger.Info("Received request to list transactions for account", slog.Int("limit", params.Limit), slog.String("nextToken", safeStringDeref(params.NextToken)))
 
+	// Call the service method (assuming it accepts params DTO)
 	resp, err := h.journalService.ListTransactionsByAccount(c.Request.Context(), workplaceID, accountID, loggedInUserID, params)
 	if err != nil {
-		if errors.Is(err, apperrors.ErrNotFound) {
-			logger.Warn("Account not found or user forbidden from workplace for list transactions")
-			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found or access denied"})
-		} else if errors.Is(err, apperrors.ErrForbidden) {
-			logger.Warn("User forbidden to list transactions for workplace", slog.String("user_id", loggedInUserID), slog.String("workplace_id", workplaceID))
+		if errors.Is(err, apperrors.ErrForbidden) {
+			logger.Warn("User forbidden to list transactions for account", slog.String("user_id", loggedInUserID), slog.String("account_id", accountID))
 			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		} else if errors.Is(err, apperrors.ErrNotFound) {
+			// Handle case where account itself might not be found or inaccessible
+			logger.Warn("Account not found or inaccessible for listing transactions")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found or access denied"})
 		} else {
 			logger.Error("Failed to list transactions from service", slog.String("error", err.Error()))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list transactions"})

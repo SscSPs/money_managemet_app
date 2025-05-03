@@ -273,9 +273,15 @@ definitions:
         items:
           $ref: '#/definitions/dto.JournalResponse'
         type: array
+      nextToken:
+        description: Token to fetch the next page
+        type: string
     type: object
   dto.ListTransactionsResponse:
     properties:
+      nextToken:
+        description: Pagination metadata (e.g., NextToken) to be added
+        type: string
       transactions:
         items:
           $ref: '#/definitions/dto.TransactionResponse'

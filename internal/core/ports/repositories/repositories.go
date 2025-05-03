@@ -41,14 +41,29 @@ type AccountRepository interface {
 // JournalRepository defines the persistence operations for Journals and their Transactions.
 // Saving a Journal implies saving its associated Transactions atomically.
 type JournalRepository interface {
-	// SaveJournal now requires balanceChanges map[accountID]delta
+	// SaveJournal persists a journal and its transactions, updating account balances within a transaction.
 	SaveJournal(ctx context.Context, journal domain.Journal, transactions []domain.Transaction, balanceChanges map[string]decimal.Decimal) error
+
+	// FindJournalByID retrieves a specific journal by its unique identifier.
 	FindJournalByID(ctx context.Context, journalID string) (*domain.Journal, error)
+
+	// ListJournalsByWorkplace retrieves a paginated list of journals for a given workplace using token-based pagination.
+	// It returns the journals, a token for the next page, and an error.
+	ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, nextToken *string) ([]domain.Journal, *string, error)
+
+	// FindTransactionsByJournalID retrieves all transactions associated with a single journal ID.
 	FindTransactionsByJournalID(ctx context.Context, journalID string) ([]domain.Transaction, error)
-	FindTransactionsByAccountID(ctx context.Context, workplaceID, accountID string) ([]domain.Transaction, error)
-	ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Journal, error)
+
+	// FindTransactionsByJournalIDs retrieves transactions for multiple journal IDs, grouped by journal ID.
 	FindTransactionsByJournalIDs(ctx context.Context, journalIDs []string) (map[string][]domain.Transaction, error)
+
+	// FindTransactionsByAccountID retrieves all transactions involving a specific account within a workplace.
+	FindTransactionsByAccountID(ctx context.Context, workplaceID, accountID string) ([]domain.Transaction, error)
+
+	// UpdateJournalStatusAndLinks updates the status and reversal linkage (original/reversing IDs) of a journal.
 	UpdateJournalStatusAndLinks(ctx context.Context, journalID string, status domain.JournalStatus, reversingJournalID *string, originalJournalID *string, updatedByUserID string, updatedAt time.Time) error
+
+	// UpdateJournal updates non-status fields of a journal (like description, date).
 	UpdateJournal(ctx context.Context, journal domain.Journal) error
 }
 

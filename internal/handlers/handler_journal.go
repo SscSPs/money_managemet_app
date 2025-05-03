@@ -15,6 +15,14 @@ import (
 	// For balance calculation
 )
 
+// safeStringDeref safely dereferences a string pointer, returning "" if nil.
+func safeStringDeref(s *string) string {
+	if s != nil {
+		return *s
+	}
+	return ""
+}
+
 // journalHandler handles HTTP requests related to journals.
 type journalHandler struct {
 	journalService portssvc.JournalService // Use interface
@@ -199,7 +207,7 @@ func (h *journalHandler) listJournals(c *gin.Context) {
 	}
 
 	logger = logger.With(slog.String("user_id", loggedInUserID), slog.String("workplace_id", workplaceID))
-	logger.Info("Received request to list journals", slog.Int("limit", params.Limit), slog.Int("offset", params.Offset))
+	logger.Info("Received request to list journals", slog.Int("limit", params.Limit), slog.String("nextToken", safeStringDeref(params.NextToken)))
 
 	resp, err := h.journalService.ListJournals(c.Request.Context(), workplaceID, loggedInUserID, params)
 	if err != nil {

@@ -329,8 +329,16 @@ func (s *journalService) GetJournalByID(ctx context.Context, workplaceID string,
 	return journal, nil
 }
 
+// ListJournalsParams holds parameters for listing journals.
+// NOTE: This might be defined in a DTO package instead.
+// We will update this later to use NextToken.
+type ListJournalsParams struct {
+	WorkplaceID string
+	Limit       int
+	NextToken   *string // Added for token pagination
+}
+
 // ListJournals retrieves a paginated list of journals for a specific workplace.
-// TODO: Update implementation details based on DTO and pagination needs.
 func (j *journalService) ListJournals(ctx context.Context, workplaceID string, userID string, params dto.ListJournalsParams) (*dto.ListJournalsResponse, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
@@ -340,8 +348,9 @@ func (j *journalService) ListJournals(ctx context.Context, workplaceID string, u
 		return nil, err
 	}
 
-	// Fetch journals from repository using params
-	journals, err := j.journalRepo.ListJournalsByWorkplace(ctx, workplaceID, params.Limit, params.Offset)
+	// Fetch journals from repository using token
+	// Note: Assuming params dto.ListJournalsParams is updated to include NextToken
+	journals, nextToken, err := j.journalRepo.ListJournalsByWorkplace(ctx, workplaceID, params.Limit, params.NextToken)
 	if err != nil {
 		logger.Error("Failed to list journals from repository", "error", err)
 		// Don't wrap; return specific error if needed, otherwise the original error
@@ -356,12 +365,10 @@ func (j *journalService) ListJournals(ctx context.Context, workplaceID string, u
 		journalResponses[i] = dto.ToJournalResponse(&journal)
 	}
 
-	// TODO: Fetch total count for pagination metadata
+	// Populate the response DTO with journals and the next token
 	resp := &dto.ListJournalsResponse{
-		Journals: journalResponses,
-		// TotalCount: total, // Add total count here later
-		// Limit: params.Limit,
-		// Offset: params.Offset,
+		Journals:  journalResponses,
+		NextToken: nextToken,
 	}
 
 	logger.Info("Journals listed successfully", "count", len(journals))
@@ -730,6 +737,33 @@ func (j *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 	// Return the newly created reversing journal (without transactions populated)
 	reversingJournal.Transactions = nil // Ensure transactions aren't returned by default
 	return &reversingJournal, nil
+}
+
+// ListJournalsByWorkplace retrieves a paginated list of journals for a workplace.
+// It now uses token-based pagination.
+func (j *journalService) ListJournalsByWorkplace(ctx context.Context, params ListJournalsParams) ([]domain.Journal, *string, error) {
+	// Basic validation (could be more extensive)
+	if params.WorkplaceID == "" {
+		// Assuming apperrors.NewValidationError exists or similar validation error mechanism
+		return nil, nil, fmt.Errorf("WorkplaceID is required") // Replace with actual validation error
+	}
+	if params.Limit <= 0 {
+		params.Limit = 20 // Apply default limit
+	}
+
+	// Call the repository method with the token
+	// Correctly handle 3 return values and pass NextToken
+	journals, nextToken, err := j.journalRepo.ListJournalsByWorkplace(ctx, params.WorkplaceID, params.Limit, params.NextToken)
+	if err != nil {
+		// Log the error for debugging
+		// log.Printf("Error listing journals from repository: %v", err)
+		// Return a generic error or wrap the specific error
+		return nil, nil, fmt.Errorf("failed to list journals: %w", err)
+	}
+
+	// Potentially enrich journal data here if needed
+
+	return journals, nextToken, nil
 }
 
 // TODO: Add methods for:

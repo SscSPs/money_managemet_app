@@ -3,15 +3,18 @@ package pgsql
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/models"
+	"github.com/google/uuid" // Assuming journal_id is UUID
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
@@ -424,61 +427,169 @@ func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, 
 	return toDomainTransactionSlice(transactions), nil
 }
 
-// ListJournalsByWorkplace retrieves a paginated list of journals for a specific workplace.
-func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Journal, error) {
-	// Default limit and offset handling
+// --- Token Pagination Helpers ---
+
+const timeFormat = time.RFC3339Nano // Use a precise time format
+
+// encodeToken creates a base64 encoded token from journal date and ID.
+func encodeToken(t time.Time, id string) string {
+	tokenStr := fmt.Sprintf("%s|%s", t.Format(timeFormat), id)
+	return base64.StdEncoding.EncodeToString([]byte(tokenStr))
+}
+
+// decodeToken parses the base64 encoded token back into journal date and ID.
+func decodeToken(token string) (time.Time, string, error) {
+	decodedBytes, err := base64.StdEncoding.DecodeString(token)
+	if err != nil {
+		return time.Time{}, "", fmt.Errorf("invalid pagination token format (base64 decode): %w", err)
+	}
+	tokenStr := string(decodedBytes)
+	parts := strings.SplitN(tokenStr, "|", 2)
+	if len(parts) != 2 {
+		return time.Time{}, "", fmt.Errorf("invalid pagination token format (split)")
+	}
+
+	t, err := time.Parse(timeFormat, parts[0])
+	if err != nil {
+		return time.Time{}, "", fmt.Errorf("invalid pagination token format (time parse): %w", err)
+	}
+
+	// Optional: Validate if parts[1] is a valid UUID format if needed
+	if _, err := uuid.Parse(parts[1]); err != nil {
+		return time.Time{}, "", fmt.Errorf("invalid pagination token format (uuid parse): %w", err)
+	}
+
+	return t, parts[1], nil
+}
+
+// --- End Token Pagination Helpers ---
+
+// ListJournalsByWorkplace retrieves a paginated list of journals for a specific workplace using token-based pagination.
+// It returns the list of journals, a token for the next page (if any), and an error.
+func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, nextToken *string) ([]domain.Journal, *string, error) {
+	// Default limit handling
 	if limit <= 0 {
 		limit = 20 // Or a configurable default
 	}
-	if offset < 0 {
-		offset = 0
+	// We fetch one extra item to determine if there's a next page.
+	fetchLimit := limit + 1
+
+	// Base query
+	baseQuery := `
+		SELECT journal_id, workplace_id, journal_date, description, currency_code, status, 
+		       original_journal_id, reversing_journal_id, 
+		       created_at, created_by, last_updated_at, last_updated_by
+		FROM journals
+	`
+	// Consistent filtering criteria
+	filterClause := `WHERE workplace_id = $1 AND status != 'REVERSED' AND reversing_journal_id IS NULL and original_journal_id is null`
+
+	// Ordering is crucial and must be stable
+	// We use journal_date DESC, and journal_id DESC as a tie-breaker.
+	// Ensure journal_id is sortable (UUIDs can be compared lexicographically in Postgres).
+	orderByClause := `ORDER BY journal_date DESC, journal_id DESC`
+
+	var rows pgx.Rows
+	var err error
+	args := []interface{}{workplaceID}
+
+	if nextToken != nil && *nextToken != "" {
+		// Decode the token to get the cursor values
+		lastDate, lastID, decodeErr := decodeToken(*nextToken)
+		if decodeErr != nil {
+			// Consider logging the error but return a user-friendly error
+			// Or potentially treat as if no token was provided if lenient
+			return nil, nil, fmt.Errorf("invalid nextToken: %w", decodeErr) // Return specific error for bad token
+		}
+
+		// Add cursor condition to WHERE clause
+		// Tuple comparison is concise and efficient in Postgres
+		cursorClause := `AND (journal_date, journal_id) < ($2, $3)`
+		args = append(args, lastDate, lastID)
+
+		// Construct the full query with cursor
+		query := fmt.Sprintf("%s %s %s %s LIMIT $%d;", baseQuery, filterClause, cursorClause, orderByClause, len(args)+1)
+		args = append(args, fetchLimit)
+
+		rows, err = r.pool.Query(ctx, query, args...)
+
+	} else {
+		// First page request (no token)
+		query := fmt.Sprintf("%s %s %s LIMIT $%d;", baseQuery, filterClause, orderByClause, len(args)+1)
+		args = append(args, fetchLimit)
+		rows, err = r.pool.Query(ctx, query, args...)
 	}
 
-	query := `
-		SELECT journal_id, workplace_id, journal_date, description, currency_code, status, created_at, created_by, last_updated_at, last_updated_by
-		FROM journals
-		WHERE workplace_id = $1 AND status != 'REVERSED' AND reversing_journal_id IS NULL and original_journal_id is null
-		ORDER BY journal_date DESC, created_at DESC -- Order by date, then creation time
-		LIMIT $2 OFFSET $3;
-	`
-
-	rows, err := r.pool.Query(ctx, query, workplaceID, limit, offset)
+	// Error handling for query execution
 	if err != nil {
-		return nil, fmt.Errorf("failed to query journals for workplace %s: %w", workplaceID, err)
+		// Check for specific DB errors if needed
+		return nil, nil, fmt.Errorf("failed to query journals for workplace %s: %w", workplaceID, err)
 	}
 	defer rows.Close()
 
-	modelJournals := []models.Journal{}
+	// Scan results
+	modelJournals := make([]models.Journal, 0, fetchLimit) // Allocate slice with capacity
 	for rows.Next() {
 		var m models.Journal
-		err := rows.Scan(
+		var originalID sql.NullString
+		var reversingID sql.NullString
+
+		scanErr := rows.Scan(
 			&m.JournalID,
 			&m.WorkplaceID,
 			&m.JournalDate,
 			&m.Description,
 			&m.CurrencyCode,
 			&m.Status,
+			&originalID,
+			&reversingID,
 			&m.CreatedAt,
 			&m.CreatedBy,
 			&m.LastUpdatedAt,
 			&m.LastUpdatedBy,
 		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan journal row for workplace %s: %w", workplaceID, err)
+		if scanErr != nil {
+			// Log detailed error
+			return nil, nil, fmt.Errorf("failed to scan journal row for workplace %s: %w", workplaceID, scanErr)
+		}
+
+		if originalID.Valid {
+			m.OriginalJournalID = &originalID.String
+		}
+		if reversingID.Valid {
+			m.ReversingJournalID = &reversingID.String
 		}
 		modelJournals = append(modelJournals, m)
 	}
 
+	// Check for errors during row iteration
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating journal rows for workplace %s: %w", workplaceID, err)
+		return nil, nil, fmt.Errorf("error iterating journal rows for workplace %s: %w", workplaceID, err)
 	}
 
+	// Determine the next token
+	var nextTokenVal *string
+	results := modelJournals
+	if len(modelJournals) > limit {
+		// There is a next page
+		lastJournal := modelJournals[limit-1] // The *actual* last item of the *current* page
+		// The token points to the *last item included* in this response page.
+		// The next query will start *after* this item.
+		newToken := encodeToken(lastJournal.JournalDate, lastJournal.JournalID)
+		nextTokenVal = &newToken
+		// Trim the extra item fetched
+		results = modelJournals[:limit]
+	}
+	// If len(modelJournals) <= limit, it means we fetched limit or fewer items,
+	// so there are no more items after this page. nextTokenVal remains nil.
+
 	// Convert models to domain objects
-	domainJournals := make([]domain.Journal, len(modelJournals))
-	for i, m := range modelJournals {
+	domainJournals := make([]domain.Journal, len(results))
+	for i, m := range results {
 		domainJournals[i] = toDomainJournal(m)
 	}
-	return domainJournals, nil
+
+	return domainJournals, nextTokenVal, nil
 }
 
 // FindTransactionsByJournalIDs retrieves all transactions for a given list of journal IDs.

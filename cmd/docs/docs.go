@@ -2443,12 +2443,20 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.JournalResponse"
                     }
+                },
+                "nextToken": {
+                    "description": "Token to fetch the next page",
+                    "type": "string"
                 }
             }
         },
         "dto.ListTransactionsResponse": {
             "type": "object",
             "properties": {
+                "nextToken": {
+                    "description": "Pagination metadata (e.g., NextToken) to be added",
+                    "type": "string"
+                },
                 "transactions": {
                     "type": "array",
                     "items": {
