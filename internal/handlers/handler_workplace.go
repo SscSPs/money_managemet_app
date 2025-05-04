@@ -26,7 +26,7 @@ func newWorkplaceHandler(ws portssvc.WorkplaceSvcFacade) *workplaceHandler {
 
 // registerWorkplaceRoutes registers routes related to workplaces and their members.
 // It now also registers JOURNAL and ACCOUNT routes nested under a specific workplace.
-func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService portssvc.WorkplaceSvcFacade, journalService portssvc.JournalService, accountService portssvc.AccountService) {
+func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService portssvc.WorkplaceSvcFacade, journalService portssvc.JournalSvcFacade, accountService portssvc.AccountSvcFacade) {
 	h := newWorkplaceHandler(workplaceService)
 
 	// Routes for managing workplaces themselves (e.g., creating, listing user's workplaces)

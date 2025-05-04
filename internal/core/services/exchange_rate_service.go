@@ -18,17 +18,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// exchangeRateService provides business logic for exchange rates.
+// exchangeRateService handles exchange rate operations.
 type exchangeRateService struct {
-	rateRepo        portsrepo.ExchangeRateRepositoryFacade
-	currencyService portssvc.CurrencyService // Added CurrencyService dependency
+	exchangeRateRepo portsrepo.ExchangeRateRepositoryFacade
+	currencyService  portssvc.CurrencySvcFacade
 }
 
-// NewExchangeRateService creates a new ExchangeRateService.
-func NewExchangeRateService(repo portsrepo.ExchangeRateRepositoryFacade, currencyService portssvc.CurrencyService) portssvc.ExchangeRateService {
+// NewExchangeRateService creates a new exchange rate service.
+func NewExchangeRateService(exchangeRateRepo portsrepo.ExchangeRateRepositoryFacade, currencyService portssvc.CurrencySvcFacade) portssvc.ExchangeRateSvcFacade {
 	return &exchangeRateService{
-		rateRepo:        repo,
-		currencyService: currencyService,
+		exchangeRateRepo: exchangeRateRepo,
+		currencyService:  currencyService,
 	}
 }
 
@@ -86,7 +86,7 @@ func (s *exchangeRateService) CreateExchangeRate(ctx context.Context, req dto.Cr
 		},
 	}
 
-	err := s.rateRepo.SaveExchangeRate(ctx, rate)
+	err := s.exchangeRateRepo.SaveExchangeRate(ctx, rate)
 	if err != nil {
 		// Check for duplicate error from repository
 		if errors.Is(err, apperrors.ErrDuplicate) {
@@ -117,7 +117,7 @@ func (s *exchangeRateService) GetExchangeRate(ctx context.Context, fromCode, toC
 		return nil, fmt.Errorf("%w: currency codes must be 3 letters", apperrors.ErrValidation)
 	}
 
-	rate, err := s.rateRepo.FindExchangeRate(ctx, fromCode, toCode)
+	rate, err := s.exchangeRateRepo.FindExchangeRate(ctx, fromCode, toCode)
 	if err != nil {
 		logger.Error("Failed to find exchange rate in repository", slog.String("error", err.Error()), slog.String("from_code", fromCode), slog.String("to_code", toCode))
 		return nil, fmt.Errorf("failed to get exchange rate in service: %w", err)

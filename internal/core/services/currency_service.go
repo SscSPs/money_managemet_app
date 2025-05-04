@@ -17,13 +17,18 @@ import (
 
 // currencyService provides business logic for currency operations.
 type currencyService struct {
-	currencyRepo portsrepo.CurrencyRepositoryFacade
+	repo portsrepo.CurrencyRepositoryFacade
 }
 
 // NewCurrencyService creates a new CurrencyService.
-func NewCurrencyService(repo portsrepo.CurrencyRepositoryFacade) portssvc.CurrencyService {
-	return &currencyService{currencyRepo: repo}
+func NewCurrencyService(repo portsrepo.CurrencyRepositoryFacade) portssvc.CurrencySvcFacade {
+	return &currencyService{
+		repo: repo,
+	}
 }
+
+// Ensure CurrencyService implements the interface
+var _ portssvc.CurrencySvcFacade = (*currencyService)(nil)
 
 // CreateCurrency adds a new currency definition.
 func (s *currencyService) CreateCurrency(ctx context.Context, req dto.CreateCurrencyRequest, creatorUserID string) (*domain.Currency, error) {
@@ -43,7 +48,7 @@ func (s *currencyService) CreateCurrency(ctx context.Context, req dto.CreateCurr
 		},
 	}
 
-	err := s.currencyRepo.SaveCurrency(ctx, currency)
+	err := s.repo.SaveCurrency(ctx, currency)
 	if err != nil {
 		logger.Error("Failed to save currency in repository", slog.String("error", err.Error()), slog.String("currency_code", currency.CurrencyCode))
 		return nil, fmt.Errorf("failed to create currency in service: %w", err)
@@ -55,7 +60,7 @@ func (s *currencyService) CreateCurrency(ctx context.Context, req dto.CreateCurr
 
 func (s *currencyService) GetCurrencyByCode(ctx context.Context, currencyCode string) (*domain.Currency, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	currency, err := s.currencyRepo.FindCurrencyByCode(ctx, currencyCode)
+	currency, err := s.repo.FindCurrencyByCode(ctx, currencyCode)
 	if err != nil {
 		if !errors.Is(err, apperrors.ErrNotFound) {
 			logger.Error("Failed to find currency by code in repository", slog.String("error", err.Error()), slog.String("currency_code", currencyCode))
@@ -69,7 +74,7 @@ func (s *currencyService) GetCurrencyByCode(ctx context.Context, currencyCode st
 
 func (s *currencyService) ListCurrencies(ctx context.Context) ([]domain.Currency, error) {
 	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
-	currencies, err := s.currencyRepo.ListCurrencies(ctx)
+	currencies, err := s.repo.ListCurrencies(ctx)
 	if err != nil {
 		logger.Error("Failed to list currencies in repository", slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to list currencies in service: %w", err)

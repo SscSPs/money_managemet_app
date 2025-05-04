@@ -14,12 +14,12 @@ import (
 
 // accountHandler handles HTTP requests related to accounts.
 type accountHandler struct {
-	accountService portssvc.AccountService // Use interface
-	journalService portssvc.JournalService // Use interface
+	accountService portssvc.AccountSvcFacade     // Updated to use AccountSvcFacade
+	journalService portssvc.TransactionReaderSvc // Updated to use TransactionReaderSvc
 }
 
 // newAccountHandler creates a new accountHandler.
-func newAccountHandler(as portssvc.AccountService, js portssvc.JournalService) *accountHandler { // Use interfaces
+func newAccountHandler(as portssvc.AccountSvcFacade, js portssvc.TransactionReaderSvc) *accountHandler { // Updated interfaces
 	return &accountHandler{
 		accountService: as,
 		journalService: js,
@@ -27,8 +27,8 @@ func newAccountHandler(as portssvc.AccountService, js portssvc.JournalService) *
 }
 
 // RegisterAccountRoutes registers routes related to accounts WITHIN a workplace.
-func RegisterAccountRoutes(rg *gin.RouterGroup, accountService portssvc.AccountService, journalService portssvc.JournalService) { // Use interfaces
-	h := newAccountHandler(accountService, journalService)
+func RegisterAccountRoutes(rg *gin.RouterGroup, accountService portssvc.AccountSvcFacade, transactionReaderSvc portssvc.TransactionReaderSvc) { // Updated interfaces
+	h := newAccountHandler(accountService, transactionReaderSvc)
 
 	// Routes are now relative to /workplaces/{workplace_id}/
 	accounts := rg.Group("/accounts")

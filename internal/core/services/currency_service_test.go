@@ -45,7 +45,7 @@ func (m *MockCurrencyRepository) ListCurrencies(ctx context.Context) ([]domain.C
 type CurrencyServiceTestSuite struct {
 	suite.Suite
 	mockRepo *MockCurrencyRepository
-	service  portssvc.CurrencyService
+	service  portssvc.CurrencySvcFacade
 }
 
 func (suite *CurrencyServiceTestSuite) SetupTest() {

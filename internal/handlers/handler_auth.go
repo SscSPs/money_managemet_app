@@ -17,17 +17,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	// "github.com/google/uuid" // Use actual user ID from service
+	// Import for error handling
 )
 
 // AuthHandler handles authentication related requests.
 type AuthHandler struct {
-	userService portssvc.UserService // Use interface
+	userService portssvc.UserSvcFacade
 	jwtSecret   string
 	jwtDuration time.Duration
 }
 
 // NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler(us portssvc.UserService, cfg *config.Config) *AuthHandler { // Use interface
+func NewAuthHandler(us portssvc.UserSvcFacade, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
 		userService: us,
 		jwtSecret:   cfg.JWTSecret,         // Store secret
@@ -54,8 +55,8 @@ type ErrorResponse struct {
 
 // registerAuthRoutes sets up the routes for authentication.
 // Pass the instantiated handler.
-func registerAuthRoutes(rg *gin.Engine, cfg *config.Config, userService portssvc.UserService) { // Use interface
-	h := NewAuthHandler(userService, cfg) // Pass interface
+func registerAuthRoutes(rg *gin.Engine, cfg *config.Config, userService portssvc.UserSvcFacade) {
+	h := NewAuthHandler(userService, cfg)
 
 	auth := rg.Group("/api/v1/auth")
 	{

@@ -29,14 +29,14 @@ var (
 
 // journalService provides core journal and transaction operations.
 type journalService struct {
-	accountSvc   portssvc.AccountService
+	accountSvc   portssvc.AccountSvcFacade
 	journalRepo  portsrepo.JournalRepositoryFacade
-	workplaceSvc portssvc.WorkplaceService // Added for authorization checks
+	workplaceSvc portssvc.WorkplaceSvcFacade // Updated to use WorkplaceSvcFacade
 	// userRepo portsrepo.UserRepository
 }
 
 // NewJournalService creates a new JournalService.
-func NewJournalService(journalRepo portsrepo.JournalRepositoryFacade, accountSvc portssvc.AccountService, workplaceSvc portssvc.WorkplaceService) portssvc.JournalService {
+func NewJournalService(journalRepo portsrepo.JournalRepositoryFacade, accountSvc portssvc.AccountSvcFacade, workplaceSvc portssvc.WorkplaceSvcFacade) portssvc.JournalSvcFacade {
 	return &journalService{
 		accountSvc:   accountSvc,
 		journalRepo:  journalRepo,
@@ -44,8 +44,8 @@ func NewJournalService(journalRepo portsrepo.JournalRepositoryFacade, accountSvc
 	}
 }
 
-// Ensure JournalService implements the portssvc.JournalService interface
-var _ portssvc.JournalService = (*journalService)(nil)
+// Ensure JournalService implements the portssvc.JournalSvcFacade interface
+var _ portssvc.JournalSvcFacade = (*journalService)(nil)
 
 // getSignedAmount applies the correct sign to a transaction amount based on account type and transaction type.
 func (s *journalService) getSignedAmount(txn domain.Transaction, accountType domain.AccountType) (decimal.Decimal, error) {
@@ -245,7 +245,7 @@ func modelToDomainJournal(m models.Journal) domain.Journal {
 }
 
 // CreateJournal creates a new journal entry with its transactions after validation.
-// Implements portssvc.JournalService
+// Implements portssvc.JournalSvcFacade
 func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, req dto.CreateJournalRequest, creatorUserID string) (*domain.Journal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
@@ -379,7 +379,7 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 }
 
 // GetJournalByID retrieves a specific journal entry (without transactions).
-// Implements portssvc.JournalService
+// Implements portssvc.JournalSvcFacade
 func (s *journalService) GetJournalByID(ctx context.Context, workplaceID string, journalID string, requestingUserID string) (*domain.Journal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
@@ -557,7 +557,7 @@ func (j *journalService) ListJournals(ctx context.Context, workplaceID string, u
 }
 
 // UpdateJournal updates the description and date of a journal entry.
-// Implements portssvc.JournalService
+// Implements portssvc.JournalSvcFacade
 func (s *journalService) UpdateJournal(ctx context.Context, workplaceID string, journalID string, req dto.UpdateJournalRequest, requestingUserID string) (*domain.Journal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
@@ -627,7 +627,7 @@ func (s *journalService) UpdateJournal(ctx context.Context, workplaceID string, 
 }
 
 // DeactivateJournal marks a journal as inactive (conceptually; might involve changing status).
-// Implements portssvc.JournalService
+// Implements portssvc.JournalSvcFacade
 func (s *journalService) DeactivateJournal(ctx context.Context, workplaceID string, journalID string, requestingUserID string) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
 

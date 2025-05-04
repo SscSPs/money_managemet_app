@@ -87,7 +87,7 @@ func (m *MockAccountRepositoryFacade) DeactivateAccount(ctx context.Context, acc
 type AccountServiceTestSuite struct {
 	suite.Suite
 	mockRepo *MockAccountRepositoryFacade
-	service  portssvc.AccountService
+	service  portssvc.AccountSvcFacade
 }
 
 func (suite *AccountServiceTestSuite) SetupTest() {

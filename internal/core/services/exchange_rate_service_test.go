@@ -40,8 +40,8 @@ type ExchangeRateServiceTestSuite struct {
 	suite.Suite
 	mockRateRepo     *MockExchangeRateRepository
 	mockCurrencyRepo *MockCurrencyRepository // Need mock for currency validation
-	service          portssvc.ExchangeRateService
-	currencyService  portssvc.CurrencyService // Real currency service using mock repo
+	service          portssvc.ExchangeRateSvcFacade
+	currencyService  portssvc.CurrencySvcFacade // Real currency service using mock repo
 }
 
 func (suite *ExchangeRateServiceTestSuite) SetupTest() {

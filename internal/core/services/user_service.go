@@ -18,12 +18,14 @@ import (
 
 // userService provides business logic for user operations.
 type userService struct {
-	UserRepository portsrepo.UserRepositoryFacade
+	userRepo portsrepo.UserRepositoryFacade
 }
 
 // NewUserService creates a new UserService.
-func NewUserService(repo portsrepo.UserRepositoryFacade) portssvc.UserService {
-	return &userService{UserRepository: repo}
+func NewUserService(repo portsrepo.UserRepositoryFacade) portssvc.UserSvcFacade {
+	return &userService{
+		userRepo: repo,
+	}
 }
 
 func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest) (*domain.User, error) {
@@ -46,7 +48,7 @@ func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest)
 		},
 	}
 
-	err := s.UserRepository.SaveUser(ctx, user)
+	err := s.userRepo.SaveUser(ctx, user)
 	if err != nil {
 		logger.Error("Failed to save user in repository", slog.String("error", err.Error()), slog.String("user_name", req.Name))
 		return nil, fmt.Errorf("failed to create user in service: %w", err)
@@ -58,7 +60,7 @@ func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest)
 
 func (s *userService) GetUserByID(ctx context.Context, userID string) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	user, err := s.UserRepository.FindUserByID(ctx, userID)
+	user, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil {
 		if !errors.Is(err, apperrors.ErrNotFound) {
 			logger.Error("Failed to find user by ID in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
@@ -81,7 +83,7 @@ func (s *userService) ListUsers(ctx context.Context, limit, offset int) ([]domai
 		offset = 0 // Default offset
 	}
 
-	users, err := s.UserRepository.FindUsers(ctx, limit, offset)
+	users, err := s.userRepo.FindUsers(ctx, limit, offset)
 	if err != nil {
 		logger.Error("Failed to find users in repository", slog.String("error", err.Error()), slog.Int("limit", limit), slog.Int("offset", offset))
 		return nil, fmt.Errorf("failed to list users: %w", err)
@@ -97,7 +99,7 @@ func (s *userService) ListUsers(ctx context.Context, limit, offset int) ([]domai
 
 func (s *userService) UpdateUser(ctx context.Context, userID string, req dto.UpdateUserRequest, updaterUserID string) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	existingUser, err := s.UserRepository.FindUserByID(ctx, userID)
+	existingUser, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil {
 		if !errors.Is(err, apperrors.ErrNotFound) {
 			logger.Error("Failed to find user by ID for update", slog.String("error", err.Error()), slog.String("user_id", userID))
@@ -119,7 +121,7 @@ func (s *userService) UpdateUser(ctx context.Context, userID string, req dto.Upd
 	existingUser.LastUpdatedAt = time.Now()
 	existingUser.LastUpdatedBy = updaterUserID
 
-	err = s.UserRepository.UpdateUser(ctx, *existingUser)
+	err = s.userRepo.UpdateUser(ctx, *existingUser)
 	if err != nil {
 		logger.Error("Failed to update user in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
 		if errors.Is(err, apperrors.ErrNotFound) {
@@ -136,7 +138,7 @@ func (s *userService) UpdateUser(ctx context.Context, userID string, req dto.Upd
 func (s *userService) DeleteUser(ctx context.Context, userID string, deleterUserID string) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	now := time.Now()
-	err := s.UserRepository.MarkUserDeleted(ctx, userID, now, deleterUserID)
+	err := s.userRepo.MarkUserDeleted(ctx, userID, now, deleterUserID)
 	if err != nil {
 		if !errors.Is(err, apperrors.ErrNotFound) {
 			logger.Error("Failed to mark user deleted in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
@@ -153,7 +155,7 @@ func (s *userService) AuthenticateUser(ctx context.Context, email, password stri
 	logger := middleware.GetLoggerFromCtx(ctx)
 	logger.Warn("AuthenticateUser not implemented", slog.String("email", email))
 	// Placeholder: Find user by email (assuming email is unique identifier for login)
-	// user, err := s.UserRepository.FindUserByEmail(ctx, email) // Hypothetical repo method
+	// user, err := s.userRepo.FindUserByEmail(ctx, email) // Hypothetical repo method
 	// if err != nil {
 	// 	 return nil, err // Propagate NotFound or other errors
 	// }

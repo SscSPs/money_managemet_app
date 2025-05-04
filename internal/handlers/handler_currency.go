@@ -16,27 +16,27 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// currencyHandler handles HTTP requests related to currencies.
+// currencyHandler handles currency-related HTTP requests.
 type currencyHandler struct {
-	currencyService portssvc.CurrencyService // Use interface
+	currencyService portssvc.CurrencySvcFacade // Updated to use CurrencySvcFacade
 }
 
 // newCurrencyHandler creates a new currencyHandler.
-func newCurrencyHandler(cs portssvc.CurrencyService) *currencyHandler { // Use interface
+func newCurrencyHandler(cs portssvc.CurrencySvcFacade) *currencyHandler { // Updated interface
 	return &currencyHandler{
 		currencyService: cs,
 	}
 }
 
-// registerCurrencyRoutes registers routes related to currencies.
-func registerCurrencyRoutes(rg *gin.RouterGroup, currencyService portssvc.CurrencyService) { // Use interface
-	h := newCurrencyHandler(currencyService) // Pass interface
+// registerCurrencyRoutes registers the routes for currency management.
+func registerCurrencyRoutes(rg *gin.RouterGroup, currencyService portssvc.CurrencySvcFacade) { // Updated interface
+	h := newCurrencyHandler(currencyService)
 
 	currencies := rg.Group("/currencies")
 	{
-		currencies.POST("", h.createCurrency)
-		currencies.GET("", h.listCurrencies)
-		currencies.GET("/:code", h.getCurrencyByCode)
+		currencies.POST("", h.createCurrency)         // Uses requester's credential for creator
+		currencies.GET("", h.listCurrencies)          // Anyone can list currencies
+		currencies.GET("/:code", h.getCurrencyByCode) // Get currency by code
 	}
 }
 

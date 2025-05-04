@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SscSPs/money_managemet_app/internal/core/domain"
-	ports "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Renamed import
+	"github.com/SscSPs/money_managemet_app/internal/core/domain"                  // Renamed import
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Renamed import
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/handlers"   // Import handlers package
 	"github.com/SscSPs/money_managemet_app/internal/middleware" // Needed for JWT secret
@@ -72,7 +72,7 @@ func (m *MockAccountService) CalculateAccountBalance(ctx context.Context, workpl
 }
 
 // Ensure mock implements the interface
-var _ ports.AccountService = (*MockAccountService)(nil)
+var _ portssvc.AccountSvcFacade = (*MockAccountService)(nil)
 
 // --- Mock JournalService ---
 type MockJournalService struct {
@@ -134,7 +134,7 @@ func (m *MockJournalService) ReverseJournal(ctx context.Context, workplaceID str
 }
 
 // Ensure mock implements the interface
-var _ ports.JournalService = (*MockJournalService)(nil)
+var _ portssvc.JournalSvcFacade = (*MockJournalService)(nil)
 
 // --- Test Suite ---
 type AccountHandlerTestSuite struct {

@@ -17,25 +17,24 @@ import (
 
 // exchangeRateHandler handles HTTP requests related to exchange rates.
 type exchangeRateHandler struct {
-	exchangeRateService portssvc.ExchangeRateService // Use interface
+	exchangeRateService portssvc.ExchangeRateSvcFacade // Updated to use ExchangeRateSvcFacade
 }
 
 // newExchangeRateHandler creates a new exchangeRateHandler.
-func newExchangeRateHandler(ers portssvc.ExchangeRateService) *exchangeRateHandler { // Use interface
+func newExchangeRateHandler(ers portssvc.ExchangeRateSvcFacade) *exchangeRateHandler { // Updated interface
 	return &exchangeRateHandler{
 		exchangeRateService: ers,
 	}
 }
 
 // registerExchangeRateRoutes registers routes related to exchange rates.
-func registerExchangeRateRoutes(rg *gin.RouterGroup, exchangeRateService portssvc.ExchangeRateService) { // Use interface
-	h := newExchangeRateHandler(exchangeRateService) // Pass interface
+func registerExchangeRateRoutes(rg *gin.RouterGroup, exchangeRateService portssvc.ExchangeRateSvcFacade) { // Updated interface
+	h := newExchangeRateHandler(exchangeRateService)
 
-	rates := rg.Group("/exchange-rates")
+	exchangeRates := rg.Group("/exchange-rates")
 	{
-		rates.POST("", h.createExchangeRate)
-		rates.GET("/:from/:to", h.getExchangeRate) // Route for specific pair
-		// Add GET / for listing rates later if needed
+		exchangeRates.POST("", h.createExchangeRate)
+		exchangeRates.GET("/:from/:to", h.getExchangeRate)
 	}
 }
 

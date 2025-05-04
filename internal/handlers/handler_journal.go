@@ -25,30 +25,28 @@ func safeStringDeref(s *string) string {
 
 // journalHandler handles HTTP requests related to journals.
 type journalHandler struct {
-	journalService portssvc.JournalService // Use interface
-	// We might need AccountService too if we add balance endpoints here
+	journalService portssvc.JournalSvcFacade // Updated to use JournalSvcFacade
 }
 
 // newJournalHandler creates a new journalHandler.
-func newJournalHandler(js portssvc.JournalService) *journalHandler { // Use interface
+func newJournalHandler(js portssvc.JournalSvcFacade) *journalHandler { // Updated interface
 	return &journalHandler{
 		journalService: js,
 	}
 }
 
-// registerJournalRoutes registers routes related to journals WITHIN a workplace.
-func registerJournalRoutes(rg *gin.RouterGroup, journalService portssvc.JournalService) { // Use interface
-	h := newJournalHandler(journalService) // Pass interface
+// registerJournalRoutes registers all routes related to journals.
+func registerJournalRoutes(rg *gin.RouterGroup, journalService portssvc.JournalSvcFacade) { // Updated interface
+	h := newJournalHandler(journalService)
 
-	// Routes are now relative to /workplaces/{workplace_id}/
 	journals := rg.Group("/journals")
 	{
 		journals.POST("", h.createJournal)
-		journals.GET("/:id", h.getJournal) // Path: /workplaces/{workplace_id}/journals/:id
-		journals.GET("", h.listJournals)   // Path: /workplaces/{workplace_id}/journals
+		journals.GET("/:id", h.getJournal)
+		journals.GET("", h.listJournals)
 		journals.PUT("/:id", h.updateJournal)
 		journals.DELETE("/:id", h.deleteJournal)
-		journals.POST("/:id/reverse", h.reverseJournal) // Add route for reversal
+		journals.POST("/:id/reverse", h.reverseJournal)
 	}
 }
 

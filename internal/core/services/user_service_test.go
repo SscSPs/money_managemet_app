@@ -56,7 +56,7 @@ func (m *MockUserRepository) MarkUserDeleted(ctx context.Context, userID string,
 type UserServiceTestSuite struct {
 	suite.Suite
 	mockUserRepo *MockUserRepository
-	service      portssvc.UserService
+	service      portssvc.UserSvcFacade
 }
 
 func (suite *UserServiceTestSuite) SetupTest() {

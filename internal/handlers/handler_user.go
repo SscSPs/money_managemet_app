@@ -17,27 +17,26 @@ import (
 
 // userHandler handles HTTP requests related to users.
 type userHandler struct {
-	userService portssvc.UserService // Use interface
+	userService portssvc.UserSvcFacade // Updated to use UserSvcFacade
 }
 
 // newUserHandler creates a new userHandler.
-func newUserHandler(us portssvc.UserService) *userHandler { // Use interface
+func newUserHandler(us portssvc.UserSvcFacade) *userHandler { // Updated interface
 	return &userHandler{
 		userService: us,
 	}
 }
 
-// registerUserRoutes registers routes related to users.
-func registerUserRoutes(rg *gin.RouterGroup, userService portssvc.UserService) { // Use interface
-	h := newUserHandler(userService) // Pass interface
+// registerUserRoutes registers all user-related routes.
+func registerUserRoutes(rg *gin.RouterGroup, userService portssvc.UserSvcFacade) { // Updated interface
+	h := newUserHandler(userService)
 
 	users := rg.Group("/users")
 	{
-		users.POST("", h.createUser) // Usually admin-only or part of registration flow
-		users.GET("/:id", h.getUser)
-		users.GET("", h.listUsers)
-		users.PUT("/:id", h.updateUser)
-		users.DELETE("/:id", h.deleteUser)
+		users.GET("", h.listUsers)         // Admin only
+		users.GET("/:id", h.getUser)       // Own or admin
+		users.PUT("/:id", h.updateUser)    // Own or admin
+		users.DELETE("/:id", h.deleteUser) // Admin only
 	}
 }
 

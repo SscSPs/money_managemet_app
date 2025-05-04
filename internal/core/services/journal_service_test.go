@@ -96,7 +96,7 @@ type MockAccountService2 struct {
 	mock.Mock
 }
 
-var _ portssvc.AccountService = (*MockAccountService2)(nil)
+var _ portssvc.AccountSvcFacade = (*MockAccountService2)(nil)
 
 func (m *MockAccountService2) CreateAccount(ctx context.Context, workplaceID string, req dto.CreateAccountRequest, userID string) (*domain.Account, error) {
 	args := m.Called(ctx, workplaceID, req, userID)
@@ -157,7 +157,7 @@ type MockWorkplaceService struct {
 }
 
 // Ensure MockWorkplaceService implements the full interface
-var _ portssvc.WorkplaceService = (*MockWorkplaceService)(nil)
+var _ portssvc.WorkplaceSvcFacade = (*MockWorkplaceService)(nil)
 
 func (m *MockWorkplaceService) CreateWorkplace(ctx context.Context, name, description, defaultCurrencyCode, creatorUserID string) (*domain.Workplace, error) {
 	args := m.Called(ctx, name, description, defaultCurrencyCode, creatorUserID)
@@ -231,7 +231,7 @@ type JournalServiceTestSuite struct {
 	mockJournalRepo  *MockJournalRepository
 	mockAccountSvc   *MockAccountService2
 	mockWorkplaceSvc *MockWorkplaceService
-	service          portssvc.JournalService
+	service          portssvc.JournalSvcFacade
 	assetAccount     domain.Account
 	liabilityAccount domain.Account
 	incomeAccount    domain.Account
