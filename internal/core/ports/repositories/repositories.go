@@ -57,10 +57,6 @@ type JournalRepository interface {
 	// FindTransactionsByJournalIDs retrieves transactions for multiple journal IDs, grouped by journal ID.
 	FindTransactionsByJournalIDs(ctx context.Context, journalIDs []string) (map[string][]domain.Transaction, error)
 
-	// FindTransactionsByAccountID retrieves all transactions involving a specific account within a workplace.
-	// This will be deprecated in favor of ListTransactionsByAccountID with pagination.
-	FindTransactionsByAccountID(ctx context.Context, workplaceID, accountID string) ([]domain.Transaction, error)
-
 	// ListTransactionsByAccountID retrieves a paginated list of transactions for a specific account using token-based pagination.
 	// It returns the transactions, a token for the next page, and an error.
 	ListTransactionsByAccountID(ctx context.Context, workplaceID, accountID string, limit int, nextToken *string) ([]domain.Transaction, *string, error)

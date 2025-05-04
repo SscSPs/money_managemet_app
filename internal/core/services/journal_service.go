@@ -613,26 +613,40 @@ func (s *journalService) CalculateAccountBalance(ctx context.Context, workplaceI
 		return decimal.Zero, fmt.Errorf("account %s is inactive", accountID)
 	}
 
-	// 2. Fetch all transactions for this account within the workplace
-	transactions, err := s.journalRepo.FindTransactionsByAccountID(ctx, workplaceID, accountID)
-	if err != nil {
-		logger.Error("Failed to fetch transactions for account balance", slog.String("error", err.Error()), slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
-		return decimal.Zero, fmt.Errorf("failed to fetch transactions for account %s in workplace %s: %w", accountID, workplaceID, err)
-	}
-
-	// 3. Calculate the balance by summing signed amounts
+	// 2. Fetch all transactions for this account within the workplace using pagination
 	balance := decimal.Zero
-	for _, txn := range transactions {
-		if txn.Amount.LessThanOrEqual(decimal.Zero) {
-			logger.Error("Invalid non-positive transaction amount found during balance calculation", slog.String("transaction_id", txn.TransactionID), slog.String("account_id", accountID))
-			return decimal.Zero, fmt.Errorf("invalid non-positive transaction amount found (ID: %s) for account %s", txn.TransactionID, accountID)
+	var nextToken *string
+	const pageSize = 100 // Fetch more transactions per page for efficiency
+
+	// Paginate through all transactions
+	for {
+		transactions, newNextToken, err := s.journalRepo.ListTransactionsByAccountID(ctx, workplaceID, accountID, pageSize, nextToken)
+		if err != nil {
+			logger.Error("Failed to fetch transactions page for account balance", slog.String("error", err.Error()), slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
+			return decimal.Zero, fmt.Errorf("failed to fetch transactions for account %s in workplace %s: %w", accountID, workplaceID, err)
 		}
 
-		signedAmount, err := s.getSignedAmount(txn, account.AccountType)
-		if err != nil {
-			return decimal.Zero, fmt.Errorf("error calculating signed amount for transaction %s: %w", txn.TransactionID, err)
+		// Process this page of transactions
+		for _, txn := range transactions {
+			if txn.Amount.LessThanOrEqual(decimal.Zero) {
+				logger.Error("Invalid non-positive transaction amount found during balance calculation", slog.String("transaction_id", txn.TransactionID), slog.String("account_id", accountID))
+				return decimal.Zero, fmt.Errorf("invalid non-positive transaction amount found (ID: %s) for account %s", txn.TransactionID, accountID)
+			}
+
+			signedAmount, err := s.getSignedAmount(txn, account.AccountType)
+			if err != nil {
+				return decimal.Zero, fmt.Errorf("error calculating signed amount for transaction %s: %w", txn.TransactionID, err)
+			}
+			balance = balance.Add(signedAmount)
 		}
-		balance = balance.Add(signedAmount)
+
+		// If no more pages, break the loop
+		if newNextToken == nil || *newNextToken == "" {
+			break
+		}
+
+		// Continue with next page
+		nextToken = newNextToken
 	}
 
 	logger.Debug("Account balance calculated successfully", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID), slog.String("balance", balance.String()))

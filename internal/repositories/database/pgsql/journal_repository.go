@@ -3,17 +3,16 @@ package pgsql
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/models" // Assuming journal_id is UUID
+	"github.com/SscSPs/money_managemet_app/internal/utils/pagination"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
@@ -381,63 +380,14 @@ func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, 
 	return toDomainTransactionSlice(transactions), nil
 }
 
-// FindTransactionsByAccountID retrieves all transactions associated with a specific account.
-func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, workplaceID, accountID string) ([]domain.Transaction, error) {
-	// First, ensure the account itself belongs to the given workplace.
-	// This check might be better placed in the service layer.
-	// Optional check: _, err := r.pool.Exec(ctx, "SELECT 1 FROM accounts WHERE account_id = $1 AND workplace_id = $2", accountID, workplaceID)
-
-	query := `
-        SELECT t.transaction_id, t.journal_id, t.account_id, t.amount, t.transaction_type, t.currency_code, t.notes, t.created_at, t.created_by, t.last_updated_at, t.last_updated_by, t.running_balance
-        FROM transactions t
-        JOIN journals j ON t.journal_id = j.journal_id
-        WHERE t.account_id = $1 AND j.workplace_id = $2
-        ORDER BY j.journal_date DESC, t.created_at DESC;
-    ` // Join with journals to filter by workplace
-	rows, err := r.pool.Query(ctx, query, accountID, workplaceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query transactions for account %s in workplace %s: %w", accountID, workplaceID, err)
-	}
-	defer rows.Close()
-
-	transactions := []models.Transaction{}
-	for rows.Next() {
-		var t models.Transaction
-		err := rows.Scan(
-			&t.TransactionID,
-			&t.JournalID,
-			&t.AccountID,
-			&t.Amount,
-			&t.TransactionType,
-			&t.CurrencyCode,
-			&t.Notes,
-			&t.CreatedAt,
-			&t.CreatedBy,
-			&t.LastUpdatedAt,
-			&t.LastUpdatedBy,
-			&t.RunningBalance, // Scan the running balance
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan transaction row for account %s: %w", accountID, err)
-		}
-		transactions = append(transactions, t)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating transaction rows for account %s: %w", accountID, err)
-	}
-
-	return toDomainTransactionSlice(transactions), nil
-}
-
 // encodeTransactionToken creates a base64 encoded token from a transaction's journal date and creation time.
 func encodeTransactionToken(journalDate time.Time, createdAt time.Time) string {
-	return encodeToken(journalDate, createdAt)
+	return pagination.EncodeToken(journalDate, createdAt)
 }
 
 // decodeTransactionToken parses the base64 encoded token back into journal date and creation time.
 func decodeTransactionToken(token string) (time.Time, time.Time, error) {
-	return decodeToken(token)
+	return pagination.DecodeToken(token)
 }
 
 // ListTransactionsByAccountID retrieves a paginated list of transactions for a specific account using token-based pagination.
@@ -468,7 +418,7 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 
 	if nextToken != nil && *nextToken != "" {
 		// Decode the token to get the cursor values
-		lastJournalDate, lastCreatedAt, decodeErr := decodeTransactionToken(*nextToken)
+		lastJournalDate, lastCreatedAt, decodeErr := pagination.DecodeToken(*nextToken)
 		if decodeErr != nil {
 			// Consider logging the error but return a user-friendly error
 			return nil, nil, fmt.Errorf("invalid nextToken: %w", decodeErr) // Return specific error for bad token
@@ -543,7 +493,7 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 		lastTxn := transactions[limit-1] // The *actual* last item of the *current* page
 		// The token points to the *last item included* in this response page.
 		// The next query will start *after* this item.
-		token := encodeTransactionToken(lastTxn.journalDate, lastTxn.transaction.CreatedAt)
+		token := pagination.EncodeToken(lastTxn.journalDate, lastTxn.transaction.CreatedAt)
 		nextTokenVal = &token
 
 		// Extract just the transactions for the result (without the extra one)
@@ -562,43 +512,6 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 	// Convert models to domain objects
 	return toDomainTransactionSlice(results), nextTokenVal, nil
 }
-
-// --- Token Pagination Helpers ---
-
-const timeFormat = time.RFC3339Nano // Use a precise time format
-
-// encodeToken creates a base64 encoded token from journal date and creation time.
-func encodeToken(journalDate time.Time, createdAt time.Time) string {
-	tokenStr := fmt.Sprintf("%s|%s", journalDate.Format(timeFormat), createdAt.Format(timeFormat))
-	return base64.StdEncoding.EncodeToString([]byte(tokenStr))
-}
-
-// decodeToken parses the base64 encoded token back into journal date and creation time.
-func decodeToken(token string) (time.Time, time.Time, error) {
-	decodedBytes, err := base64.StdEncoding.DecodeString(token)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("invalid pagination token format (base64 decode): %w", err)
-	}
-	tokenStr := string(decodedBytes)
-	parts := strings.SplitN(tokenStr, "|", 2)
-	if len(parts) != 2 {
-		return time.Time{}, time.Time{}, fmt.Errorf("invalid pagination token format (split)")
-	}
-
-	journalDate, err := time.Parse(timeFormat, parts[0])
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("invalid pagination token format (journal date parse): %w", err)
-	}
-
-	createdAt, err := time.Parse(timeFormat, parts[1])
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("invalid pagination token format (created_at parse): %w", err)
-	}
-
-	return journalDate, createdAt, nil
-}
-
-// --- End Token Pagination Helpers ---
 
 // ListJournalsByWorkplace retrieves a paginated list of journals for a specific workplace using token-based pagination.
 // It returns the list of journals, a token for the next page (if any), and an error.
@@ -634,7 +547,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 
 	if nextToken != nil && *nextToken != "" {
 		// Decode the token to get the cursor values
-		lastDate, lastCreatedAt, decodeErr := decodeToken(*nextToken)
+		lastDate, lastCreatedAt, decodeErr := pagination.DecodeToken(*nextToken)
 		if decodeErr != nil {
 			// Consider logging the error but return a user-friendly error
 			// Or potentially treat as if no token was provided if lenient
@@ -715,7 +628,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 		lastJournal := modelJournals[limit-1] // The *actual* last item of the *current* page
 		// The token points to the *last item included* in this response page.
 		// The next query will start *after* this item.
-		newToken := encodeToken(lastJournal.JournalDate, lastJournal.CreatedAt)
+		newToken := pagination.EncodeToken(lastJournal.JournalDate, lastJournal.CreatedAt)
 		nextTokenVal = &newToken
 		// Trim the extra item fetched
 		results = modelJournals[:limit]
