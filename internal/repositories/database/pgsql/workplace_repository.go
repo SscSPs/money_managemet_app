@@ -249,9 +249,10 @@ func (r *PgxWorkplaceRepository) UpdateWorkplaceStatus(ctx context.Context, work
 // Set includeRemoved to true to include users with the REMOVED role.
 func (r *PgxWorkplaceRepository) ListUsersByWorkplaceID(ctx context.Context, workplaceID string, includeRemoved ...bool) ([]domain.UserWorkplace, error) {
 	query := `
-		SELECT user_id, workplace_id, role, joined_at
-		FROM user_workplaces
-		WHERE workplace_id = $1
+		SELECT uw.user_id, u.name as user_name, uw.workplace_id, uw.role, uw.joined_at
+		FROM user_workplaces uw
+		JOIN users u ON uw.user_id = u.user_id
+		WHERE uw.workplace_id = $1
 	`
 
 	// By default, exclude REMOVED users
@@ -261,10 +262,10 @@ func (r *PgxWorkplaceRepository) ListUsersByWorkplaceID(ctx context.Context, wor
 	}
 
 	if !shouldIncludeRemoved {
-		query += ` AND role != $2`
+		query += ` AND uw.role != $2`
 	}
 
-	query += ` ORDER BY joined_at DESC;`
+	query += ` ORDER BY uw.joined_at DESC;`
 
 	var rows pgx.Rows
 	var err error
@@ -285,6 +286,7 @@ func (r *PgxWorkplaceRepository) ListUsersByWorkplaceID(ctx context.Context, wor
 		var uw domain.UserWorkplace
 		err := rows.Scan(
 			&uw.UserID,
+			&uw.UserName,
 			&uw.WorkplaceID,
 			&uw.Role,
 			&uw.JoinedAt,

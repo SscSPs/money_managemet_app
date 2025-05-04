@@ -68,6 +68,7 @@ type AddUserToWorkplaceRequest struct {
 // UserWorkplaceResponse defines data returned about a user's membership.
 type UserWorkplaceResponse struct {
 	UserID      string                   `json:"userID"`
+	UserName    string                   `json:"userName"` // User's name
 	WorkplaceID string                   `json:"workplaceID"`
 	Role        domain.UserWorkplaceRole `json:"role"`
 	JoinedAt    time.Time                `json:"joinedAt"`
@@ -77,6 +78,7 @@ type UserWorkplaceResponse struct {
 func ToUserWorkplaceResponse(uw *domain.UserWorkplace) UserWorkplaceResponse {
 	return UserWorkplaceResponse{
 		UserID:      uw.UserID,
+		UserName:    uw.UserName,
 		WorkplaceID: uw.WorkplaceID,
 		Role:        uw.Role,
 		JoinedAt:    uw.JoinedAt,
@@ -107,4 +109,9 @@ func ToListWorkplaceUsersResponse(userWorkplaces []domain.UserWorkplace) ListWor
 		list[i] = ToUserWorkplaceResponse(&uw)
 	}
 	return ListWorkplaceUsersResponse{Users: list}
+}
+
+// UpdateUserRoleRequest defines the request structure for updating a user's role in a workplace.
+type UpdateUserRoleRequest struct {
+	Role domain.UserWorkplaceRole `json:"role" binding:"required,oneof=ADMIN MEMBER REMOVED"`
 }

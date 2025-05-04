@@ -48,8 +48,8 @@ func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService portssvc.Work
 		{
 			workplaceUsers.GET("", h.listWorkplaceUsers) // New endpoint to list users in the workplace
 			workplaceUsers.POST("", h.addUserToWorkplace)
-			// TODO: Add DELETE /users/:user_id to remove a user?
-			// TODO: Add PUT /users/:user_id to change role?
+			workplaceUsers.DELETE("/:user_id", h.removeUserFromWorkplace) // Remove a user from workplace
+			workplaceUsers.PUT("/:user_id", h.updateUserWorkplaceRole)    // Change user's role in workplace
 		}
 
 		// -- NESTED JOURNAL ROUTES --
@@ -356,4 +356,131 @@ func (h *workplaceHandler) listWorkplaceUsers(c *gin.Context) {
 
 	logger.Info("Workplace users listed successfully", slog.Int("count", len(users)))
 	c.JSON(http.StatusOK, dto.ToListWorkplaceUsersResponse(users))
+}
+
+// removeUserFromWorkplace godoc
+// @Summary Remove a user from a workplace
+// @Description Removes a user from a workplace (requires admin permission)
+// @Tags workplaces
+// @Produce json
+// @Param workplace_id path string true "Workplace ID"
+// @Param user_id path string true "User ID to remove"
+// @Success 204 "No Content"
+// @Failure 400 {object} map[string]string "Invalid input"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 403 {object} map[string]string "Forbidden (caller is not admin)"
+// @Failure 404 {object} map[string]string "Workplace or User not found"
+// @Failure 422 {object} map[string]string "Cannot remove the last admin"
+// @Failure 500 {object} map[string]string "Failed to remove user"
+// @Security BearerAuth
+// @Router /workplaces/{workplace_id}/users/{user_id} [delete]
+func (h *workplaceHandler) removeUserFromWorkplace(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	workplaceID := c.Param("workplace_id")
+	targetUserID := c.Param("user_id")
+
+	requestingUserID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		logger.Error("Requesting user ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	logger = logger.With(
+		slog.String("requesting_user_id", requestingUserID),
+		slog.String("workplace_id", workplaceID),
+		slog.String("target_user_id", targetUserID),
+	)
+	logger.Info("Received request to remove user from workplace")
+
+	// Call service method to remove the user
+	err := h.workplaceService.RemoveUserFromWorkplace(c.Request.Context(), requestingUserID, targetUserID, workplaceID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Remove user failed: Workplace or User not found")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Workplace or User not found"})
+		} else if errors.Is(err, apperrors.ErrForbidden) {
+			logger.Warn("Remove user failed: Forbidden")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You must be an admin to remove users"})
+		} else if errors.Is(err, apperrors.ErrValidation) {
+			logger.Warn("Cannot remove the last admin from workplace", slog.String("error", err.Error()))
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Cannot remove the last admin from the workplace"})
+		} else {
+			logger.Error("Failed to remove user from workplace", slog.String("error", err.Error()))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove user from workplace"})
+		}
+		return
+	}
+
+	logger.Info("User removed from workplace successfully")
+	c.Status(http.StatusNoContent)
+}
+
+// updateUserWorkplaceRole godoc
+// @Summary Update a user's role in a workplace
+// @Description Updates a user's role in a workplace (requires admin permission)
+// @Tags workplaces
+// @Accept json
+// @Produce json
+// @Param workplace_id path string true "Workplace ID"
+// @Param user_id path string true "User ID to update"
+// @Param role body dto.UpdateUserRoleRequest true "New role for the user"
+// @Success 204 "No Content"
+// @Failure 400 {object} map[string]string "Invalid input"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 403 {object} map[string]string "Forbidden (caller is not admin)"
+// @Failure 404 {object} map[string]string "Workplace or User not found"
+// @Failure 422 {object} map[string]string "Cannot demote the last admin"
+// @Failure 500 {object} map[string]string "Failed to update role"
+// @Security BearerAuth
+// @Router /workplaces/{workplace_id}/users/{user_id} [put]
+func (h *workplaceHandler) updateUserWorkplaceRole(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	workplaceID := c.Param("workplace_id")
+	targetUserID := c.Param("user_id")
+
+	// Parse request body
+	var req dto.UpdateUserRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Warn("Failed to bind JSON for UpdateUserRole", slog.String("error", err.Error()))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format: " + err.Error()})
+		return
+	}
+
+	requestingUserID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		logger.Error("Requesting user ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	logger = logger.With(
+		slog.String("requesting_user_id", requestingUserID),
+		slog.String("workplace_id", workplaceID),
+		slog.String("target_user_id", targetUserID),
+		slog.String("new_role", string(req.Role)),
+	)
+	logger.Info("Received request to update user role in workplace")
+
+	// Call service method to update the user's role
+	err := h.workplaceService.UpdateUserWorkplaceRole(c.Request.Context(), requestingUserID, targetUserID, workplaceID, req.Role)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Update role failed: Workplace or User not found")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Workplace or User not found"})
+		} else if errors.Is(err, apperrors.ErrForbidden) {
+			logger.Warn("Update role failed: Forbidden")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You must be an admin to update user roles"})
+		} else if errors.Is(err, apperrors.ErrValidation) {
+			logger.Warn("Cannot demote the last admin in workplace", slog.String("error", err.Error()))
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Cannot demote the last admin in the workplace"})
+		} else {
+			logger.Error("Failed to update user role in workplace", slog.String("error", err.Error()))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user role"})
+		}
+		return
+	}
+
+	logger.Info("User role updated successfully")
+	c.Status(http.StatusNoContent)
 }

@@ -376,6 +376,18 @@ definitions:
         description: Only name is updatable for now
         type: string
     type: object
+  dto.UpdateUserRoleRequest:
+    properties:
+      role:
+        allOf:
+        - $ref: '#/definitions/domain.UserWorkplaceRole'
+        enum:
+        - ADMIN
+        - MEMBER
+        - REMOVED
+    required:
+    - role
+    type: object
   dto.UserResponse:
     properties:
       createdAt:
@@ -398,6 +410,9 @@ definitions:
       role:
         $ref: '#/definitions/domain.UserWorkplaceRole'
       userID:
+        type: string
+      userName:
+        description: User's name
         type: string
       workplaceID:
         type: string
@@ -1924,6 +1939,133 @@ paths:
       security:
       - BearerAuth: []
       summary: Add a user to a workplace
+      tags:
+      - workplaces
+  /workplaces/{workplace_id}/users/{user_id}:
+    delete:
+      description: Removes a user from a workplace (requires admin permission)
+      parameters:
+      - description: Workplace ID
+        in: path
+        name: workplace_id
+        required: true
+        type: string
+      - description: User ID to remove
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Invalid input
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden (caller is not admin)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Workplace or User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Cannot remove the last admin
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to remove user
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove a user from a workplace
+      tags:
+      - workplaces
+    put:
+      consumes:
+      - application/json
+      description: Updates a user's role in a workplace (requires admin permission)
+      parameters:
+      - description: Workplace ID
+        in: path
+        name: workplace_id
+        required: true
+        type: string
+      - description: User ID to update
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: New role for the user
+        in: body
+        name: role
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateUserRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Invalid input
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden (caller is not admin)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Workplace or User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Cannot demote the last admin
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to update role
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a user's role in a workplace
       tags:
       - workplaces
 security:

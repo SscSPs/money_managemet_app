@@ -25,6 +25,7 @@ const (
 // UserWorkplace represents the membership of a User in a Workplace.
 type UserWorkplace struct {
 	UserID      string            `json:"userID"`      // FK -> users.user_id
+	UserName    string            `json:"userName"`    // Name of the user
 	WorkplaceID string            `json:"workplaceID"` // FK -> workplaces.workplace_id
 	Role        UserWorkplaceRole `json:"role"`        // Role of the user in this specific workplace
 	JoinedAt    time.Time         `json:"joinedAt"`    // Timestamp when the user joined the workplace
