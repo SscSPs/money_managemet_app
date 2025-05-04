@@ -960,9 +960,3 @@ func (j *journalService) ListJournalsByWorkplace(ctx context.Context, params Lis
 
 	return journals, nextToken, nil
 }
-
-// TODO: Add methods for:
-// - FindJournalByID(ctx context.Context, journalID string) (*models.Journal, []models.Transaction, error)
-// - Static data initialization trigger? (FR-M1-06)
-
-// - Static data initialization trigger? (FR-M1-06)

@@ -5,26 +5,41 @@ import (
 	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 )
 
-// NewServiceContainer initializes all services and returns a container holding them.
-// It resolves dependencies between services.
+// NewServiceContainer creates a new service container with properly initialized dependencies
 func NewServiceContainer(repos portsrepo.RepositoryProvider) *portssvc.ServiceContainer {
-	// Initialize services with only repository dependencies first
-	accountSvc := NewAccountService(repos.AccountRepo)
-	currencySvc := NewCurrencyService(repos.CurrencyRepo)
-	userSvc := NewUserService(repos.UserRepo)
-	workplaceSvc := NewWorkplaceService(repos.WorkplaceRepo, repos.CurrencyRepo)
-	// Add StaticDataService initialization if/when implemented
+	// Create the container structure first
+	container := &portssvc.ServiceContainer{}
 
-	// Initialize services that depend on other services
-	exchangeRateSvc := NewExchangeRateService(repos.ExchangeRateRepo, currencySvc) // Depends on CurrencyService
-	journalSvc := NewJournalService(repos.JournalRepo, accountSvc, workplaceSvc)   // Depends on AccountRepo, JournalRepo, WorkplaceService
+	// Initialize workplace service first since other services depend on it
+	container.Workplace = NewWorkplaceService(
+		repos.WorkplaceRepo,
+		repos.CurrencyRepo,
+	)
 
-	return &portssvc.ServiceContainer{
-		Account:      accountSvc,
-		Currency:     currencySvc,
-		ExchangeRate: exchangeRateSvc,
-		User:         userSvc,
-		Journal:      journalSvc,
-		Workplace:    workplaceSvc,
-	}
+	// Create workplace authorizer for service dependencies
+	workplaceAuthorizer := container.Workplace.(portssvc.WorkplaceAuthorizerSvc)
+	workplaceReader := container.Workplace.(portssvc.WorkplaceReaderSvc)
+
+	// Create account service with dependencies using the new implementation
+	container.Account = NewAccountService(
+		repos.AccountRepo,
+		WithWorkplaceService(workplaceReader),
+		WithWorkplaceAuthorizer(workplaceAuthorizer),
+		WithCurrencyRepository(repos.CurrencyRepo),
+	)
+
+	// Initialize other services using their original constructors for now
+	container.Currency = NewCurrencyService(repos.CurrencyRepo)
+	container.User = NewUserService(repos.UserRepo)
+	container.ExchangeRate = NewExchangeRateService(repos.ExchangeRateRepo, container.Currency)
+	container.Journal = NewJournalService(repos.JournalRepo, container.Account, container.Workplace)
+
+	return container
 }
+
+// Helper to check interface implementations at compile time
+var (
+	_ portssvc.AccountSvcFacade   = (*accountService)(nil)
+	_ portssvc.WorkplaceSvcFacade = (*workplaceService)(nil)
+	// Add other implementation checks as services are created
+)

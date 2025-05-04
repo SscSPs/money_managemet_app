@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
-	"github.com/SscSPs/money_managemet_app/internal/core/domain" // Use domain types
+	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
-	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Added portssvc import
-	"github.com/SscSPs/money_managemet_app/internal/dto"                          // Import middleware for GetLoggerFromCtx
-	"github.com/google/uuid"                                                      // For generating AccountID
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
+	"github.com/SscSPs/money_managemet_app/internal/dto"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
@@ -185,7 +185,6 @@ func (s *accountService) GetAccountByIDs(ctx context.Context, workplaceID string
 	return accounts, nil
 }
 
-// ListAccounts retrieves a paginated list of active accounts for a specific workplace.
 func (s *accountService) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
 	accounts, err := s.accountRepo.ListAccounts(ctx, workplaceID, limit, offset)
 	if err != nil {
@@ -206,7 +205,6 @@ func (s *accountService) ListAccounts(ctx context.Context, workplaceID string, l
 	return accounts, nil
 }
 
-// UpdateAccount updates specific fields of an existing account.
 func (s *accountService) UpdateAccount(ctx context.Context, workplaceID string, accountID string, req dto.UpdateAccountRequest, userID string) (*domain.Account, error) {
 	// Fetch the existing account
 	account, err := s.GetAccountByID(ctx, workplaceID, accountID)
@@ -252,7 +250,6 @@ func (s *accountService) UpdateAccount(ctx context.Context, workplaceID string, 
 	return account, nil
 }
 
-// DeactivateAccount marks an account as inactive (soft delete).
 func (s *accountService) DeactivateAccount(ctx context.Context, workplaceID string, accountID string, userID string) error {
 	// First verify that the account exists and belongs to the workplace
 	_, err := s.GetAccountByID(ctx, workplaceID, accountID)
@@ -275,24 +272,6 @@ func (s *accountService) DeactivateAccount(ctx context.Context, workplaceID stri
 	return nil
 }
 
-/* // Removed the incorrect DeleteAccount implementation
-// DeleteAccount marks an account as inactive (soft delete).
-// Renamed from DeactivateAccount for consistency with handler.
-func (s *AccountService) DeleteAccount(ctx context.Context, accountID string, userID string) error {
-	...
-}
-*/
-
-/* // Commenting out the old DeactivateAccount - now handled above
-// DeactivateAccount marks an account as inactive.
-func (s *AccountService) DeactivateAccount(ctx context.Context, accountID string, userID string) error {
-	...
-}
-*/
-
-// CalculateAccountBalance calculates the current balance for a given account.
-// Now that balance is persisted on the account, this primarily reads the value.
-// The transaction-based calculation logic is kept commented for potential validation/reconciliation.
 func (s *accountService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
 	// First check if account exists and belongs to workplace
 	account, err := s.GetAccountByID(ctx, workplaceID, accountID)
@@ -306,21 +285,4 @@ func (s *accountService) CalculateAccountBalance(ctx context.Context, workplaceI
 	// For now, just return the balance from the account object
 	// In a real implementation, we might calculate this from transactions
 	return account.Balance, nil
-
-	/* --- OLD CALCULATION LOGIC (Keep for reference/validation?) ---
-	logger.Warn("CalculateAccountBalance currently returns zero - IMPLEMENTATION NEEDED", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
-
-	// 1. Authorization: Check user can access workplaceID (maybe done implicitly if called by other authorized services)
-	// 2. Fetch account to verify it belongs to workplaceID (redundant if called after GetAccountByID?)
-	// 3. Fetch relevant transactions for the accountID within the workplaceID.
-	// 4. Sum transactions based on account type (debit/credit).
-	// 5. Return balance.
-
-	// --- TEMPORARY: Return zero and nil error --- \
-	// Replace this with actual calculation logic
-	return decimal.Zero, nil
-	// --- /TEMPORARY ---
-	*/
 }
-
-// Remove the outdated TODO
