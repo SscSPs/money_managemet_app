@@ -21,6 +21,7 @@ type WorkplaceResponse struct {
 	Name                string    `json:"name"`
 	Description         string    `json:"description"`
 	DefaultCurrencyCode *string   `json:"defaultCurrencyCode,omitempty"`
+	IsActive            bool      `json:"isActive"`
 	CreatedAt           time.Time `json:"createdAt"`
 	CreatedBy           string    `json:"createdBy"` // UserID
 	LastUpdatedAt       time.Time `json:"lastUpdatedAt"`
@@ -34,6 +35,7 @@ func ToWorkplaceResponse(w *domain.Workplace) WorkplaceResponse {
 		Name:                w.Name,
 		Description:         w.Description,
 		DefaultCurrencyCode: w.DefaultCurrencyCode,
+		IsActive:            w.IsActive,
 		CreatedAt:           w.CreatedAt,
 		CreatedBy:           w.CreatedBy,
 		LastUpdatedAt:       w.LastUpdatedAt,
@@ -60,7 +62,7 @@ func ToListWorkplacesResponse(ws []domain.Workplace) ListWorkplacesResponse {
 // AddUserToWorkplaceRequest defines data for adding a user to a workplace.
 type AddUserToWorkplaceRequest struct {
 	UserID string                   `json:"userID" binding:"required"`
-	Role   domain.UserWorkplaceRole `json:"role" binding:"required,oneof=ADMIN MEMBER"`
+	Role   domain.UserWorkplaceRole `json:"role" binding:"required,oneof=ADMIN MEMBER REMOVED"`
 }
 
 // UserWorkplaceResponse defines data returned about a user's membership.
@@ -79,4 +81,30 @@ func ToUserWorkplaceResponse(uw *domain.UserWorkplace) UserWorkplaceResponse {
 		Role:        uw.Role,
 		JoinedAt:    uw.JoinedAt,
 	}
+}
+
+// ListUserWorkplacesParams defines parameters for listing user workplaces.
+type ListUserWorkplacesParams struct {
+	IncludeDisabled bool `form:"includeDisabled" json:"includeDisabled"`
+}
+
+// DeactivateWorkplaceRequest defines data for deactivating a workplace.
+type DeactivateWorkplaceRequest struct {
+	// Can be expanded later to include additional information
+	// such as a reason for deactivation or a timestamp until when
+	// the workplace should remain inactive
+}
+
+// ListWorkplaceUsersResponse wraps a list of users for a workplace.
+type ListWorkplaceUsersResponse struct {
+	Users []UserWorkplaceResponse `json:"users"`
+}
+
+// ToListWorkplaceUsersResponse converts a slice of domain.UserWorkplace to DTO.
+func ToListWorkplaceUsersResponse(userWorkplaces []domain.UserWorkplace) ListWorkplaceUsersResponse {
+	list := make([]UserWorkplaceResponse, len(userWorkplaces))
+	for i, uw := range userWorkplaces {
+		list[i] = ToUserWorkplaceResponse(&uw)
+	}
+	return ListWorkplaceUsersResponse{Users: list}
 }

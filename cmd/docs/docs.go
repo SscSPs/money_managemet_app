@@ -792,6 +792,14 @@ const docTemplate = `{
                     "workplaces"
                 ],
                 "summary": "List workplaces for current user",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Include disabled workplaces (default: false)",
+                        "name": "includeDisabled",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1420,6 +1428,163 @@ const docTemplate = `{
                 }
             }
         },
+        "/workplaces/{workplace_id}/activate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marks a workplace as active (requires admin permission).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workplaces"
+                ],
+                "summary": "Activate a workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (caller is not admin)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Workplace not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to activate workplace",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workplaces/{workplace_id}/deactivate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marks a workplace as inactive (requires admin permission).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workplaces"
+                ],
+                "summary": "Deactivate a workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Deactivation details (optional)",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/dto.DeactivateWorkplaceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (caller is not admin)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Workplace not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to deactivate workplace",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/workplaces/{workplace_id}/journals": {
             "get": {
                 "security": [
@@ -1952,6 +2117,74 @@ const docTemplate = `{
             }
         },
         "/workplaces/{workplace_id}/users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves a list of users and their roles in the specified workplace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workplaces"
+                ],
+                "summary": "List users in a workplace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ListWorkplaceUsersResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (caller is not a member)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Workplace not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to list workplace users",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -2084,11 +2317,16 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "ADMIN",
-                "MEMBER"
+                "MEMBER",
+                "REMOVED"
             ],
+            "x-enum-comments": {
+                "RoleRemoved": "For users who have been removed from the workplace"
+            },
             "x-enum-varnames": [
                 "RoleAdmin",
-                "RoleMember"
+                "RoleMember",
+                "RoleRemoved"
             ]
         },
         "dto.AccountResponse": {
@@ -2148,7 +2386,8 @@ const docTemplate = `{
                 "role": {
                     "enum": [
                         "ADMIN",
-                        "MEMBER"
+                        "MEMBER",
+                        "REMOVED"
                     ],
                     "allOf": [
                         {
@@ -2351,6 +2590,9 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.DeactivateWorkplaceRequest": {
+            "type": "object"
+        },
         "dto.ExchangeRateResponse": {
             "type": "object",
             "properties": {
@@ -2492,6 +2734,17 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ListWorkplaceUsersResponse": {
+            "type": "object",
+            "properties": {
+                "users": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.UserWorkplaceResponse"
+                    }
+                }
+            }
+        },
         "dto.ListWorkplacesResponse": {
             "type": "object",
             "properties": {
@@ -2599,6 +2852,23 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.UserWorkplaceResponse": {
+            "type": "object",
+            "properties": {
+                "joinedAt": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/domain.UserWorkplaceRole"
+                },
+                "userID": {
+                    "type": "string"
+                },
+                "workplaceID": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.WorkplaceResponse": {
             "type": "object",
             "properties": {
@@ -2614,6 +2884,9 @@ const docTemplate = `{
                 },
                 "description": {
                     "type": "string"
+                },
+                "isActive": {
+                    "type": "boolean"
                 },
                 "lastUpdatedAt": {
                     "type": "string"

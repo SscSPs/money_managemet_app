@@ -8,6 +8,7 @@ type Workplace struct {
 	Name                string  `json:"name"`                // User-defined name for the workplace
 	Description         string  `json:"description"`         // Optional description
 	DefaultCurrencyCode *string `json:"defaultCurrencyCode"` // Default currency code for this workplace (e.g., "USD")
+	IsActive            bool    `json:"isActive"`            // Indicates whether the workplace is active or disabled
 	AuditFields                 // Embed common audit fields
 }
 
@@ -15,8 +16,9 @@ type Workplace struct {
 type UserWorkplaceRole string
 
 const (
-	RoleAdmin  UserWorkplaceRole = "ADMIN"
-	RoleMember UserWorkplaceRole = "MEMBER"
+	RoleAdmin   UserWorkplaceRole = "ADMIN"
+	RoleMember  UserWorkplaceRole = "MEMBER"
+	RoleRemoved UserWorkplaceRole = "REMOVED" // For users who have been removed from the workplace
 	// Add other roles as needed (e.g., ReadOnly)
 )
 

@@ -11,52 +11,90 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
-	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/google/uuid"
 )
 
-// WorkplaceService handles business logic related to workplaces and memberships.
-type WorkplaceService struct {
+// workplaceService implements the WorkplaceSvcFacade interface
+type workplaceService struct {
+	BaseService
 	workplaceRepo portsrepo.WorkplaceRepositoryFacade
-	currencyRepo  portsrepo.CurrencyRepositoryFacade
-	// userRepo portsrepo.UserRepositoryFacade // Might be needed for user validation
+	currencyRepo  portsrepo.CurrencyReader
 }
 
-// NewWorkplaceServiceLegacy creates a new WorkplaceService.
-func NewWorkplaceServiceLegacy(wr portsrepo.WorkplaceRepositoryFacade, cr portsrepo.CurrencyRepositoryFacade) portssvc.WorkplaceService {
-	return &WorkplaceService{
-		workplaceRepo: wr,
-		currencyRepo:  cr,
+// NewWorkplaceService creates a new workplace service with the provided dependencies
+func NewWorkplaceService(
+	workplaceRepo portsrepo.WorkplaceRepositoryFacade,
+	currencyRepo portsrepo.CurrencyReader,
+) portssvc.WorkplaceSvcFacade {
+	return &workplaceService{
+		workplaceRepo: workplaceRepo,
+		currencyRepo:  currencyRepo,
 	}
 }
 
-// Ensure WorkplaceService implements the portssvc.WorkplaceService interface
-var _ portssvc.WorkplaceService = (*WorkplaceService)(nil)
+// Ensure workplaceService implements the WorkplaceSvcFacade interface
+var _ portssvc.WorkplaceSvcFacade = (*workplaceService)(nil)
 
-// CreateWorkplace creates a new workplace and makes the creator the initial admin.
-func (s *WorkplaceService) CreateWorkplace(ctx context.Context, name, description, defaultCurrencyCode, creatorUserID string) (*domain.Workplace, error) {
-	logger := middleware.GetLoggerFromCtx(ctx)
+// FindWorkplaceByID retrieves a workplace by its ID
+func (s *workplaceService) FindWorkplaceByID(ctx context.Context, workplaceID string) (*domain.Workplace, error) {
+	workplace, err := s.workplaceRepo.FindWorkplaceByID(ctx, workplaceID)
+	if err != nil {
+		if !errors.Is(err, apperrors.ErrNotFound) {
+			s.LogError(ctx, err, "Failed to find workplace by ID",
+				slog.String("workplace_id", workplaceID))
+		}
+		return nil, err
+	}
 
-	// Validate that the currency exists
-	if defaultCurrencyCode != "" {
+	s.LogDebug(ctx, "Workplace retrieved successfully",
+		slog.String("workplace_id", workplace.WorkplaceID))
+	return workplace, nil
+}
+
+// ListUserWorkplaces retrieves all workplaces a user belongs to
+// If includeDisabled is true, inactive workplaces are also included in the results.
+// For inactive workplaces, only those where the user is an admin are included.
+func (s *workplaceService) ListUserWorkplaces(ctx context.Context, userID string, includeDisabled bool) ([]domain.Workplace, error) {
+	workplaces, err := s.workplaceRepo.ListWorkplacesByUserID(ctx, userID, includeDisabled, nil)
+	if err != nil {
+		s.LogError(ctx, err, "Failed to list workplaces for user",
+			slog.String("user_id", userID),
+			slog.Bool("include_disabled", includeDisabled))
+		return nil, err
+	}
+
+	if workplaces == nil {
+		return []domain.Workplace{}, nil
+	}
+
+	s.LogDebug(ctx, "Workplaces listed successfully",
+		slog.Int("count", len(workplaces)),
+		slog.String("user_id", userID),
+		slog.Bool("include_disabled", includeDisabled))
+	return workplaces, nil
+}
+
+// CreateWorkplace creates a new workplace
+func (s *workplaceService) CreateWorkplace(ctx context.Context, name, description, defaultCurrencyCode, creatorUserID string) (*domain.Workplace, error) {
+	// Validate currency if specified
+	if defaultCurrencyCode != "" && s.currencyRepo != nil {
 		_, err := s.currencyRepo.FindCurrencyByCode(ctx, defaultCurrencyCode)
 		if err != nil {
-			if errors.Is(err, apperrors.ErrNotFound) {
-				logger.Warn("Invalid default currency code provided", slog.String("currency_code", defaultCurrencyCode))
-				return nil, fmt.Errorf("%w: currency code %s not found", apperrors.ErrValidation, defaultCurrencyCode)
-			}
-			logger.Error("Failed to check currency code existence", slog.String("error", err.Error()), slog.String("currency_code", defaultCurrencyCode))
-			return nil, fmt.Errorf("failed to validate currency code: %w", err)
+			s.LogError(ctx, err, "Invalid default currency code",
+				slog.String("currency_code", defaultCurrencyCode))
+			return nil, fmt.Errorf("invalid default currency code: %w", err)
 		}
 	}
 
 	now := time.Now()
-	newWorkplaceID := uuid.NewString()
+	workplaceID := uuid.NewString()
 
+	// Create domain.Workplace
 	workplace := domain.Workplace{
-		WorkplaceID: newWorkplaceID,
+		WorkplaceID: workplaceID,
 		Name:        name,
 		Description: description,
+		IsActive:    true, // New workplaces are active by default
 		AuditFields: domain.AuditFields{
 			CreatedAt:     now,
 			CreatedBy:     creatorUserID,
@@ -65,131 +103,335 @@ func (s *WorkplaceService) CreateWorkplace(ctx context.Context, name, descriptio
 		},
 	}
 
-	// Only set default currency if provided (otherwise will be NULL in DB)
 	if defaultCurrencyCode != "" {
 		workplace.DefaultCurrencyCode = &defaultCurrencyCode
 	}
 
-	// Save the workplace
-	if err := s.workplaceRepo.SaveWorkplace(ctx, workplace); err != nil {
-		logger.Error("Failed to save workplace in repository", slog.String("error", err.Error()), slog.String("workplace_name", name))
-		return nil, fmt.Errorf("failed to create workplace: %w", err)
+	err := s.workplaceRepo.SaveWorkplace(ctx, workplace)
+	if err != nil {
+		s.LogError(ctx, err, "Failed to save workplace",
+			slog.String("workplace_id", workplace.WorkplaceID))
+		return nil, err
 	}
 
-	// Add the creator as the initial admin
-	membership := domain.UserWorkplace{
-		UserID:      creatorUserID,
-		WorkplaceID: newWorkplaceID,
-		Role:        domain.RoleAdmin, // Creator is Admin
-		JoinedAt:    now,
-	}
-	if err := s.workplaceRepo.AddUserToWorkplace(ctx, membership); err != nil {
-		// Log the error, but maybe don't fail the whole operation?
-		// Or perhaps implement transactional behavior in the repo.
-		logger.Error("Failed to add creator as admin to new workplace", slog.String("error", err.Error()), slog.String("workplace_id", newWorkplaceID), slog.String("user_id", creatorUserID))
-		// Decide on error handling: Return partial success? Return error?
-		// For now, return the workplace but log the membership error.
+	// Add creator as an admin to the new workplace
+	membershipErr := s.AddUserToWorkplace(ctx, creatorUserID, creatorUserID, workplaceID, domain.RoleAdmin)
+	if membershipErr != nil {
+		s.LogError(ctx, membershipErr, "Failed to add creator as admin to new workplace",
+			slog.String("workplace_id", workplace.WorkplaceID),
+			slog.String("user_id", creatorUserID))
+		// Note: We don't return this error because the workplace was created successfully
+		// In a real app, we might want to handle this more gracefully, perhaps with a transaction
 	}
 
-	logger.Info("Workplace created successfully", slog.String("workplace_id", newWorkplaceID), slog.String("creator_user_id", creatorUserID))
+	s.LogInfo(ctx, "Workplace created successfully",
+		slog.String("workplace_id", workplace.WorkplaceID),
+		slog.String("creator_id", creatorUserID))
 	return &workplace, nil
 }
 
-// AddUserToWorkplace adds a user to a workplace with a specific role.
-func (s *WorkplaceService) AddUserToWorkplace(ctx context.Context, addingUserID, targetUserID, workplaceID string, role domain.UserWorkplaceRole) error {
-	logger := middleware.GetLoggerFromCtx(ctx)
-
-	// 1. Authorization: Check if addingUserID has permission (e.g., is ADMIN) in workplaceID
-	if err := s.AuthorizeUserAction(ctx, addingUserID, workplaceID, domain.RoleAdmin); err != nil {
-		return err // Return auth error (NotFound or Forbidden)
+// AddUserToWorkplace adds a user to a workplace with a specific role
+func (s *workplaceService) AddUserToWorkplace(ctx context.Context, addingUserID, targetUserID, workplaceID string, role domain.UserWorkplaceRole) error {
+	// Check if adding user has permission (must be admin)
+	if addingUserID != targetUserID { // Self-assignment is permitted (e.g., creator adding self as admin)
+		err := s.AuthorizeUserAction(ctx, addingUserID, workplaceID, domain.RoleAdmin)
+		if err != nil {
+			s.LogError(ctx, err, "User not authorized to add members to workplace",
+				slog.String("adding_user_id", addingUserID),
+				slog.String("workplace_id", workplaceID))
+			return err
+		}
 	}
 
-	// TODO: Validate targetUserID exists using UserRepository if added
-	// TODO: Validate workplaceID exists? (Repo AddUserToWorkplace might handle FK violation)
-
-	// 2. Add the membership
-	now := time.Now()
+	// Create membership
 	membership := domain.UserWorkplace{
 		UserID:      targetUserID,
 		WorkplaceID: workplaceID,
 		Role:        role,
-		JoinedAt:    now,
+		JoinedAt:    time.Now(),
 	}
 
-	if err := s.workplaceRepo.AddUserToWorkplace(ctx, membership); err != nil {
-		logger.Error("Failed to add user to workplace in repository", slog.String("error", err.Error()), slog.String("target_user_id", targetUserID), slog.String("workplace_id", workplaceID))
-		return fmt.Errorf("failed to add user %s to workplace %s: %w", targetUserID, workplaceID, err)
+	err := s.workplaceRepo.AddUserToWorkplace(ctx, membership)
+	if err != nil {
+		s.LogError(ctx, err, "Failed to add user to workplace",
+			slog.String("target_user_id", targetUserID),
+			slog.String("workplace_id", workplaceID))
+		return err
 	}
 
-	logger.Info("User added to workplace successfully", slog.String("target_user_id", targetUserID), slog.String("workplace_id", workplaceID), slog.String("role", string(role)), slog.String("added_by_user_id", addingUserID))
+	s.LogInfo(ctx, "User added to workplace successfully",
+		slog.String("target_user_id", targetUserID),
+		slog.String("workplace_id", workplaceID),
+		slog.String("role", string(role)))
 	return nil
 }
 
-// ListUserWorkplaces retrieves the list of workplaces a given user belongs to.
-func (s *WorkplaceService) ListUserWorkplaces(ctx context.Context, userID string) ([]domain.Workplace, error) {
-	logger := middleware.GetLoggerFromCtx(ctx)
-
-	workplaces, err := s.workplaceRepo.ListWorkplacesByUserID(ctx, userID)
-	if err != nil {
-		logger.Error("Failed to list workplaces for user from repository", slog.String("error", err.Error()), slog.String("user_id", userID))
-		return nil, fmt.Errorf("failed to list workplaces for user %s: %w", userID, err)
-	}
-
-	if workplaces == nil {
-		return []domain.Workplace{}, nil // Return empty slice, not nil
-	}
-
-	logger.Debug("Workplaces listed successfully for user", slog.String("user_id", userID), slog.Int("count", len(workplaces)))
-	return workplaces, nil
-}
-
-// FindWorkplaceByID retrieves a workplace by its ID.
-// Implements portssvc.WorkplaceService interface.
-func (s *WorkplaceService) FindWorkplaceByID(ctx context.Context, workplaceID string) (*domain.Workplace, error) {
-	logger := middleware.GetLoggerFromCtx(ctx)
-	// No specific authorization check here, assuming Get needs are handled by caller or subsequent checks.
-	workplace, err := s.workplaceRepo.FindWorkplaceByID(ctx, workplaceID)
-	if err != nil {
-		if !errors.Is(err, apperrors.ErrNotFound) {
-			logger.Error("Failed to find workplace by ID in repository", slog.String("error", err.Error()), slog.String("workplace_id", workplaceID))
-		}
-		return nil, err // Propagate error (including NotFound)
-	}
-	logger.Debug("Workplace found by ID", slog.String("workplace_id", workplaceID))
-	return workplace, nil
-}
-
-// AuthorizeUserAction checks if a user has the required role (or higher) within a specific workplace.
-// Returns apperrors.ErrNotFound if user/workplace doesn't exist or user not member.
-// Returns apperrors.ErrForbidden if user is member but lacks the required role.
-// Returns nil if authorized.
-func (s *WorkplaceService) AuthorizeUserAction(ctx context.Context, userID, workplaceID string, requiredRole domain.UserWorkplaceRole) error {
-	logger := middleware.GetLoggerFromCtx(ctx)
-
+// AuthorizeUserAction checks if a user has required permissions for a workplace
+func (s *workplaceService) AuthorizeUserAction(ctx context.Context, userID, workplaceID string, requiredRole domain.UserWorkplaceRole) error {
 	membership, err := s.workplaceRepo.FindUserWorkplaceRole(ctx, userID, workplaceID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNotFound) {
-			logger.Warn("Authorization failed: User or workplace not found, or user not a member", slog.String("user_id", userID), slog.String("workplace_id", workplaceID))
-			// Return NotFound to avoid revealing workplace existence if user shouldn't know
-			return apperrors.ErrNotFound // Or return a more specific AuthError
+			s.LogDebug(ctx, "User not a member of workplace",
+				slog.String("user_id", userID),
+				slog.String("workplace_id", workplaceID))
+			return apperrors.ErrForbidden
 		}
-		// Log unexpected repo error
-		logger.Error("Failed to check user workplace role in repository", slog.String("error", err.Error()), slog.String("user_id", userID), slog.String("workplace_id", workplaceID))
-		return fmt.Errorf("failed to check authorization: %w", err)
+		s.LogError(ctx, err, "Failed to find user workplace role",
+			slog.String("user_id", userID),
+			slog.String("workplace_id", workplaceID))
+		return err
 	}
 
-	// Basic role check (ADMIN has all permissions)
-	if membership.Role == domain.RoleAdmin {
-		return nil // Admin is always authorized
+	// Check if user has required role or higher
+	if !hasRequiredRole(membership.Role, requiredRole) {
+		s.LogDebug(ctx, "User does not have required role",
+			slog.String("user_id", userID),
+			slog.String("workplace_id", workplaceID),
+			slog.String("user_role", string(membership.Role)),
+			slog.String("required_role", string(requiredRole)))
+		return apperrors.ErrForbidden
 	}
 
-	// Check if the user's role meets the required role
-	if membership.Role == requiredRole {
-		return nil // User has the exact required role
+	return nil
+}
+
+// DeactivateWorkplace marks a workplace as inactive
+func (s *workplaceService) DeactivateWorkplace(ctx context.Context, workplaceID string, requestingUserID string) error {
+	// Verify user has admin rights in this workplace
+	if err := s.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleAdmin); err != nil {
+		return err // AuthorizeUserAction already logs the error
 	}
 
-	// TODO: Implement more granular role hierarchy if needed (e.g., if EDITOR > MEMBER)
+	// Check if the workplace exists and get its current status
+	workplace, err := s.workplaceRepo.FindWorkplaceByID(ctx, workplaceID)
+	if err != nil {
+		s.LogError(ctx, err, "Failed to find workplace for deactivation",
+			slog.String("workplace_id", workplaceID))
+		return err
+	}
 
-	logger.Warn("Authorization failed: User lacks required role", slog.String("user_id", userID), slog.String("workplace_id", workplaceID), slog.String("user_role", string(membership.Role)), slog.String("required_role", string(requiredRole)))
-	return apperrors.ErrForbidden
+	// Check if workplace is already inactive
+	if !workplace.IsActive {
+		s.LogInfo(ctx, "Workplace already inactive",
+			slog.String("workplace_id", workplaceID))
+		return nil // No-op, already in desired state
+	}
+
+	// Update the workplace status to inactive
+	if err := s.workplaceRepo.UpdateWorkplaceStatus(ctx, workplaceID, false, requestingUserID); err != nil {
+		s.LogError(ctx, err, "Failed to deactivate workplace",
+			slog.String("workplace_id", workplaceID),
+			slog.String("requesting_user_id", requestingUserID))
+		return fmt.Errorf("failed to deactivate workplace: %w", err)
+	}
+
+	s.LogInfo(ctx, "Workplace deactivated successfully",
+		slog.String("workplace_id", workplaceID),
+		slog.String("deactivated_by", requestingUserID))
+	return nil
+}
+
+// ActivateWorkplace marks a workplace as active
+func (s *workplaceService) ActivateWorkplace(ctx context.Context, workplaceID string, requestingUserID string) error {
+	// Verify user has admin rights in this workplace
+	if err := s.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleAdmin); err != nil {
+		return err // AuthorizeUserAction already logs the error
+	}
+
+	// Check if the workplace exists and get its current status
+	workplace, err := s.workplaceRepo.FindWorkplaceByID(ctx, workplaceID)
+	if err != nil {
+		s.LogError(ctx, err, "Failed to find workplace for activation",
+			slog.String("workplace_id", workplaceID))
+		return err
+	}
+
+	// Check if workplace is already active
+	if workplace.IsActive {
+		s.LogInfo(ctx, "Workplace already active",
+			slog.String("workplace_id", workplaceID))
+		return nil // No-op, already in desired state
+	}
+
+	// Update the workplace status to active
+	if err := s.workplaceRepo.UpdateWorkplaceStatus(ctx, workplaceID, true, requestingUserID); err != nil {
+		s.LogError(ctx, err, "Failed to activate workplace",
+			slog.String("workplace_id", workplaceID),
+			slog.String("requesting_user_id", requestingUserID))
+		return fmt.Errorf("failed to activate workplace: %w", err)
+	}
+
+	s.LogInfo(ctx, "Workplace activated successfully",
+		slog.String("workplace_id", workplaceID),
+		slog.String("activated_by", requestingUserID))
+	return nil
+}
+
+// hasRequiredRole checks if the user's role meets or exceeds the required role
+func hasRequiredRole(userRole, requiredRole domain.UserWorkplaceRole) bool {
+	// First check if the user has been removed
+	if userRole == domain.RoleRemoved {
+		return false // Removed users have no access
+	}
+
+	// Simple role hierarchy check
+	switch requiredRole {
+	case domain.RoleMember: // Use only roles defined in the domain package
+		return userRole == domain.RoleMember || userRole == domain.RoleAdmin
+	case domain.RoleAdmin:
+		return userRole == domain.RoleAdmin
+	default:
+		return false
+	}
+}
+
+// NewWorkplaceServiceLegacy creates a workplace service with legacy signature
+// Provided for backward compatibility
+func NewWorkplaceServiceLegacy(wr portsrepo.WorkplaceRepositoryFacade, cr portsrepo.CurrencyRepositoryFacade) portssvc.WorkplaceSvcFacade {
+	return NewWorkplaceService(wr, cr)
+}
+
+// ListWorkplaceUsers retrieves all users and their roles for a specific workplace
+func (s *workplaceService) ListWorkplaceUsers(ctx context.Context, workplaceID string, requestingUserID string) ([]domain.UserWorkplace, error) {
+	// First, check if the requesting user is authorized to view the workplace's members
+	// (must be a member of the workplace)
+	err := s.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleMember)
+	if err != nil {
+		s.LogError(ctx, err, "User not authorized to list workplace users",
+			slog.String("user_id", requestingUserID),
+			slog.String("workplace_id", workplaceID))
+		return nil, err
+	}
+
+	// Retrieve the list of users from the repository
+	userWorkplaces, err := s.workplaceRepo.ListUsersByWorkplaceID(ctx, workplaceID)
+	if err != nil {
+		s.LogError(ctx, err, "Failed to list users for workplace",
+			slog.String("workplace_id", workplaceID))
+		return nil, err
+	}
+
+	s.LogDebug(ctx, "Listed users for workplace successfully",
+		slog.String("workplace_id", workplaceID),
+		slog.Int("user_count", len(userWorkplaces)))
+
+	return userWorkplaces, nil
+}
+
+// RemoveUserFromWorkplace marks a user as removed in a workplace without deleting the record
+// Only workplace admins can remove users from a workplace
+func (s *workplaceService) RemoveUserFromWorkplace(ctx context.Context, requestingUserID, targetUserID, workplaceID string) error {
+	// Simply call UpdateUserWorkplaceRole with the REMOVED role
+	return s.UpdateUserWorkplaceRole(ctx, requestingUserID, targetUserID, workplaceID, domain.RoleRemoved)
+}
+
+// UpdateUserWorkplaceRole updates a user's role in a workplace
+// Only admin users can update user roles
+func (s *workplaceService) UpdateUserWorkplaceRole(ctx context.Context, requestingUserID, targetUserID, workplaceID string, newRole domain.UserWorkplaceRole) error {
+	// Verify requesting user has admin rights
+	if err := s.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleAdmin); err != nil {
+		s.LogError(ctx, err, "User not authorized to update roles in workplace",
+			slog.String("requesting_user_id", requestingUserID),
+			slog.String("workplace_id", workplaceID))
+		return err
+	}
+
+	// Check if the target user exists in the workplace
+	currentMembership, err := s.workplaceRepo.FindUserWorkplaceRole(ctx, targetUserID, workplaceID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			s.LogDebug(ctx, "Target user not found in workplace",
+				slog.String("target_user_id", targetUserID),
+				slog.String("workplace_id", workplaceID))
+			return apperrors.ErrNotFound
+		}
+		s.LogError(ctx, err, "Failed to check target user workplace role",
+			slog.String("target_user_id", targetUserID),
+			slog.String("workplace_id", workplaceID))
+		return err
+	}
+
+	// If user is already removed and the new role is also REMOVED, return early
+	if currentMembership.Role == domain.RoleRemoved && newRole == domain.RoleRemoved {
+		s.LogDebug(ctx, "User is already marked as removed",
+			slog.String("target_user_id", targetUserID),
+			slog.String("workplace_id", workplaceID))
+		return nil
+	}
+
+	// If attempting to downgrade an admin, ensure there's at least one other admin
+	if currentMembership.Role == domain.RoleAdmin && newRole != domain.RoleAdmin {
+		// Check if there are other admins
+		admins, err := s.countAdminsInWorkplace(ctx, workplaceID)
+		if err != nil {
+			s.LogError(ctx, err, "Failed to count admins in workplace",
+				slog.String("workplace_id", workplaceID))
+			return err
+		}
+
+		if admins <= 1 {
+			s.LogDebug(ctx, "Cannot demote the last admin in workplace",
+				slog.String("target_user_id", targetUserID),
+				slog.String("workplace_id", workplaceID))
+			return fmt.Errorf("%w: cannot demote the last admin in workplace", apperrors.ErrValidation)
+		}
+	}
+
+	// If role hasn't changed, return early
+	if currentMembership.Role == newRole {
+		s.LogDebug(ctx, "User already has the requested role",
+			slog.String("target_user_id", targetUserID),
+			slog.String("workplace_id", workplaceID),
+			slog.String("role", string(newRole)))
+		return nil
+	}
+
+	// Update the user's role
+	if err := s.workplaceRepo.UpdateUserWorkplaceRole(ctx, targetUserID, workplaceID, newRole); err != nil {
+		s.LogError(ctx, err, "Failed to update user's role in workplace",
+			slog.String("target_user_id", targetUserID),
+			slog.String("workplace_id", workplaceID))
+		return err
+	}
+
+	// Log appropriate message based on the new role
+	if newRole == domain.RoleRemoved {
+		s.LogInfo(ctx, "User marked as removed from workplace",
+			slog.String("target_user_id", targetUserID),
+			slog.String("workplace_id", workplaceID),
+			slog.String("updated_by", requestingUserID))
+	} else if currentMembership.Role == domain.RoleRemoved {
+		s.LogInfo(ctx, "User reinstated to workplace with new role",
+			slog.String("target_user_id", targetUserID),
+			slog.String("workplace_id", workplaceID),
+			slog.String("new_role", string(newRole)),
+			slog.String("updated_by", requestingUserID))
+	} else {
+		s.LogInfo(ctx, "User role updated successfully",
+			slog.String("target_user_id", targetUserID),
+			slog.String("workplace_id", workplaceID),
+			slog.String("new_role", string(newRole)),
+			slog.String("updated_by", requestingUserID))
+	}
+
+	return nil
+}
+
+// countAdminsInWorkplace counts the number of admin users in a workplace
+func (s *workplaceService) countAdminsInWorkplace(ctx context.Context, workplaceID string) (int, error) {
+	// Get all users in the workplace (including those marked as REMOVED, as we need to check all users)
+	users, err := s.workplaceRepo.ListUsersByWorkplaceID(ctx, workplaceID, true)
+	if err != nil {
+		return 0, err
+	}
+
+	// Count admin users (don't count REMOVED users as admins even if they were admins)
+	count := 0
+	for _, user := range users {
+		if user.Role == domain.RoleAdmin {
+			count++
+		}
+	}
+
+	return count, nil
 }

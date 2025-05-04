@@ -172,8 +172,8 @@ func (m *MockWorkplaceService) AddUserToWorkplace(ctx context.Context, addingUse
 	return args.Error(0)
 }
 
-func (m *MockWorkplaceService) ListUserWorkplaces(ctx context.Context, userID string) ([]domain.Workplace, error) {
-	args := m.Called(ctx, userID)
+func (m *MockWorkplaceService) ListUserWorkplaces(ctx context.Context, userID string, includeDisabled bool) ([]domain.Workplace, error) {
+	args := m.Called(ctx, userID, includeDisabled)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -192,6 +192,37 @@ func (m *MockWorkplaceService) FindWorkplaceByID(ctx context.Context, workplaceI
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*domain.Workplace), args.Error(1)
+}
+
+func (m *MockWorkplaceService) DeactivateWorkplace(ctx context.Context, workplaceID string, requestingUserID string) error {
+	args := m.Called(ctx, workplaceID, requestingUserID)
+	return args.Error(0)
+}
+
+func (m *MockWorkplaceService) ActivateWorkplace(ctx context.Context, workplaceID string, requestingUserID string) error {
+	args := m.Called(ctx, workplaceID, requestingUserID)
+	return args.Error(0)
+}
+
+// Add ListWorkplaceUsers method to the mock
+func (m *MockWorkplaceService) ListWorkplaceUsers(ctx context.Context, workplaceID string, requestingUserID string) ([]domain.UserWorkplace, error) {
+	args := m.Called(ctx, workplaceID, requestingUserID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.UserWorkplace), args.Error(1)
+}
+
+// Add RemoveUserFromWorkplace method to the mock
+func (m *MockWorkplaceService) RemoveUserFromWorkplace(ctx context.Context, requestingUserID, targetUserID, workplaceID string) error {
+	args := m.Called(ctx, requestingUserID, targetUserID, workplaceID)
+	return args.Error(0)
+}
+
+// Add UpdateUserWorkplaceRole method to the mock
+func (m *MockWorkplaceService) UpdateUserWorkplaceRole(ctx context.Context, requestingUserID, targetUserID, workplaceID string, newRole domain.UserWorkplaceRole) error {
+	args := m.Called(ctx, requestingUserID, targetUserID, workplaceID, newRole)
+	return args.Error(0)
 }
 
 // --- Test Suite Setup ---

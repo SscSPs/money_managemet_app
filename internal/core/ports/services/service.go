@@ -48,9 +48,14 @@ type JournalService interface {
 type WorkplaceService interface {
 	CreateWorkplace(ctx context.Context, name, description, defaultCurrencyCode, creatorUserID string) (*domain.Workplace, error)
 	AddUserToWorkplace(ctx context.Context, addingUserID, targetUserID, workplaceID string, role domain.UserWorkplaceRole) error
-	ListUserWorkplaces(ctx context.Context, userID string) ([]domain.Workplace, error)
+	ListUserWorkplaces(ctx context.Context, userID string, includeDisabled bool) ([]domain.Workplace, error)
 	AuthorizeUserAction(ctx context.Context, userID, workplaceID string, requiredRole domain.UserWorkplaceRole) error
 	FindWorkplaceByID(ctx context.Context, workplaceID string) (*domain.Workplace, error)
+	DeactivateWorkplace(ctx context.Context, workplaceID string, requestingUserID string) error
+	ActivateWorkplace(ctx context.Context, workplaceID string, requestingUserID string) error
+	ListWorkplaceUsers(ctx context.Context, workplaceID string, requestingUserID string) ([]domain.UserWorkplace, error)
+	RemoveUserFromWorkplace(ctx context.Context, requestingUserID, targetUserID, workplaceID string) error
+	UpdateUserWorkplaceRole(ctx context.Context, requestingUserID, targetUserID, workplaceID string, newRole domain.UserWorkplaceRole) error
 }
 
 // UserService defines the interface for user management logic.

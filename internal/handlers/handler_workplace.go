@@ -14,11 +14,11 @@ import (
 
 // workplaceHandler handles HTTP requests related to workplaces.
 type workplaceHandler struct {
-	workplaceService portssvc.WorkplaceService
+	workplaceService portssvc.WorkplaceSvcFacade
 }
 
 // newWorkplaceHandler creates a new workplaceHandler.
-func newWorkplaceHandler(ws portssvc.WorkplaceService) *workplaceHandler {
+func newWorkplaceHandler(ws portssvc.WorkplaceSvcFacade) *workplaceHandler {
 	return &workplaceHandler{
 		workplaceService: ws,
 	}
@@ -26,7 +26,7 @@ func newWorkplaceHandler(ws portssvc.WorkplaceService) *workplaceHandler {
 
 // registerWorkplaceRoutes registers routes related to workplaces and their members.
 // It now also registers JOURNAL and ACCOUNT routes nested under a specific workplace.
-func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService portssvc.WorkplaceService, journalService portssvc.JournalService, accountService portssvc.AccountService) {
+func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService portssvc.WorkplaceSvcFacade, journalService portssvc.JournalService, accountService portssvc.AccountService) {
 	h := newWorkplaceHandler(workplaceService)
 
 	// Routes for managing workplaces themselves (e.g., creating, listing user's workplaces)
@@ -39,15 +39,15 @@ func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService portssvc.Work
 	// Routes specific to a single workplace (identified by workplace_id)
 	workplaceSpecific := rg.Group("/workplaces/:workplace_id")
 	{
-		// TODO: Add GET /workplaces/:workplace_id to get details?
-		// TODO: Add PUT /workplaces/:workplace_id to update?
-		// TODO: Add DELETE /workplaces/:workplace_id?
+		// Status management endpoints
+		workplaceSpecific.POST("/deactivate", h.deactivateWorkplace)
+		workplaceSpecific.POST("/activate", h.activateWorkplace)
 
 		// Manage users within a workplace
 		workplaceUsers := workplaceSpecific.Group("/users")
 		{
+			workplaceUsers.GET("", h.listWorkplaceUsers) // New endpoint to list users in the workplace
 			workplaceUsers.POST("", h.addUserToWorkplace)
-			// TODO: Add GET /users to list users in the workplace?
 			// TODO: Add DELETE /users/:user_id to remove a user?
 			// TODO: Add PUT /users/:user_id to change role?
 		}
@@ -115,6 +115,7 @@ func (h *workplaceHandler) createWorkplace(c *gin.Context) {
 // @Description Retrieves a list of workplaces the authenticated user belongs to.
 // @Tags workplaces
 // @Produce  json
+// @Param includeDisabled query bool false "Include disabled workplaces (default: false)"
 // @Success 200 {object} dto.ListWorkplacesResponse
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Failure 500 {object} map[string]string "Failed to list workplaces"
@@ -130,10 +131,17 @@ func (h *workplaceHandler) listUserWorkplaces(c *gin.Context) {
 		return
 	}
 
-	logger = logger.With(slog.String("user_id", userID))
-	logger.Info("Received request to list user's workplaces")
+	// Parse the includeDisabled query parameter
+	var params dto.ListUserWorkplacesParams
+	if err := c.ShouldBindQuery(&params); err != nil {
+		logger.Warn("Invalid query parameters", slog.String("error", err.Error()))
+		// Continue with defaults rather than rejecting the request
+	}
 
-	workplaces, err := h.workplaceService.ListUserWorkplaces(c.Request.Context(), userID)
+	logger = logger.With(slog.String("user_id", userID))
+	logger.Info("Received request to list user's workplaces", slog.Bool("include_disabled", params.IncludeDisabled))
+
+	workplaces, err := h.workplaceService.ListUserWorkplaces(c.Request.Context(), userID, params.IncludeDisabled)
 	if err != nil {
 		logger.Error("Failed to list workplaces from service", slog.String("error", err.Error()))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list workplaces"})
@@ -198,4 +206,154 @@ func (h *workplaceHandler) addUserToWorkplace(c *gin.Context) {
 
 	logger.Info("User added to workplace successfully")
 	c.Status(http.StatusNoContent)
+}
+
+// deactivateWorkplace godoc
+// @Summary Deactivate a workplace
+// @Description Marks a workplace as inactive (requires admin permission).
+// @Tags workplaces
+// @Accept  json
+// @Produce  json
+// @Param   workplace_id path string true "Workplace ID"
+// @Param   request body dto.DeactivateWorkplaceRequest false "Deactivation details (optional)"
+// @Success 204 "No Content"
+// @Failure 400 {object} map[string]string "Invalid input"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 403 {object} map[string]string "Forbidden (caller is not admin)"
+// @Failure 404 {object} map[string]string "Workplace not found"
+// @Failure 500 {object} map[string]string "Failed to deactivate workplace"
+// @Security BearerAuth
+// @Router /workplaces/{workplace_id}/deactivate [post]
+func (h *workplaceHandler) deactivateWorkplace(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	workplaceID := c.Param("workplace_id")
+
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		logger.Error("User ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	// Optional: Parse request body if needed in the future
+	var req dto.DeactivateWorkplaceRequest
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
+		logger.Warn("Failed to bind JSON for DeactivateWorkplace", slog.String("error", err.Error()))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format: " + err.Error()})
+		return
+	}
+
+	logger = logger.With(slog.String("user_id", userID), slog.String("workplace_id", workplaceID))
+	logger.Info("Received request to deactivate workplace")
+
+	err := h.workplaceService.DeactivateWorkplace(c.Request.Context(), workplaceID, userID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Deactivate workplace failed: Workplace not found or User not member")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Workplace not found or user not a member"})
+		} else if errors.Is(err, apperrors.ErrForbidden) {
+			logger.Warn("Deactivate workplace failed: User is not an admin")
+			c.JSON(http.StatusForbidden, gin.H{"error": "Only workplace admins can deactivate workplaces"})
+		} else {
+			logger.Error("Failed to deactivate workplace", slog.String("error", err.Error()))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to deactivate workplace"})
+		}
+		return
+	}
+
+	logger.Info("Workplace deactivated successfully")
+	c.Status(http.StatusNoContent)
+}
+
+// activateWorkplace godoc
+// @Summary Activate a workplace
+// @Description Marks a workplace as active (requires admin permission).
+// @Tags workplaces
+// @Accept  json
+// @Produce  json
+// @Param   workplace_id path string true "Workplace ID"
+// @Success 204 "No Content"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 403 {object} map[string]string "Forbidden (caller is not admin)"
+// @Failure 404 {object} map[string]string "Workplace not found"
+// @Failure 500 {object} map[string]string "Failed to activate workplace"
+// @Security BearerAuth
+// @Router /workplaces/{workplace_id}/activate [post]
+func (h *workplaceHandler) activateWorkplace(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	workplaceID := c.Param("workplace_id")
+
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		logger.Error("User ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	logger = logger.With(slog.String("user_id", userID), slog.String("workplace_id", workplaceID))
+	logger.Info("Received request to activate workplace")
+
+	err := h.workplaceService.ActivateWorkplace(c.Request.Context(), workplaceID, userID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Activate workplace failed: Workplace not found or User not member")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Workplace not found or user not a member"})
+		} else if errors.Is(err, apperrors.ErrForbidden) {
+			logger.Warn("Activate workplace failed: User is not an admin")
+			c.JSON(http.StatusForbidden, gin.H{"error": "Only workplace admins can activate workplaces"})
+		} else {
+			logger.Error("Failed to activate workplace", slog.String("error", err.Error()))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to activate workplace"})
+		}
+		return
+	}
+
+	logger.Info("Workplace activated successfully")
+	c.Status(http.StatusNoContent)
+}
+
+// listWorkplaceUsers godoc
+// @Summary List users in a workplace
+// @Description Retrieves a list of users and their roles in the specified workplace.
+// @Tags workplaces
+// @Produce json
+// @Param workplace_id path string true "Workplace ID"
+// @Success 200 {object} dto.ListWorkplaceUsersResponse
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 403 {object} map[string]string "Forbidden (caller is not a member)"
+// @Failure 404 {object} map[string]string "Workplace not found"
+// @Failure 500 {object} map[string]string "Failed to list workplace users"
+// @Security BearerAuth
+// @Router /workplaces/{workplace_id}/users [get]
+func (h *workplaceHandler) listWorkplaceUsers(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	workplaceID := c.Param("workplace_id")
+
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		logger.Error("User ID not found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	logger = logger.With(slog.String("user_id", userID), slog.String("workplace_id", workplaceID))
+	logger.Info("Received request to list workplace users")
+
+	users, err := h.workplaceService.ListWorkplaceUsers(c.Request.Context(), workplaceID, userID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("List workplace users failed: Workplace not found")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Workplace not found"})
+		} else if errors.Is(err, apperrors.ErrForbidden) {
+			logger.Warn("List workplace users failed: User is not a member")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You must be a member of this workplace to view its users"})
+		} else {
+			logger.Error("Failed to list workplace users", slog.String("error", err.Error()))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list workplace users"})
+		}
+		return
+	}
+
+	logger.Info("Workplace users listed successfully", slog.Int("count", len(users)))
+	c.JSON(http.StatusOK, dto.ToListWorkplaceUsersResponse(users))
 }
