@@ -12,6 +12,8 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/models" // Assuming journal_id is UUID
+	"github.com/SscSPs/money_managemet_app/internal/utils/accounting"
+	"github.com/SscSPs/money_managemet_app/internal/utils/mapping"
 	"github.com/SscSPs/money_managemet_app/internal/utils/pagination"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,126 +26,19 @@ type PgxJournalRepository struct {
 }
 
 // newPgxJournalRepository creates a new repository for journal and transaction data.
-func newPgxJournalRepository(pool *pgxpool.Pool, accountRepo portsrepo.AccountRepository) portsrepo.JournalRepository {
+func newPgxJournalRepository(pool *pgxpool.Pool, accountRepo portsrepo.AccountRepository) portsrepo.JournalRepositoryFacade {
 	return &PgxJournalRepository{
 		pool:        pool,
 		accountRepo: accountRepo,
 	}
 }
 
-// Ensure PgxJournalRepository implements portsrepo.JournalRepository
-var _ portsrepo.JournalRepository = (*PgxJournalRepository)(nil)
-
-// --- Mapping Helpers ---
-func toModelJournal(d domain.Journal) models.Journal {
-	return models.Journal{
-		JournalID:          d.JournalID,
-		WorkplaceID:        d.WorkplaceID,
-		JournalDate:        d.JournalDate,
-		Description:        d.Description,
-		CurrencyCode:       d.CurrencyCode,
-		Status:             models.JournalStatus(d.Status),
-		OriginalJournalID:  d.OriginalJournalID,
-		ReversingJournalID: d.ReversingJournalID,
-		Amount:             d.Amount,
-		AuditFields: models.AuditFields{
-			CreatedAt:     d.CreatedAt,
-			CreatedBy:     d.CreatedBy,
-			LastUpdatedAt: d.LastUpdatedAt,
-			LastUpdatedBy: d.LastUpdatedBy,
-		},
-	}
-}
-
-func toDomainJournal(m models.Journal) domain.Journal {
-	return domain.Journal{
-		JournalID:          m.JournalID,
-		WorkplaceID:        m.WorkplaceID,
-		JournalDate:        m.JournalDate,
-		Description:        m.Description,
-		CurrencyCode:       m.CurrencyCode,
-		Status:             domain.JournalStatus(m.Status),
-		OriginalJournalID:  m.OriginalJournalID,
-		ReversingJournalID: m.ReversingJournalID,
-		Amount:             m.Amount,
-		AuditFields: domain.AuditFields{
-			CreatedAt:     m.CreatedAt,
-			CreatedBy:     m.CreatedBy,
-			LastUpdatedAt: m.LastUpdatedAt,
-			LastUpdatedBy: m.LastUpdatedBy,
-		},
-	}
-}
-
-func toModelTransaction(d domain.Transaction) models.Transaction {
-	return models.Transaction{
-		TransactionID:   d.TransactionID,
-		JournalID:       d.JournalID,
-		AccountID:       d.AccountID,
-		Amount:          d.Amount,
-		TransactionType: models.TransactionType(d.TransactionType),
-		CurrencyCode:    d.CurrencyCode,
-		Notes:           d.Notes,
-		AuditFields: models.AuditFields{
-			CreatedAt:     d.CreatedAt,
-			CreatedBy:     d.CreatedBy,
-			LastUpdatedAt: d.LastUpdatedAt,
-			LastUpdatedBy: d.LastUpdatedBy,
-		},
-		// RunningBalance is set during save
-	}
-}
-
-func toDomainTransaction(m models.Transaction) domain.Transaction {
-	return domain.Transaction{
-		TransactionID:   m.TransactionID,
-		JournalID:       m.JournalID,
-		AccountID:       m.AccountID,
-		Amount:          m.Amount,
-		TransactionType: domain.TransactionType(m.TransactionType),
-		CurrencyCode:    m.CurrencyCode,
-		Notes:           m.Notes,
-		AuditFields: domain.AuditFields{
-			CreatedAt:     m.CreatedAt,
-			CreatedBy:     m.CreatedBy,
-			LastUpdatedAt: m.LastUpdatedAt,
-			LastUpdatedBy: m.LastUpdatedBy,
-		},
-		RunningBalance: m.RunningBalance,
-	}
-}
-
-func toDomainTransactionSlice(ms []models.Transaction) []domain.Transaction {
-	ds := make([]domain.Transaction, len(ms))
-	for i, m := range ms {
-		ds[i] = toDomainTransaction(m)
-	}
-	return ds
-}
-
-// --- End Mapping Helpers ---
+// Ensure PgxJournalRepository implements portsrepo.JournalRepositoryFacade
+var _ portsrepo.JournalRepositoryFacade = (*PgxJournalRepository)(nil)
 
 // getSignedAmountInternal calculates the signed amount for a transaction based on account type.
-// This is an internal helper duplicating the logic from journalService to be used within the transaction boundary.
-// NOTE: Consider refactoring this logic into a shared utility or finding a way to use the service's method
-// without creating circular dependencies or needing service instances here.
 func getSignedAmountInternal(txn domain.Transaction, accountType domain.AccountType) (decimal.Decimal, error) {
-	signedAmount := txn.Amount
-	isDebit := txn.TransactionType == domain.Debit
-
-	switch accountType {
-	case domain.Asset, domain.Expense:
-		if !isDebit { // Credit to Asset/Expense
-			signedAmount = signedAmount.Neg()
-		}
-	case domain.Liability, domain.Equity, domain.Income:
-		if isDebit { // Debit to Liability/Equity/Income
-			signedAmount = signedAmount.Neg()
-		}
-	default:
-		return decimal.Zero, fmt.Errorf("unknown account type '%s' encountered for account ID %s", accountType, txn.AccountID)
-	}
-	return signedAmount, nil
+	return accounting.CalculateSignedAmount(txn, accountType)
 }
 
 // SaveJournal saves a journal, updates account balances, and saves associated transactions within a DB transaction.
@@ -165,7 +60,7 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 	userID := journal.CreatedBy
 
 	// 1. Insert the Journal entry using the transaction tx
-	modelJournal := toModelJournal(journal)
+	modelJournal := mapping.ToModelJournal(journal)
 	journalQuery := `
 		INSERT INTO journals (
 			journal_id, workplace_id, journal_date, description, currency_code, status, 
@@ -230,7 +125,7 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 
 	// For now, we process in the order received.
 	for _, txn := range transactions {
-		modelTxn := toModelTransaction(txn)
+		modelTxn := mapping.ToModelTransaction(txn)
 		modelTxn.CreatedAt = now
 		modelTxn.LastUpdatedAt = now
 		modelTxn.CreatedBy = userID
@@ -332,7 +227,7 @@ func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID st
 		modelJournal.ReversingJournalID = &reversingID.String
 	}
 
-	domainJournal := toDomainJournal(modelJournal)
+	domainJournal := mapping.ToDomainJournal(modelJournal)
 	return &domainJournal, nil
 }
 
@@ -377,17 +272,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, 
 		return nil, fmt.Errorf("error iterating transaction rows for journal %s: %w", journalID, err)
 	}
 
-	return toDomainTransactionSlice(transactions), nil
-}
-
-// encodeTransactionToken creates a base64 encoded token from a transaction's journal date and creation time.
-func encodeTransactionToken(journalDate time.Time, createdAt time.Time) string {
-	return pagination.EncodeToken(journalDate, createdAt)
-}
-
-// decodeTransactionToken parses the base64 encoded token back into journal date and creation time.
-func decodeTransactionToken(token string) (time.Time, time.Time, error) {
-	return pagination.DecodeToken(token)
+	return mapping.ToDomainTransactionSlice(transactions), nil
 }
 
 // ListTransactionsByAccountID retrieves a paginated list of transactions for a specific account using token-based pagination.
@@ -510,7 +395,7 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 	}
 
 	// Convert models to domain objects
-	return toDomainTransactionSlice(results), nextTokenVal, nil
+	return mapping.ToDomainTransactionSlice(results), nextTokenVal, nil
 }
 
 // ListJournalsByWorkplace retrieves a paginated list of journals for a specific workplace using token-based pagination.
@@ -639,7 +524,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 	// Convert models to domain objects
 	domainJournals := make([]domain.Journal, len(results))
 	for i, m := range results {
-		domainJournals[i] = toDomainJournal(m)
+		domainJournals[i] = mapping.ToDomainJournal(m)
 	}
 
 	return domainJournals, nextTokenVal, nil
@@ -694,7 +579,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context,
 			modelTxn.RunningBalance = decimal.Zero // Assign default value if null
 		}
 
-		domainTxn := toDomainTransaction(modelTxn) // Includes RunningBalance now
+		domainTxn := mapping.ToDomainTransaction(modelTxn) // Includes RunningBalance now
 		transactionsMap[domainTxn.JournalID] = append(transactionsMap[domainTxn.JournalID], domainTxn)
 	}
 
@@ -749,7 +634,7 @@ func (r *PgxJournalRepository) UpdateJournalStatusAndLinks(ctx context.Context, 
 
 // UpdateJournal updates non-transaction details of a journal entry.
 func (r *PgxJournalRepository) UpdateJournal(ctx context.Context, journal domain.Journal) error {
-	modelJournal := toModelJournal(journal)
+	modelJournal := mapping.ToModelJournal(journal)
 
 	query := `
 		UPDATE journals

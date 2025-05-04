@@ -16,7 +16,7 @@ type RepositoryProvider struct {
 	CurrencyRepo     CurrencyRepository
 	ExchangeRateRepo ExchangeRateRepository
 	UserRepo         UserRepository
-	JournalRepo      JournalRepository
+	JournalRepo      JournalRepositoryFacade
 	WorkplaceRepo    WorkplaceRepository
 }
 
@@ -36,36 +36,6 @@ type AccountRepository interface {
 	// It expects a map of accountID to the *change* in balance (delta).
 	UpdateAccountBalancesInTx(ctx context.Context, tx pgx.Tx, balanceChanges map[string]decimal.Decimal, userID string, now time.Time) error
 	DeactivateAccount(ctx context.Context, accountID string, userID string, now time.Time) error
-}
-
-// JournalRepository defines the persistence operations for Journals and their Transactions.
-// Saving a Journal implies saving its associated Transactions atomically.
-type JournalRepository interface {
-	// SaveJournal persists a journal and its transactions, updating account balances within a transaction.
-	SaveJournal(ctx context.Context, journal domain.Journal, transactions []domain.Transaction, balanceChanges map[string]decimal.Decimal) error
-
-	// FindJournalByID retrieves a specific journal by its unique identifier.
-	FindJournalByID(ctx context.Context, journalID string) (*domain.Journal, error)
-
-	// ListJournalsByWorkplace retrieves a paginated list of journals for a given workplace using token-based pagination.
-	// It returns the journals, a token for the next page, and an error.
-	ListJournalsByWorkplace(ctx context.Context, workplaceID string, limit int, nextToken *string, includeReversals bool) ([]domain.Journal, *string, error)
-
-	// FindTransactionsByJournalID retrieves all transactions associated with a single journal ID.
-	FindTransactionsByJournalID(ctx context.Context, journalID string) ([]domain.Transaction, error)
-
-	// FindTransactionsByJournalIDs retrieves transactions for multiple journal IDs, grouped by journal ID.
-	FindTransactionsByJournalIDs(ctx context.Context, journalIDs []string) (map[string][]domain.Transaction, error)
-
-	// ListTransactionsByAccountID retrieves a paginated list of transactions for a specific account using token-based pagination.
-	// It returns the transactions, a token for the next page, and an error.
-	ListTransactionsByAccountID(ctx context.Context, workplaceID, accountID string, limit int, nextToken *string) ([]domain.Transaction, *string, error)
-
-	// UpdateJournalStatusAndLinks updates the status and reversal linkage (original/reversing IDs) of a journal.
-	UpdateJournalStatusAndLinks(ctx context.Context, journalID string, status domain.JournalStatus, reversingJournalID *string, originalJournalID *string, updatedByUserID string, updatedAt time.Time) error
-
-	// UpdateJournal updates non-status fields of a journal (like description, date).
-	UpdateJournal(ctx context.Context, journal domain.Journal) error
 }
 
 // CurrencyRepository defines persistence operations for Currencies.

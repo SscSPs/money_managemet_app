@@ -30,13 +30,13 @@ var (
 // journalService provides core journal and transaction operations.
 type journalService struct {
 	accountSvc   portssvc.AccountService
-	journalRepo  portsrepo.JournalRepository
+	journalRepo  portsrepo.JournalRepositoryFacade
 	workplaceSvc portssvc.WorkplaceService // Added for authorization checks
 	// userRepo portsrepo.UserRepository
 }
 
 // NewJournalService creates a new JournalService.
-func NewJournalService(journalRepo portsrepo.JournalRepository, accountSvc portssvc.AccountService, workplaceSvc portssvc.WorkplaceService) portssvc.JournalService {
+func NewJournalService(journalRepo portsrepo.JournalRepositoryFacade, accountSvc portssvc.AccountService, workplaceSvc portssvc.WorkplaceService) portssvc.JournalService {
 	return &journalService{
 		accountSvc:   accountSvc,
 		journalRepo:  journalRepo,

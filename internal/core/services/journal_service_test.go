@@ -7,6 +7,7 @@ import (
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
+	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
@@ -21,6 +22,9 @@ import (
 type MockJournalRepository struct {
 	mock.Mock
 }
+
+// Ensure MockJournalRepository implements portsrepo.JournalRepositoryFacade
+var _ portsrepo.JournalRepositoryFacade = (*MockJournalRepository)(nil)
 
 func (m *MockJournalRepository) SaveJournal(ctx context.Context, journal domain.Journal, transactions []domain.Transaction, balanceChanges map[string]decimal.Decimal) error {
 	args := m.Called(ctx, journal, transactions, balanceChanges)
@@ -194,7 +198,7 @@ func (m *MockWorkplaceService) FindWorkplaceByID(ctx context.Context, workplaceI
 type JournalServiceTestSuite struct {
 	suite.Suite
 	mockJournalRepo  *MockJournalRepository
-	mockAccountRepo  *MockAccountService2
+	mockAccountSvc   *MockAccountService2
 	mockWorkplaceSvc *MockWorkplaceService
 	service          portssvc.JournalService
 	assetAccount     domain.Account
@@ -207,9 +211,9 @@ type JournalServiceTestSuite struct {
 
 func (suite *JournalServiceTestSuite) SetupTest() {
 	suite.mockJournalRepo = new(MockJournalRepository)
-	suite.mockAccountRepo = new(MockAccountService2)
+	suite.mockAccountSvc = new(MockAccountService2)
 	suite.mockWorkplaceSvc = new(MockWorkplaceService)
-	suite.service = services.NewJournalService(suite.mockJournalRepo, suite.mockAccountRepo, suite.mockWorkplaceSvc)
+	suite.service = services.NewJournalService(suite.mockJournalRepo, suite.mockAccountSvc, suite.mockWorkplaceSvc)
 
 	suite.workplaceID = uuid.NewString()
 	suite.userID = uuid.NewString()
@@ -266,7 +270,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_Success() {
 		suite.assetAccount.AccountID:     suite.assetAccount,
 		suite.liabilityAccount.AccountID: suite.liabilityAccount, // Use liability account
 	}
-	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, []string{suite.assetAccount.AccountID, suite.liabilityAccount.AccountID}).Return(accountsMap, nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, []string{suite.assetAccount.AccountID, suite.liabilityAccount.AccountID}).Return(accountsMap, nil).Once()
 
 	// Mock saving journal
 	suite.mockJournalRepo.On("SaveJournal", ctx, mock.AnythingOfType("domain.Journal"), mock.AnythingOfType("[]domain.Transaction"), mock.AnythingOfType("map[string]decimal.Decimal")).Return(nil).Once()
@@ -283,7 +287,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_Success() {
 	suite.Nil(createdJournal.Transactions) // Service should return journal without transactions populated
 
 	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
-	suite.mockAccountRepo.AssertExpectations(suite.T())
+	suite.mockAccountSvc.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
 }
 
@@ -299,7 +303,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_AuthorizationFail() {
 	suite.Require().Error(err)
 	suite.ErrorIs(err, authErr)
 	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
-	suite.mockAccountRepo.AssertNotCalled(suite.T(), "GetAccountByIDs", mock.Anything, mock.Anything, mock.Anything)
+	suite.mockAccountSvc.AssertNotCalled(suite.T(), "GetAccountByIDs", mock.Anything, mock.Anything, mock.Anything)
 	suite.mockJournalRepo.AssertNotCalled(suite.T(), "SaveJournal", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
@@ -346,14 +350,14 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_FindAccountsError() {
 	}
 	repoErr := assert.AnError
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(nil, repoErr).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(nil, repoErr).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), repoErr.Error())
 	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
-	suite.mockAccountRepo.AssertExpectations(suite.T())
+	suite.mockAccountSvc.AssertExpectations(suite.T())
 }
 
 func (suite *JournalServiceTestSuite) TestCreateJournal_AccountNotFound() {
@@ -371,14 +375,14 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_AccountNotFound() {
 		// unknownAccountID is missing
 	}
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
 	suite.Require().Error(err)
 	suite.ErrorIs(err, services.ErrAccountNotFound)
 	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
-	suite.mockAccountRepo.AssertExpectations(suite.T())
+	suite.mockAccountSvc.AssertExpectations(suite.T())
 }
 
 func (suite *JournalServiceTestSuite) TestCreateJournal_AccountWrongWorkplace() {
@@ -402,14 +406,14 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_AccountWrongWorkplace() 
 		wrongWorkplaceAccount.AccountID: wrongWorkplaceAccount,
 	}
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
 	suite.Require().Error(err)
 	suite.ErrorIs(err, services.ErrAccountNotFound) // Should be treated as not found in this workplace
 	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
-	suite.mockAccountRepo.AssertExpectations(suite.T())
+	suite.mockAccountSvc.AssertExpectations(suite.T())
 }
 
 func (suite *JournalServiceTestSuite) TestCreateJournal_AccountInactive() {
@@ -433,14 +437,14 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_AccountInactive() {
 		inactiveAccount.AccountID:    inactiveAccount,
 	}
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
 	suite.Require().Error(err)
 	suite.ErrorIs(err, apperrors.ErrValidation)
 	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
-	suite.mockAccountRepo.AssertExpectations(suite.T())
+	suite.mockAccountSvc.AssertExpectations(suite.T())
 }
 
 func (suite *JournalServiceTestSuite) TestCreateJournal_CurrencyMismatch() {
@@ -464,14 +468,14 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_CurrencyMismatch() {
 		mismatchCurrencyAccount.AccountID: mismatchCurrencyAccount,
 	}
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
 	suite.Require().Error(err)
 	suite.ErrorIs(err, services.ErrCurrencyMismatch)
 	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
-	suite.mockAccountRepo.AssertExpectations(suite.T())
+	suite.mockAccountSvc.AssertExpectations(suite.T())
 }
 
 func (suite *JournalServiceTestSuite) TestCreateJournal_Unbalanced() {
@@ -488,14 +492,14 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_Unbalanced() {
 		suite.incomeAccount.AccountID: suite.incomeAccount,
 	}
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 
 	suite.Require().Error(err)
 	suite.ErrorIs(err, services.ErrJournalUnbalanced)
 	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
-	suite.mockAccountRepo.AssertExpectations(suite.T())
+	suite.mockAccountSvc.AssertExpectations(suite.T())
 }
 
 func (suite *JournalServiceTestSuite) TestCreateJournal_SaveError() {
@@ -514,7 +518,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_SaveError() {
 	}
 	repoErr := assert.AnError
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountRepo.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
 	// Expect SaveJournal AFTER successful validation
 	suite.mockJournalRepo.On("SaveJournal", ctx, mock.Anything, mock.Anything, mock.Anything).Return(repoErr).Once()
 
@@ -524,7 +528,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_SaveError() {
 	// Now the error should be the one returned by SaveJournal
 	suite.Contains(err.Error(), repoErr.Error())
 	suite.mockWorkplaceSvc.AssertExpectations(suite.T())
-	suite.mockAccountRepo.AssertExpectations(suite.T())
+	suite.mockAccountSvc.AssertExpectations(suite.T())
 	suite.mockJournalRepo.AssertExpectations(suite.T())
 }
 
