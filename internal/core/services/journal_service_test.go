@@ -91,7 +91,7 @@ func (m *MockJournalRepository) ListTransactionsByAccountID(ctx context.Context,
 	return args.Get(0).([]domain.Transaction), returnedNextToken, args.Error(2)
 }
 
-// --- Mock AccountRepository (as used by JournalService) ---
+// --- Mock AccountService (as used by JournalService) ---
 type MockAccountService2 struct {
 	mock.Mock
 }

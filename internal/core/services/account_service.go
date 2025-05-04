@@ -19,11 +19,11 @@ import (
 )
 
 type accountService struct {
-	AccountRepository portsrepo.AccountRepository
+	AccountRepository portsrepo.AccountRepositoryFacade
 	// Potentially add CurrencyRepository if validation is needed
 }
 
-func NewAccountService(repo portsrepo.AccountRepository) portssvc.AccountService { // Revert to concrete pointer type
+func NewAccountService(repo portsrepo.AccountRepositoryFacade) portssvc.AccountService { // Revert to concrete pointer type
 	return &accountService{AccountRepository: repo}
 }
 

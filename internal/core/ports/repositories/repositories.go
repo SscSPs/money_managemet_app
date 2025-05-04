@@ -5,14 +5,12 @@ import (
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
-	"github.com/jackc/pgx/v5"
-	"github.com/shopspring/decimal"
 )
 
 // RepositoryProvider holds all repository interfaces needed by services.
 // This makes passing dependencies to the service container constructor cleaner.
 type RepositoryProvider struct {
-	AccountRepo      AccountRepository
+	AccountRepo      AccountRepositoryFacade
 	CurrencyRepo     CurrencyRepository
 	ExchangeRateRepo ExchangeRateRepository
 	UserRepo         UserRepository
@@ -21,22 +19,6 @@ type RepositoryProvider struct {
 }
 
 // Note: Specific method signatures might evolve. Context is included for potential cancellation/timeouts.
-
-// AccountRepository defines the persistence operations for Accounts.
-type AccountRepository interface {
-	SaveAccount(ctx context.Context, account domain.Account) error
-	FindAccountByID(ctx context.Context, accountID string) (*domain.Account, error)
-	FindAccountsByIDs(ctx context.Context, accountIDs []string) (map[string]domain.Account, error)
-	// FindAccountsByIDsForUpdate selects accounts and locks them for update within a transaction.
-	// Requires the transaction (tx) as an argument.
-	FindAccountsByIDsForUpdate(ctx context.Context, tx pgx.Tx, accountIDs []string) (map[string]domain.Account, error)
-	ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error)
-	UpdateAccount(ctx context.Context, account domain.Account) error
-	// UpdateAccountBalancesInTx updates the balance for multiple accounts within a given transaction.
-	// It expects a map of accountID to the *change* in balance (delta).
-	UpdateAccountBalancesInTx(ctx context.Context, tx pgx.Tx, balanceChanges map[string]decimal.Decimal, userID string, now time.Time) error
-	DeactivateAccount(ctx context.Context, accountID string, userID string, now time.Time) error
-}
 
 // CurrencyRepository defines persistence operations for Currencies.
 type CurrencyRepository interface {

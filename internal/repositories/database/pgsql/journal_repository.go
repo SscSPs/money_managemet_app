@@ -22,11 +22,11 @@ import (
 
 type PgxJournalRepository struct {
 	pool        *pgxpool.Pool
-	accountRepo portsrepo.AccountRepository
+	accountRepo portsrepo.AccountRepositoryFacade
 }
 
 // newPgxJournalRepository creates a new repository for journal and transaction data.
-func newPgxJournalRepository(pool *pgxpool.Pool, accountRepo portsrepo.AccountRepository) portsrepo.JournalRepositoryFacade {
+func newPgxJournalRepository(pool *pgxpool.Pool, accountRepo portsrepo.AccountRepositoryFacade) portsrepo.JournalRepositoryFacade {
 	return &PgxJournalRepository{
 		pool:        pool,
 		accountRepo: accountRepo,

@@ -19,18 +19,18 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// MockAccountRepository is a mock type for the AccountRepository interface
-// --- Mock AccountRepository ---
-type MockAccountRepository struct {
+// MockAccountRepositoryFacade is a mock type for the AccountRepositoryFacade interface
+// --- Mock AccountRepositoryFacade ---
+type MockAccountRepositoryFacade struct {
 	mock.Mock
 }
 
-func (m *MockAccountRepository) SaveAccount(ctx context.Context, account domain.Account) error {
+func (m *MockAccountRepositoryFacade) SaveAccount(ctx context.Context, account domain.Account) error {
 	args := m.Called(ctx, account)
 	return args.Error(0)
 }
 
-func (m *MockAccountRepository) FindAccountByID(ctx context.Context, accountID string) (*domain.Account, error) {
+func (m *MockAccountRepositoryFacade) FindAccountByID(ctx context.Context, accountID string) (*domain.Account, error) {
 	args := m.Called(ctx, accountID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -38,7 +38,7 @@ func (m *MockAccountRepository) FindAccountByID(ctx context.Context, accountID s
 	return args.Get(0).(*domain.Account), args.Error(1)
 }
 
-func (m *MockAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs []string) (map[string]domain.Account, error) {
+func (m *MockAccountRepositoryFacade) FindAccountsByIDs(ctx context.Context, accountIDs []string) (map[string]domain.Account, error) {
 	args := m.Called(ctx, accountIDs)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -47,7 +47,7 @@ func (m *MockAccountRepository) FindAccountsByIDs(ctx context.Context, accountID
 }
 
 // Mock for FindAccountsByIDsForUpdate
-func (m *MockAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, tx pgx.Tx, accountIDs []string) (map[string]domain.Account, error) {
+func (m *MockAccountRepositoryFacade) FindAccountsByIDsForUpdate(ctx context.Context, tx pgx.Tx, accountIDs []string) (map[string]domain.Account, error) {
 	// Note: Mocking the pgx.Tx might be tricky or unnecessary depending on test focus.
 	// Often, you might assert this is called but not deeply mock the transaction itself.
 	// Passing mock.Anything for tx might be suitable in many cases.
@@ -58,7 +58,7 @@ func (m *MockAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, 
 	return args.Get(0).(map[string]domain.Account), args.Error(1)
 }
 
-func (m *MockAccountRepository) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
+func (m *MockAccountRepositoryFacade) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
 	args := m.Called(ctx, workplaceID, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -66,18 +66,18 @@ func (m *MockAccountRepository) ListAccounts(ctx context.Context, workplaceID st
 	return args.Get(0).([]domain.Account), args.Error(1)
 }
 
-func (m *MockAccountRepository) UpdateAccount(ctx context.Context, account domain.Account) error {
+func (m *MockAccountRepositoryFacade) UpdateAccount(ctx context.Context, account domain.Account) error {
 	args := m.Called(ctx, account)
 	return args.Error(0)
 }
 
 // Mock for UpdateAccountBalancesInTx
-func (m *MockAccountRepository) UpdateAccountBalancesInTx(ctx context.Context, tx pgx.Tx, balanceChanges map[string]decimal.Decimal, userID string, now time.Time) error {
+func (m *MockAccountRepositoryFacade) UpdateAccountBalancesInTx(ctx context.Context, tx pgx.Tx, balanceChanges map[string]decimal.Decimal, userID string, now time.Time) error {
 	args := m.Called(ctx, tx, balanceChanges, userID, now)
 	return args.Error(0)
 }
 
-func (m *MockAccountRepository) DeactivateAccount(ctx context.Context, accountID string, userID string, now time.Time) error {
+func (m *MockAccountRepositoryFacade) DeactivateAccount(ctx context.Context, accountID string, userID string, now time.Time) error {
 	args := m.Called(ctx, accountID, userID, now)
 	return args.Error(0)
 }
@@ -86,12 +86,12 @@ func (m *MockAccountRepository) DeactivateAccount(ctx context.Context, accountID
 
 type AccountServiceTestSuite struct {
 	suite.Suite
-	mockRepo *MockAccountRepository
+	mockRepo *MockAccountRepositoryFacade
 	service  portssvc.AccountService
 }
 
 func (suite *AccountServiceTestSuite) SetupTest() {
-	suite.mockRepo = new(MockAccountRepository)
+	suite.mockRepo = new(MockAccountRepositoryFacade)
 	suite.service = services.NewAccountService(suite.mockRepo)
 }
 
