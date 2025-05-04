@@ -44,13 +44,13 @@ FOR EACH ROW EXECUTE FUNCTION update_last_updated_at_column();
 
 -- Account Types Enum (using CHECK constraint)
 -- Note: PostgreSQL also supports CREATE TYPE ... AS ENUM, which might be preferred.
--- CREATE TYPE account_type_enum AS ENUM ('ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE');
+-- CREATE TYPE account_type_enum AS ENUM ('ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE');
 
 -- Accounts table
 CREATE TABLE accounts (
     account_id VARCHAR(255) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    account_type VARCHAR(50) NOT NULL CHECK (account_type IN ('ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE')),
+    account_type VARCHAR(50) NOT NULL CHECK (account_type IN ('ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE')),
     currency_code VARCHAR(10) NOT NULL,
     parent_account_id VARCHAR(255),
     description TEXT,

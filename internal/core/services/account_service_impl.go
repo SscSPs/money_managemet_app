@@ -8,49 +8,49 @@ import (
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
-	"github.com/SscSPs/money_managemet_app/internal/core/domain" // Use domain types
+	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
-	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Added portssvc import
-	"github.com/SscSPs/money_managemet_app/internal/dto"                          // Import middleware for GetLoggerFromCtx
-	"github.com/google/uuid"                                                      // For generating AccountID
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
+	"github.com/SscSPs/money_managemet_app/internal/dto"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
-// accountService implements the AccountSvcFacade interface
-type accountService struct {
+// accountServiceImpl implements the AccountSvcFacade interface
+type accountServiceImpl struct {
 	BaseService
 	accountRepo      portsrepo.AccountRepositoryFacade
 	currencyRepo     portsrepo.CurrencyReader
 	workplaceService portssvc.WorkplaceReaderSvc
 }
 
-// AccountServiceOption is a functional option for configuring the account service
-type AccountServiceOption func(*accountService)
+// ServiceOption is a functional option for configuring the account service
+type ServiceOption func(*accountServiceImpl)
 
-// WithWorkplaceService adds workplace service dependency
-func WithWorkplaceService(svc portssvc.WorkplaceReaderSvc) AccountServiceOption {
-	return func(s *accountService) {
+// WithWorkplaceServiceImpl adds workplace service dependency
+func WithWorkplaceServiceImpl(svc portssvc.WorkplaceReaderSvc) ServiceOption {
+	return func(s *accountServiceImpl) {
 		s.workplaceService = svc
 	}
 }
 
-// WithWorkplaceAuthorizer adds workplace authorizer dependency
-func WithWorkplaceAuthorizer(authorizer portssvc.WorkplaceAuthorizerSvc) AccountServiceOption {
-	return func(s *accountService) {
+// WithWorkplaceAuthorizerImpl adds workplace authorizer dependency
+func WithWorkplaceAuthorizerImpl(authorizer portssvc.WorkplaceAuthorizerSvc) ServiceOption {
+	return func(s *accountServiceImpl) {
 		s.WorkplaceAuthorizer = authorizer
 	}
 }
 
-// WithCurrencyRepository adds currency repository dependency
-func WithCurrencyRepository(repo portsrepo.CurrencyReader) AccountServiceOption {
-	return func(s *accountService) {
+// WithCurrencyRepositoryImpl adds currency repository dependency
+func WithCurrencyRepositoryImpl(repo portsrepo.CurrencyReader) ServiceOption {
+	return func(s *accountServiceImpl) {
 		s.currencyRepo = repo
 	}
 }
 
-// NewAccountService creates a new account service with the provided options
-func NewAccountService(repo portsrepo.AccountRepositoryFacade, options ...AccountServiceOption) portssvc.AccountSvcFacade {
-	svc := &accountService{
+// NewAccountServiceImpl creates a new account service with the provided options
+func NewAccountServiceImpl(repo portsrepo.AccountRepositoryFacade, options ...ServiceOption) portssvc.AccountSvcFacade {
+	svc := &accountServiceImpl{
 		accountRepo: repo,
 	}
 
@@ -62,10 +62,10 @@ func NewAccountService(repo portsrepo.AccountRepositoryFacade, options ...Accoun
 	return svc
 }
 
-// Ensure accountService implements the AccountSvcFacade interface
-var _ portssvc.AccountSvcFacade = (*accountService)(nil)
+// Ensure accountServiceImpl implements the AccountSvcFacade interface
+var _ portssvc.AccountSvcFacade = (*accountServiceImpl)(nil)
 
-func (s *accountService) CreateAccount(ctx context.Context, workplaceID string, req dto.CreateAccountRequest, userID string) (*domain.Account, error) {
+func (s *accountServiceImpl) CreateAccount(ctx context.Context, workplaceID string, req dto.CreateAccountRequest, userID string) (*domain.Account, error) {
 	// Authorize user action
 	if err := s.AuthorizeUser(ctx, userID, workplaceID, domain.RoleMember); err != nil {
 		s.LogError(ctx, err, "User not authorized to create account",
@@ -137,7 +137,7 @@ func (s *accountService) CreateAccount(ctx context.Context, workplaceID string, 
 	return &account, nil
 }
 
-func (s *accountService) GetAccountByID(ctx context.Context, workplaceID string, accountID string) (*domain.Account, error) {
+func (s *accountServiceImpl) GetAccountByID(ctx context.Context, workplaceID string, accountID string) (*domain.Account, error) {
 	account, err := s.accountRepo.FindAccountByID(ctx, accountID)
 	if err != nil {
 		if !errors.Is(err, apperrors.ErrNotFound) {
@@ -163,7 +163,7 @@ func (s *accountService) GetAccountByID(ctx context.Context, workplaceID string,
 	return account, nil
 }
 
-func (s *accountService) GetAccountByIDs(ctx context.Context, workplaceID string, accountIDs []string) (map[string]domain.Account, error) {
+func (s *accountServiceImpl) GetAccountByIDs(ctx context.Context, workplaceID string, accountIDs []string) (map[string]domain.Account, error) {
 	accounts, err := s.accountRepo.FindAccountsByIDs(ctx, accountIDs)
 	if err != nil {
 		s.LogError(ctx, err, "Failed to find accounts by IDs",
@@ -185,8 +185,7 @@ func (s *accountService) GetAccountByIDs(ctx context.Context, workplaceID string
 	return accounts, nil
 }
 
-// ListAccounts retrieves a paginated list of active accounts for a specific workplace.
-func (s *accountService) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
+func (s *accountServiceImpl) ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error) {
 	accounts, err := s.accountRepo.ListAccounts(ctx, workplaceID, limit, offset)
 	if err != nil {
 		s.LogError(ctx, err, "Failed to list accounts",
@@ -206,8 +205,7 @@ func (s *accountService) ListAccounts(ctx context.Context, workplaceID string, l
 	return accounts, nil
 }
 
-// UpdateAccount updates specific fields of an existing account.
-func (s *accountService) UpdateAccount(ctx context.Context, workplaceID string, accountID string, req dto.UpdateAccountRequest, userID string) (*domain.Account, error) {
+func (s *accountServiceImpl) UpdateAccount(ctx context.Context, workplaceID string, accountID string, req dto.UpdateAccountRequest, userID string) (*domain.Account, error) {
 	// Fetch the existing account
 	account, err := s.GetAccountByID(ctx, workplaceID, accountID)
 	if err != nil {
@@ -252,8 +250,7 @@ func (s *accountService) UpdateAccount(ctx context.Context, workplaceID string, 
 	return account, nil
 }
 
-// DeactivateAccount marks an account as inactive (soft delete).
-func (s *accountService) DeactivateAccount(ctx context.Context, workplaceID string, accountID string, userID string) error {
+func (s *accountServiceImpl) DeactivateAccount(ctx context.Context, workplaceID string, accountID string, userID string) error {
 	// First verify that the account exists and belongs to the workplace
 	_, err := s.GetAccountByID(ctx, workplaceID, accountID)
 	if err != nil {
@@ -275,25 +272,7 @@ func (s *accountService) DeactivateAccount(ctx context.Context, workplaceID stri
 	return nil
 }
 
-/* // Removed the incorrect DeleteAccount implementation
-// DeleteAccount marks an account as inactive (soft delete).
-// Renamed from DeactivateAccount for consistency with handler.
-func (s *AccountService) DeleteAccount(ctx context.Context, accountID string, userID string) error {
-	...
-}
-*/
-
-/* // Commenting out the old DeactivateAccount - now handled above
-// DeactivateAccount marks an account as inactive.
-func (s *AccountService) DeactivateAccount(ctx context.Context, accountID string, userID string) error {
-	...
-}
-*/
-
-// CalculateAccountBalance calculates the current balance for a given account.
-// Now that balance is persisted on the account, this primarily reads the value.
-// The transaction-based calculation logic is kept commented for potential validation/reconciliation.
-func (s *accountService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
+func (s *accountServiceImpl) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
 	// First check if account exists and belongs to workplace
 	account, err := s.GetAccountByID(ctx, workplaceID, accountID)
 	if err != nil {
@@ -306,21 +285,4 @@ func (s *accountService) CalculateAccountBalance(ctx context.Context, workplaceI
 	// For now, just return the balance from the account object
 	// In a real implementation, we might calculate this from transactions
 	return account.Balance, nil
-
-	/* --- OLD CALCULATION LOGIC (Keep for reference/validation?) ---
-	logger.Warn("CalculateAccountBalance currently returns zero - IMPLEMENTATION NEEDED", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
-
-	// 1. Authorization: Check user can access workplaceID (maybe done implicitly if called by other authorized services)
-	// 2. Fetch account to verify it belongs to workplaceID (redundant if called after GetAccountByID?)
-	// 3. Fetch relevant transactions for the accountID within the workplaceID.
-	// 4. Sum transactions based on account type (debit/credit).
-	// 5. Return balance.
-
-	// --- TEMPORARY: Return zero and nil error --- \
-	// Replace this with actual calculation logic
-	return decimal.Zero, nil
-	// --- /TEMPORARY ---
-	*/
 }
-
-// Remove the outdated TODO

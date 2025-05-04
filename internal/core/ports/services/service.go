@@ -10,13 +10,16 @@ import (
 
 // ServiceContainer holds instances of all the application services.
 type ServiceContainer struct {
-	Account      AccountService
-	Currency     CurrencyService
-	ExchangeRate ExchangeRateService
-	User         UserService
-	Journal      JournalService
-	Workplace    WorkplaceService
+	Account      AccountSvcFacade
+	Currency     CurrencySvcFacade
+	ExchangeRate ExchangeRateSvcFacade
+	User         UserSvcFacade
+	Journal      JournalSvcFacade
+	Workplace    WorkplaceSvcFacade
 }
+
+// Legacy interfaces below - these will be replaced by the segmented interfaces
+// in account_services.go, journal_services.go, etc.
 
 // AccountService defines the interface for account-related business logic.
 type AccountService interface {
@@ -26,24 +29,17 @@ type AccountService interface {
 	ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error)
 	UpdateAccount(ctx context.Context, workplaceID string, accountID string, req dto.UpdateAccountRequest, userID string) (*domain.Account, error)
 	DeactivateAccount(ctx context.Context, workplaceID string, accountID string, userID string) error
-	CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) // Assuming balance calculation stays
+	CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error)
 }
 
 // JournalService defines the interface for journal-related business logic.
 type JournalService interface {
-	// Replaces PersistJournal
 	CreateJournal(ctx context.Context, workplaceID string, req dto.CreateJournalRequest, creatorUserID string) (*domain.Journal, error)
-	// Replaces GetJournalWithTransactions (just returns journal now)
 	GetJournalByID(ctx context.Context, workplaceID string, journalID string, requestingUserID string) (*domain.Journal, error)
-	// New method for listing journals in a workplace
 	ListJournals(ctx context.Context, workplaceID string, userID string, params dto.ListJournalsParams) (*dto.ListJournalsResponse, error)
-	// New method for updating journal details (excluding transactions)
 	UpdateJournal(ctx context.Context, workplaceID string, journalID string, req dto.UpdateJournalRequest, requestingUserID string) (*domain.Journal, error)
-	// New method for deactivating (soft deleting) a journal
 	DeactivateJournal(ctx context.Context, workplaceID string, journalID string, requestingUserID string) error
-	// New method for listing transactions for a specific account
 	ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, userID string, params dto.ListTransactionsParams) (*dto.ListTransactionsResponse, error)
-	// New method for calculating account balance
 	CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error)
 	ReverseJournal(ctx context.Context, workplaceID string, journalID string, userID string) (*domain.Journal, error)
 }
@@ -54,7 +50,7 @@ type WorkplaceService interface {
 	AddUserToWorkplace(ctx context.Context, addingUserID, targetUserID, workplaceID string, role domain.UserWorkplaceRole) error
 	ListUserWorkplaces(ctx context.Context, userID string) ([]domain.Workplace, error)
 	AuthorizeUserAction(ctx context.Context, userID, workplaceID string, requiredRole domain.UserWorkplaceRole) error
-	FindWorkplaceByID(ctx context.Context, workplaceID string) (*domain.Workplace, error) // Added for potential checks
+	FindWorkplaceByID(ctx context.Context, workplaceID string) (*domain.Workplace, error)
 }
 
 // UserService defines the interface for user management logic.
@@ -72,14 +68,12 @@ type CurrencyService interface {
 	CreateCurrency(ctx context.Context, req dto.CreateCurrencyRequest, creatorUserID string) (*domain.Currency, error)
 	GetCurrencyByCode(ctx context.Context, currencyCode string) (*domain.Currency, error)
 	ListCurrencies(ctx context.Context) ([]domain.Currency, error)
-	// Add methods for Exchange Rates if needed
 }
 
 // ExchangeRateService defines the interface for exchange rate logic.
 type ExchangeRateService interface {
 	CreateExchangeRate(ctx context.Context, req dto.CreateExchangeRateRequest, creatorUserID string) (*domain.ExchangeRate, error)
 	GetExchangeRate(ctx context.Context, fromCode, toCode string) (*domain.ExchangeRate, error)
-	// Add List method if needed later
 }
 
 // StaticDataService defines the interface for managing static data like currencies.

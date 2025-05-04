@@ -11,7 +11,7 @@ const (
 	Asset     AccountType = "ASSET"
 	Liability AccountType = "LIABILITY"
 	Equity    AccountType = "EQUITY"
-	Income    AccountType = "INCOME"
+	Revenue   AccountType = "REVENUE"
 	Expense   AccountType = "EXPENSE"
 )
 

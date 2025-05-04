@@ -10,7 +10,7 @@ import (
 // CreateAccountRequest defines the data needed to create a new account.
 type CreateAccountRequest struct {
 	Name            string             `json:"name" binding:"required"`
-	AccountType     domain.AccountType `json:"accountType" binding:"required,oneof=ASSET LIABILITY EQUITY INCOME EXPENSE"`
+	AccountType     domain.AccountType `json:"accountType" binding:"required,oneof=ASSET LIABILITY EQUITY REVENUE EXPENSE"`
 	CurrencyCode    string             `json:"currencyCode" binding:"required,iso4217"`
 	Description     string             `json:"description"`
 	ParentAccountID *string            `json:"parentAccountID,omitempty" binding:"omitempty,uuid"` // Optional, must be UUID if provided

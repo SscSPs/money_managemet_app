@@ -235,7 +235,7 @@ func (suite *JournalServiceTestSuite) SetupTest() {
 	suite.incomeAccount = domain.Account{
 		AccountID:    uuid.NewString(),
 		WorkplaceID:  suite.workplaceID,
-		AccountType:  domain.Income,
+		AccountType:  domain.Revenue,
 		CurrencyCode: "USD",
 		IsActive:     true,
 	}
@@ -257,8 +257,8 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_Success() {
 		Description:  "Test Journal Success",
 		CurrencyCode: "USD",
 		Transactions: []dto.CreateTransactionRequest{
-			{AccountID: suite.assetAccount.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit},     // +100
-			{AccountID: suite.liabilityAccount.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit}, // -100
+			{AccountID: suite.assetAccount.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit},      // Debit Asset
+			{AccountID: suite.liabilityAccount.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Credit}, // Credit Liability
 		},
 	}
 
@@ -509,7 +509,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_SaveError() {
 		Date:         time.Now(),
 		Transactions: []dto.CreateTransactionRequest{
 			{AccountID: suite.assetAccount.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit},
-			{AccountID: suite.liabilityAccount.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit}, // Use Debit Liability (-100) to balance Asset Debit (+100)
+			{AccountID: suite.liabilityAccount.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Credit},
 		},
 	}
 	accountsMap := map[string]domain.Account{

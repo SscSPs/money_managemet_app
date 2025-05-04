@@ -55,14 +55,14 @@ func (s *journalService) getSignedAmount(txn domain.Transaction, accountType dom
 	// Determine sign based on convention (PRD FR-M1-03)
 	// DEBIT to ASSET/EXPENSE -> Positive (+)
 	// CREDIT to ASSET/EXPENSE -> Negative (-)
-	// DEBIT to LIABILITY/EQUITY/INCOME -> Negative (-)
-	// CREDIT to LIABILITY/EQUITY/INCOME -> Positive (+)
+	// DEBIT to LIABILITY/EQUITY/REVENUE -> Negative (-)
+	// CREDIT to LIABILITY/EQUITY/REVENUE -> Positive (+)
 	switch accountType {
 	case domain.Asset, domain.Expense:
 		if !isDebit { // Credit to Asset/Expense
 			signedAmount = signedAmount.Neg()
 		}
-	case domain.Liability, domain.Equity, domain.Income:
+	case domain.Liability, domain.Equity, domain.Revenue:
 		if isDebit { // Debit to Liability/Equity/Income
 			signedAmount = signedAmount.Neg()
 		}
@@ -73,14 +73,18 @@ func (s *journalService) getSignedAmount(txn domain.Transaction, accountType dom
 	return signedAmount, nil
 }
 
-// validateJournalBalance checks if the transactions for a journal balance to zero.
+// validateJournalBalance checks if the transactions for a journal balance properly.
 func (s *journalService) validateJournalBalance(transactions []domain.Transaction, accountTypes map[string]domain.AccountType) error {
 	if len(transactions) < 2 {
 		return ErrJournalMinEntries
 	}
 
 	zero := decimal.NewFromInt(0)
-	sum := zero
+
+	// For double-entry accounting, the sum of debits should equal the sum of credits
+	// regardless of account type
+	debitsSum := zero
+	creditsSum := zero
 
 	for _, txn := range transactions {
 		// Ensure amount is positive (as per PRD)
@@ -88,30 +92,109 @@ func (s *journalService) validateJournalBalance(transactions []domain.Transactio
 			return fmt.Errorf("transaction amount must be positive for transaction ID %s", txn.TransactionID)
 		}
 
-		accountType, ok := accountTypes[txn.AccountID]
-		if !ok {
-			// This shouldn't happen if the calling function pre-fetches correctly
-			return fmt.Errorf("account type not found for account ID %s", txn.AccountID)
+		// Simply sum all debits and credits separately
+		if txn.TransactionType == domain.Debit {
+			debitsSum = debitsSum.Add(txn.Amount)
+		} else {
+			creditsSum = creditsSum.Add(txn.Amount)
 		}
-
-		signedAmount, err := s.getSignedAmount(txn, accountType)
-		if err != nil {
-			// Propagate error from getSignedAmount (e.g., unknown account type)
-			return fmt.Errorf("error calculating signed amount for transaction %s: %w", txn.TransactionID, err)
-		}
-
-		sum = sum.Add(signedAmount)
 	}
 
-	if !sum.Equal(zero) {
-		return fmt.Errorf("%w: sum is %s", ErrJournalUnbalanced, sum.String())
+	// Check if debits equal credits
+	if !debitsSum.Equal(creditsSum) {
+		return fmt.Errorf("%w: debits sum is %s and credits sum is %s",
+			ErrJournalUnbalanced, debitsSum.String(), creditsSum.String())
 	}
 
 	return nil
 }
 
-// calculateJournalAmount computes the total amount of a journal by summing all debit transactions
-func calculateJournalAmount(transactions []domain.Transaction) decimal.Decimal {
+// calculateJournalAmount computes the true economic value of a journal.
+// For a balanced journal with equal debit and credit sides,
+// we need to pick one side that represents the actual money movement.
+func (s *journalService) calculateJournalAmount(transactions []domain.Transaction, accountTypes map[string]domain.AccountType) decimal.Decimal {
+	if len(transactions) == 0 {
+		return decimal.Zero
+	}
+
+	// In double-entry accounting, for a balanced journal:
+	// - The sum of all debits equals the sum of all credits
+	// - The economic value of the transaction is the amount that changed hands
+
+	// We need to determine the "purpose" of the transaction to get the correct economic value
+
+	// Group transactions by account type to understand what's happening
+	expenseDebits := decimal.Zero
+	incomeCredits := decimal.Zero
+	assetDebits := decimal.Zero
+	assetCredits := decimal.Zero
+	liabilityDebits := decimal.Zero
+	liabilityCredits := decimal.Zero
+
+	// First classify all transactions
+	for _, txn := range transactions {
+		accountType, exists := accountTypes[txn.AccountID]
+		if !exists {
+			continue
+		}
+
+		isDebit := txn.TransactionType == domain.Debit
+
+		switch accountType {
+		case domain.Expense:
+			if isDebit {
+				expenseDebits = expenseDebits.Add(txn.Amount)
+			}
+		case domain.Revenue:
+			if !isDebit { // Credit
+				incomeCredits = incomeCredits.Add(txn.Amount)
+			}
+		case domain.Asset:
+			if isDebit {
+				assetDebits = assetDebits.Add(txn.Amount)
+			} else {
+				assetCredits = assetCredits.Add(txn.Amount)
+			}
+		case domain.Liability:
+			if isDebit {
+				liabilityDebits = liabilityDebits.Add(txn.Amount)
+			} else {
+				liabilityCredits = liabilityCredits.Add(txn.Amount)
+			}
+		}
+	}
+
+	// Now determine the transaction purpose based on the accounts involved
+
+	// Case 1: Expense transaction (money spent)
+	if !expenseDebits.IsZero() {
+		return expenseDebits
+	}
+
+	// Case 2: Income transaction (money received)
+	if !incomeCredits.IsZero() {
+		return incomeCredits
+	}
+
+	// Case 3: Expense paid with credit (DEBIT LIABILITY, CREDIT EXPENSE)
+	// This is your case - paying for expenses with a credit card - this should return the amount spent
+	if !liabilityDebits.IsZero() && transactions[0].Amount.Equal(transactions[1].Amount) {
+		return transactions[0].Amount
+	}
+
+	// Case 4: Asset transfer or payment (between assets, or asset to liability)
+	if !assetDebits.IsZero() || !assetCredits.IsZero() {
+		return transactions[0].Amount
+	}
+
+	// Fallback to just returning the first transaction amount
+	return transactions[0].Amount
+}
+
+// calculateJournalAmountSimple is a simplified fallback when account types aren't available.
+// This is unreliable and should be avoided. It calculates the amount by summing debits.
+// DEPRECATED: This should be replaced with the proper account-type-aware calculation.
+func calculateJournalAmountSimple(transactions []domain.Transaction) decimal.Decimal {
 	totalAmount := decimal.Zero
 	for _, txn := range transactions {
 		if txn.TransactionType == domain.Debit {
@@ -277,8 +360,8 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 		},
 	}
 
-	// Calculate the total amount of the journal (sum of all debit transactions)
-	totalAmount := calculateJournalAmount(domainTransactions)
+	// Calculate the total amount of the journal using account types information
+	totalAmount := s.calculateJournalAmount(domainTransactions, accountTypes)
 	domainJournal.Amount = totalAmount
 
 	// Pass balance changes to the repository method
@@ -340,10 +423,34 @@ func (s *journalService) GetJournalByID(ctx context.Context, workplaceID string,
 	// Populate the transactions field
 	journal.Transactions = transactions
 
-	// Calculate the total amount of the journal (sum of all debit transactions)
+	// Calculate the total amount of the journal properly, getting account types
 	if len(transactions) > 0 {
-		totalAmount := calculateJournalAmount(transactions)
-		journal.Amount = totalAmount
+		// Extract account IDs from transactions
+		accountIDs := make([]string, 0, len(transactions))
+		for _, txn := range transactions {
+			accountIDs = append(accountIDs, txn.AccountID)
+		}
+
+		// Fetch account details to get account types
+		accountsMap, err := s.accountSvc.GetAccountByIDs(ctx, workplaceID, uniqueStrings(accountIDs))
+		if err != nil {
+			logger.Warn("Could not fetch account types for journal amount calculation",
+				slog.String("error", err.Error()),
+				slog.String("journal_id", journalID))
+			// Fallback to simple calculation if we can't get account types
+			totalAmount := calculateJournalAmountSimple(transactions)
+			journal.Amount = totalAmount
+		} else {
+			// Create account types map
+			accountTypes := make(map[string]domain.AccountType)
+			for id, account := range accountsMap {
+				accountTypes[id] = account.AccountType
+			}
+
+			// Calculate accurate journal amount using account types
+			totalAmount := s.calculateJournalAmount(transactions, accountTypes)
+			journal.Amount = totalAmount
+		}
 	}
 
 	logger.Debug("Journal and transactions retrieved successfully", slog.String("journal_id", journalID), slog.String("workplace_id", workplaceID), slog.Int("transaction_count", len(transactions)))
@@ -391,12 +498,41 @@ func (j *journalService) ListJournals(ctx context.Context, workplaceID string, u
 			logger.Error("Failed to fetch transactions for journals", "error", err)
 			// Continue without amounts if transaction fetch fails
 		} else {
+			// Collect all account IDs used in any transaction
+			allAccountIDs := make([]string, 0)
+			for _, txns := range transactionsMap {
+				for _, txn := range txns {
+					allAccountIDs = append(allAccountIDs, txn.AccountID)
+				}
+			}
+
+			// Fetch account details to get types
+			var accountTypes map[string]domain.AccountType
+			accountsMap, err := j.accountSvc.GetAccountByIDs(ctx, workplaceID, uniqueStrings(allAccountIDs))
+			if err != nil {
+				logger.Warn("Could not fetch account types for journal amounts calculation", "error", err)
+				// Will fall back to simple calculation below
+			} else {
+				// Create account types map
+				accountTypes = make(map[string]domain.AccountType)
+				for id, account := range accountsMap {
+					accountTypes[id] = account.AccountType
+				}
+			}
+
 			// Calculate amount for each journal
 			for i := range journals {
 				txns, exists := transactionsMap[journals[i].JournalID]
 				if exists {
-					totalAmount := calculateJournalAmount(txns)
-					journals[i].Amount = totalAmount
+					if accountTypes != nil {
+						// Use accurate calculation with account types
+						totalAmount := j.calculateJournalAmount(txns, accountTypes)
+						journals[i].Amount = totalAmount
+					} else {
+						// Fall back to simple calculation if account types aren't available
+						totalAmount := calculateJournalAmountSimple(txns)
+						journals[i].Amount = totalAmount
+					}
 				}
 			}
 		}
@@ -744,10 +880,6 @@ func (j *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 		}
 	}
 
-	// Calculate the total amount of the reversal journal (sum of all debit transactions)
-	totalAmount := calculateJournalAmount(reversingTransactions)
-	reversingJournal.Amount = totalAmount
-
 	// 7. Fetch accounts involved to calculate balance changes
 	accIDList := make([]string, 0, len(accountIDs))
 	for id := range accountIDs {
@@ -758,6 +890,14 @@ func (j *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 		logger.Error("Failed to fetch accounts for reversal balance calculation", "error", err)
 		return nil, fmt.Errorf("failed to get account details for reversal: %w", err)
 	}
+
+	// Calculate the total amount of the reversal journal using account types
+	accountTypes := make(map[string]domain.AccountType)
+	for id, acc := range accountsMap {
+		accountTypes[id] = acc.AccountType
+	}
+	totalAmount := j.calculateJournalAmount(reversingTransactions, accountTypes)
+	reversingJournal.Amount = totalAmount
 
 	// 8. Calculate balance changes for the reversing journal
 	balanceChanges := make(map[string]decimal.Decimal)
@@ -823,4 +963,6 @@ func (j *journalService) ListJournalsByWorkplace(ctx context.Context, params Lis
 
 // TODO: Add methods for:
 // - FindJournalByID(ctx context.Context, journalID string) (*models.Journal, []models.Transaction, error)
+// - Static data initialization trigger? (FR-M1-06)
+
 // - Static data initialization trigger? (FR-M1-06)

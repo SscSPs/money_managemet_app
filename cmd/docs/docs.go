@@ -2047,14 +2047,14 @@ const docTemplate = `{
                 "ASSET",
                 "LIABILITY",
                 "EQUITY",
-                "INCOME",
+                "REVENUE",
                 "EXPENSE"
             ],
             "x-enum-varnames": [
                 "Asset",
                 "Liability",
                 "Equity",
-                "Income",
+                "Revenue",
                 "Expense"
             ]
         },
@@ -2174,7 +2174,7 @@ const docTemplate = `{
                         "ASSET",
                         "LIABILITY",
                         "EQUITY",
-                        "INCOME",
+                        "REVENUE",
                         "EXPENSE"
                     ],
                     "allOf": [

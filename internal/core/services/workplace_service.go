@@ -22,8 +22,8 @@ type WorkplaceService struct {
 	// userRepo portsrepo.UserRepositoryFacade // Might be needed for user validation
 }
 
-// NewWorkplaceService creates a new WorkplaceService.
-func NewWorkplaceService(wr portsrepo.WorkplaceRepositoryFacade, cr portsrepo.CurrencyRepositoryFacade) portssvc.WorkplaceService {
+// NewWorkplaceServiceLegacy creates a new WorkplaceService.
+func NewWorkplaceServiceLegacy(wr portsrepo.WorkplaceRepositoryFacade, cr portsrepo.CurrencyRepositoryFacade) portssvc.WorkplaceService {
 	return &WorkplaceService{
 		workplaceRepo: wr,
 		currencyRepo:  cr,

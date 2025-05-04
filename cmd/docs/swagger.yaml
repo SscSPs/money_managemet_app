@@ -5,14 +5,14 @@ definitions:
     - ASSET
     - LIABILITY
     - EQUITY
-    - INCOME
+    - REVENUE
     - EXPENSE
     type: string
     x-enum-varnames:
     - Asset
     - Liability
     - Equity
-    - Income
+    - Revenue
     - Expense
   domain.JournalStatus:
     enum:
@@ -94,7 +94,7 @@ definitions:
         - ASSET
         - LIABILITY
         - EQUITY
-        - INCOME
+        - REVENUE
         - EXPENSE
       currencyCode:
         type: string
