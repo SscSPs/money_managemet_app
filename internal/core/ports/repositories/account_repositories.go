@@ -49,3 +49,9 @@ type AccountRepositoryFacade interface {
 	AccountWriter
 	AccountTransactionSupport
 }
+
+// AccountRepositoryWithTx extends AccountRepositoryFacade with transaction capabilities
+type AccountRepositoryWithTx interface {
+	AccountRepositoryFacade
+	TransactionManager
+}

@@ -27,3 +27,9 @@ type CurrencyRepositoryFacade interface {
 	CurrencyReader
 	CurrencyWriter
 }
+
+// CurrencyRepositoryWithTx extends CurrencyRepositoryFacade with transaction capabilities
+type CurrencyRepositoryWithTx interface {
+	CurrencyRepositoryFacade
+	TransactionManager
+}

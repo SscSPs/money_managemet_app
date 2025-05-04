@@ -37,3 +37,9 @@ type WorkplaceRepositoryFacade interface {
 	WorkplaceWriter
 	WorkplaceMembershipManager
 }
+
+// WorkplaceRepositoryWithTx extends WorkplaceRepositoryFacade with transaction capabilities
+type WorkplaceRepositoryWithTx interface {
+	WorkplaceRepositoryFacade
+	TransactionManager
+}

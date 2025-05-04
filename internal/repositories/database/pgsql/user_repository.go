@@ -16,15 +16,17 @@ import (
 )
 
 type PgxUserRepository struct {
-	db *pgxpool.Pool
+	BaseRepository
 }
 
-func newPgxUserRepository(db *pgxpool.Pool) portsrepo.UserRepositoryFacade {
-	return &PgxUserRepository{db: db}
+func newPgxUserRepository(db *pgxpool.Pool) portsrepo.UserRepositoryWithTx {
+	return &PgxUserRepository{
+		BaseRepository: BaseRepository{Pool: db},
+	}
 }
 
-// Ensure PgxUserRepository implements portsrepo.UserRepositoryFacade
-var _ portsrepo.UserRepositoryFacade = (*PgxUserRepository)(nil)
+// Ensure PgxUserRepository implements portsrepo.UserRepositoryWithTx
+var _ portsrepo.UserRepositoryWithTx = (*PgxUserRepository)(nil)
 
 func (r *PgxUserRepository) SaveUser(ctx context.Context, user domain.User) error {
 	modelUser := mapping.ToModelUser(user)
@@ -36,7 +38,7 @@ func (r *PgxUserRepository) SaveUser(ctx context.Context, user domain.User) erro
             last_updated_at = EXCLUDED.last_updated_at,
             last_updated_by = EXCLUDED.last_updated_by;
     `
-	_, err := r.db.Exec(ctx, query,
+	_, err := r.Pool.Exec(ctx, query,
 		modelUser.UserID,
 		modelUser.Name,
 		modelUser.CreatedAt,
@@ -57,7 +59,7 @@ func (r *PgxUserRepository) FindUserByID(ctx context.Context, userID string) (*d
 		WHERE user_id = $1 AND deleted_at IS NULL;
 	`
 	var modelUser models.User
-	err := r.db.QueryRow(ctx, query, userID).Scan(
+	err := r.Pool.QueryRow(ctx, query, userID).Scan(
 		&modelUser.UserID,
 		&modelUser.Name,
 		&modelUser.CreatedAt,
@@ -95,7 +97,7 @@ func (r *PgxUserRepository) FindUsers(ctx context.Context, limit int, offset int
         ORDER BY created_at DESC -- Or name, or user_id
         LIMIT $1 OFFSET $2;
     `
-	rows, err := r.db.Query(ctx, query, limit, offset)
+	rows, err := r.Pool.Query(ctx, query, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users: %w", err)
 	}
@@ -116,7 +118,7 @@ func (r *PgxUserRepository) UpdateUser(ctx context.Context, user domain.User) er
         SET name = $1, last_updated_at = $2, last_updated_by = $3
         WHERE user_id = $4 AND deleted_at IS NULL;
     `
-	cmdTag, err := r.db.Exec(ctx, query,
+	cmdTag, err := r.Pool.Exec(ctx, query,
 		modelUser.Name,
 		modelUser.LastUpdatedAt,
 		modelUser.LastUpdatedBy,
@@ -137,7 +139,7 @@ func (r *PgxUserRepository) MarkUserDeleted(ctx context.Context, userID string, 
         SET deleted_at = $1, last_updated_at = $1, last_updated_by = $2
         WHERE user_id = $3 AND deleted_at IS NULL;
     `
-	cmdTag, err := r.db.Exec(ctx, query, deletedAt, deletedBy, userID)
+	cmdTag, err := r.Pool.Exec(ctx, query, deletedAt, deletedBy, userID)
 	if err != nil {
 		return fmt.Errorf("failed to mark user as deleted: %w", err)
 	}

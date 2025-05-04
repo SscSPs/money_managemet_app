@@ -38,3 +38,9 @@ type UserRepositoryFacade interface {
 	UserWriter
 	UserLifecycleManager
 }
+
+// UserRepositoryWithTx extends UserRepositoryFacade with transaction capabilities
+type UserRepositoryWithTx interface {
+	UserRepositoryFacade
+	TransactionManager
+}

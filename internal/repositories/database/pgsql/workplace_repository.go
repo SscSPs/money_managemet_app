@@ -15,16 +15,18 @@ import (
 )
 
 type PgxWorkplaceRepository struct {
-	pool *pgxpool.Pool
+	BaseRepository
 }
 
 // newPgxWorkplaceRepository creates a new repository for workplace data.
-func newPgxWorkplaceRepository(pool *pgxpool.Pool) portsrepo.WorkplaceRepositoryFacade {
-	return &PgxWorkplaceRepository{pool: pool}
+func newPgxWorkplaceRepository(pool *pgxpool.Pool) portsrepo.WorkplaceRepositoryWithTx {
+	return &PgxWorkplaceRepository{
+		BaseRepository: BaseRepository{Pool: pool},
+	}
 }
 
-// Ensure PgxWorkplaceRepository implements portsrepo.WorkplaceRepositoryFacade
-var _ portsrepo.WorkplaceRepositoryFacade = (*PgxWorkplaceRepository)(nil)
+// Ensure PgxWorkplaceRepository implements portsrepo.WorkplaceRepositoryWithTx
+var _ portsrepo.WorkplaceRepositoryWithTx = (*PgxWorkplaceRepository)(nil)
 
 func (r *PgxWorkplaceRepository) SaveWorkplace(ctx context.Context, workplace domain.Workplace) error {
 	query := `
@@ -34,7 +36,7 @@ func (r *PgxWorkplaceRepository) SaveWorkplace(ctx context.Context, workplace do
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 	`
-	_, err := r.pool.Exec(ctx, query,
+	_, err := r.Pool.Exec(ctx, query,
 		workplace.WorkplaceID,
 		workplace.Name,
 		workplace.Description,
@@ -71,7 +73,7 @@ func (r *PgxWorkplaceRepository) FindWorkplaceByID(ctx context.Context, workplac
 	var w domain.Workplace
 	var defaultCurrencyCode sql.NullString
 
-	err := r.pool.QueryRow(ctx, query, workplaceID).Scan(
+	err := r.Pool.QueryRow(ctx, query, workplaceID).Scan(
 		&w.WorkplaceID,
 		&w.Name,
 		&w.Description,
@@ -102,7 +104,7 @@ func (r *PgxWorkplaceRepository) AddUserToWorkplace(ctx context.Context, members
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (user_id, workplace_id) DO UPDATE SET role = EXCLUDED.role;
 	` // Upsert: Add user or update their role if they already exist
-	_, err := r.pool.Exec(ctx, query,
+	_, err := r.Pool.Exec(ctx, query,
 		membership.UserID,
 		membership.WorkplaceID,
 		membership.Role,
@@ -123,7 +125,7 @@ func (r *PgxWorkplaceRepository) FindUserWorkplaceRole(ctx context.Context, user
 		WHERE user_id = $1 AND workplace_id = $2;
 	`
 	var uw domain.UserWorkplace
-	err := r.pool.QueryRow(ctx, query, userID, workplaceID).Scan(
+	err := r.Pool.QueryRow(ctx, query, userID, workplaceID).Scan(
 		&uw.UserID,
 		&uw.WorkplaceID,
 		&uw.Role,
@@ -149,7 +151,7 @@ func (r *PgxWorkplaceRepository) ListWorkplacesByUserID(ctx context.Context, use
 		WHERE uw.user_id = $1
 		ORDER BY w.name;
 	`
-	rows, err := r.pool.Query(ctx, query, userID)
+	rows, err := r.Pool.Query(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query workplaces for user %s: %w", userID, err)
 	}

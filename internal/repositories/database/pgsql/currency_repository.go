@@ -15,16 +15,18 @@ import (
 )
 
 type PgxCurrencyRepository struct {
-	pool *pgxpool.Pool
+	BaseRepository
 }
 
 // newPgxCurrencyRepository creates a new repository for currency data.
-func newPgxCurrencyRepository(pool *pgxpool.Pool) portsrepo.CurrencyRepositoryFacade {
-	return &PgxCurrencyRepository{pool: pool}
+func newPgxCurrencyRepository(pool *pgxpool.Pool) portsrepo.CurrencyRepositoryWithTx {
+	return &PgxCurrencyRepository{
+		BaseRepository: BaseRepository{Pool: pool},
+	}
 }
 
 // Ensure implementation matches interface
-var _ portsrepo.CurrencyRepositoryFacade = (*PgxCurrencyRepository)(nil)
+var _ portsrepo.CurrencyRepositoryWithTx = (*PgxCurrencyRepository)(nil)
 
 // SaveCurrency inserts or updates a currency (primarily for initial setup).
 func (r *PgxCurrencyRepository) SaveCurrency(ctx context.Context, currency domain.Currency) error {
@@ -42,7 +44,7 @@ func (r *PgxCurrencyRepository) SaveCurrency(ctx context.Context, currency domai
 			last_updated_by = EXCLUDED.last_updated_by;
 	`
 
-	_, err := r.pool.Exec(ctx, query,
+	_, err := r.Pool.Exec(ctx, query,
 		modelCurr.CurrencyCode,
 		modelCurr.Symbol,
 		modelCurr.Name,
@@ -67,7 +69,7 @@ func (r *PgxCurrencyRepository) FindCurrencyByCode(ctx context.Context, currency
 		WHERE currency_code = $1;
 	`
 	var modelCurr models.Currency
-	err := r.pool.QueryRow(ctx, query, currencyCode).Scan(
+	err := r.Pool.QueryRow(ctx, query, currencyCode).Scan(
 		&modelCurr.CurrencyCode,
 		&modelCurr.Symbol,
 		&modelCurr.Name,
@@ -96,7 +98,7 @@ func (r *PgxCurrencyRepository) ListCurrencies(ctx context.Context) ([]domain.Cu
 		FROM currencies
 		ORDER BY currency_code;
 	`
-	rows, err := r.pool.Query(ctx, query)
+	rows, err := r.Pool.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query currencies: %w", err)
 	}

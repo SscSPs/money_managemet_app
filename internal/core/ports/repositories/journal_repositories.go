@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
-	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 )
 
@@ -52,16 +51,8 @@ type JournalRepositoryFacade interface {
 	TransactionReader
 }
 
-// JournalRepositoryWithTx extends JournalRepositoryFacade with transaction-related methods
+// JournalRepositoryWithTx extends JournalRepositoryFacade with transaction capabilities
 type JournalRepositoryWithTx interface {
 	JournalRepositoryFacade
-
-	// Begin starts a new database transaction
-	Begin(ctx context.Context) (pgx.Tx, error)
-
-	// Commit commits a transaction
-	Commit(ctx context.Context, tx pgx.Tx) error
-
-	// Rollback rolls back a transaction
-	Rollback(ctx context.Context, tx pgx.Tx) error
+	TransactionManager
 }

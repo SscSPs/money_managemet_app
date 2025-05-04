@@ -17,15 +17,17 @@ import (
 
 // PgxExchangeRateRepository implements the ports.ExchangeRateRepository interface using pgxpool.
 type PgxExchangeRateRepository struct {
-	db *pgxpool.Pool
+	BaseRepository
 }
 
 // newPgxExchangeRateRepository creates a new PgxExchangeRateRepository.
-func newPgxExchangeRateRepository(db *pgxpool.Pool) portsrepo.ExchangeRateRepositoryFacade {
-	return &PgxExchangeRateRepository{db: db}
+func newPgxExchangeRateRepository(db *pgxpool.Pool) portsrepo.ExchangeRateRepositoryWithTx {
+	return &PgxExchangeRateRepository{
+		BaseRepository: BaseRepository{Pool: db},
+	}
 }
 
-var _ portsrepo.ExchangeRateRepositoryFacade = (*PgxExchangeRateRepository)(nil)
+var _ portsrepo.ExchangeRateRepositoryWithTx = (*PgxExchangeRateRepository)(nil)
 
 // SaveExchangeRate inserts or updates an exchange rate.
 func (r *PgxExchangeRateRepository) SaveExchangeRate(ctx context.Context, rate domain.ExchangeRate) error {
@@ -40,7 +42,7 @@ func (r *PgxExchangeRateRepository) SaveExchangeRate(ctx context.Context, rate d
 			last_updated_at = EXCLUDED.last_updated_at,
 			last_updated_by = EXCLUDED.last_updated_by;
 	`
-	_, err := r.db.Exec(ctx, query,
+	_, err := r.Pool.Exec(ctx, query,
 		modelRate.ExchangeRateID, modelRate.FromCurrencyCode, modelRate.ToCurrencyCode, modelRate.Rate, modelRate.DateEffective,
 		modelRate.CreatedAt, modelRate.CreatedBy, modelRate.LastUpdatedAt, modelRate.LastUpdatedBy,
 	)
@@ -69,7 +71,7 @@ func (r *PgxExchangeRateRepository) FindExchangeRate(ctx context.Context, fromCu
 		LIMIT 1;
 	`
 	var modelRate models.ExchangeRate
-	err := r.db.QueryRow(ctx, query, fromCurrencyCode, toCurrencyCode).Scan(
+	err := r.Pool.QueryRow(ctx, query, fromCurrencyCode, toCurrencyCode).Scan(
 		&modelRate.ExchangeRateID, &modelRate.FromCurrencyCode, &modelRate.ToCurrencyCode, &modelRate.Rate, &modelRate.DateEffective,
 		&modelRate.CreatedAt, &modelRate.CreatedBy, &modelRate.LastUpdatedAt, &modelRate.LastUpdatedBy,
 	)

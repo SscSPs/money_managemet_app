@@ -21,20 +21,20 @@ import (
 )
 
 type PgxJournalRepository struct {
-	pool        *pgxpool.Pool
+	BaseRepository
 	accountRepo portsrepo.AccountRepositoryFacade
 }
 
 // newPgxJournalRepository creates a new repository for journal and transaction data.
-func newPgxJournalRepository(pool *pgxpool.Pool, accountRepo portsrepo.AccountRepositoryFacade) portsrepo.JournalRepositoryFacade {
+func newPgxJournalRepository(pool *pgxpool.Pool, accountRepo portsrepo.AccountRepositoryFacade) portsrepo.JournalRepositoryWithTx {
 	return &PgxJournalRepository{
-		pool:        pool,
-		accountRepo: accountRepo,
+		BaseRepository: BaseRepository{Pool: pool},
+		accountRepo:    accountRepo,
 	}
 }
 
-// Ensure PgxJournalRepository implements portsrepo.JournalRepositoryFacade
-var _ portsrepo.JournalRepositoryFacade = (*PgxJournalRepository)(nil)
+// Ensure PgxJournalRepository implements portsrepo.JournalRepositoryWithTx
+var _ portsrepo.JournalRepositoryWithTx = (*PgxJournalRepository)(nil)
 
 // getSignedAmountInternal calculates the signed amount for a transaction based on account type.
 func getSignedAmountInternal(txn domain.Transaction, accountType domain.AccountType) (decimal.Decimal, error) {
@@ -47,14 +47,12 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 	accountRepo := r.accountRepo
 
 	// Start a database transaction
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	// Defer rollback in case of error
-	defer func() {
-		_ = tx.Rollback(ctx) // Ignore rollback error
-	}()
+	defer r.Rollback(ctx, tx) // Will be ignored if transaction is committed successfully
 
 	now := journal.CreatedAt // Use consistent time from journal
 	userID := journal.CreatedBy
@@ -173,8 +171,8 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 		return fmt.Errorf("failed to execute transaction batch for journal %s: %w", modelJournal.JournalID, err)
 	}
 
-	// 5. If all inserts/updates were successful, commit the transaction
-	if err := tx.Commit(ctx); err != nil {
+	// If all inserts/updates were successful, commit the transaction
+	if err := r.Commit(ctx, tx); err != nil {
 		return fmt.Errorf("failed to commit transaction for journal %s: %w", modelJournal.JournalID, err)
 	}
 
@@ -194,7 +192,7 @@ func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID st
 	var originalID sql.NullString  // Use sql.NullString for nullable text
 	var reversingID sql.NullString // Use sql.NullString for nullable text
 
-	err := r.pool.QueryRow(ctx, query, journalID).Scan(
+	err := r.Pool.QueryRow(ctx, query, journalID).Scan(
 		&modelJournal.JournalID,
 		&modelJournal.WorkplaceID,
 		&modelJournal.JournalDate,
@@ -239,7 +237,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, 
 		WHERE journal_id = $1
 		ORDER BY created_at; -- Or potentially transaction_id for deterministic order
 	`
-	rows, err := r.pool.Query(ctx, query, journalID)
+	rows, err := r.Pool.Query(ctx, query, journalID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transactions for journal %s: %w", journalID, err)
 	}
@@ -318,12 +316,12 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 		query := fmt.Sprintf("%s %s %s LIMIT $%d;", baseQuery, cursorClause, orderByClause, len(args)+1)
 		args = append(args, fetchLimit)
 
-		rows, err = r.pool.Query(ctx, query, args...)
+		rows, err = r.Pool.Query(ctx, query, args...)
 	} else {
 		// First page request (no token)
 		query := fmt.Sprintf("%s %s LIMIT $%d;", baseQuery, orderByClause, len(args)+1)
 		args = append(args, fetchLimit)
-		rows, err = r.pool.Query(ctx, query, args...)
+		rows, err = r.Pool.Query(ctx, query, args...)
 	}
 
 	// Error handling for query execution
@@ -448,13 +446,13 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 		query := fmt.Sprintf("%s %s %s %s LIMIT $%d;", baseQuery, filterClause, cursorClause, orderByClause, len(args)+1)
 		args = append(args, fetchLimit)
 
-		rows, err = r.pool.Query(ctx, query, args...)
+		rows, err = r.Pool.Query(ctx, query, args...)
 
 	} else {
 		// First page request (no token)
 		query := fmt.Sprintf("%s %s %s LIMIT $%d;", baseQuery, filterClause, orderByClause, len(args)+1)
 		args = append(args, fetchLimit)
-		rows, err = r.pool.Query(ctx, query, args...)
+		rows, err = r.Pool.Query(ctx, query, args...)
 	}
 
 	// Error handling for query execution
@@ -544,7 +542,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context,
 		ORDER BY journal_id, created_at; -- Order by journal_id for grouping, then by time
 	`
 
-	rows, err := r.pool.Query(ctx, query, journalIDs)
+	rows, err := r.Pool.Query(ctx, query, journalIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transactions for journal IDs: %w", err)
 	}
@@ -611,7 +609,7 @@ func (r *PgxJournalRepository) UpdateJournalStatusAndLinks(ctx context.Context, 
 		WHERE journal_id = $1;
 	`
 
-	cmdTag, err := r.pool.Exec(ctx, query,
+	cmdTag, err := r.Pool.Exec(ctx, query,
 		journalID,
 		status,
 		reversingJournalID,
@@ -647,7 +645,7 @@ func (r *PgxJournalRepository) UpdateJournal(ctx context.Context, journal domain
 	// Note: Status, CurrencyCode, OriginalJournalID, ReversingJournalID are not updated here.
 	// Status updates should go through UpdateJournalStatusAndLinks or similar specific methods.
 
-	cmdTag, err := r.pool.Exec(ctx, query,
+	cmdTag, err := r.Pool.Exec(ctx, query,
 		modelJournal.JournalID,
 		modelJournal.JournalDate,
 		modelJournal.Description,

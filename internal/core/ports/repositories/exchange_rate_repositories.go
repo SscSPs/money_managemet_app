@@ -24,3 +24,9 @@ type ExchangeRateRepositoryFacade interface {
 	ExchangeRateReader
 	ExchangeRateWriter
 }
+
+// ExchangeRateRepositoryWithTx extends ExchangeRateRepositoryFacade with transaction capabilities
+type ExchangeRateRepositoryWithTx interface {
+	ExchangeRateRepositoryFacade
+	TransactionManager
+}

@@ -22,16 +22,18 @@ import (
 )
 
 type PgxAccountRepository struct {
-	pool *pgxpool.Pool
+	BaseRepository
 }
 
 // newPgxAccountRepository creates a new repository for account data.
-func newPgxAccountRepository(pool *pgxpool.Pool) portsrepo.AccountRepositoryFacade {
-	return &PgxAccountRepository{pool: pool}
+func newPgxAccountRepository(pool *pgxpool.Pool) portsrepo.AccountRepositoryWithTx {
+	return &PgxAccountRepository{
+		BaseRepository: BaseRepository{Pool: pool},
+	}
 }
 
-// Ensure PgxAccountRepository implements portsrepo.AccountRepositoryFacade
-var _ portsrepo.AccountRepositoryFacade = (*PgxAccountRepository)(nil)
+// Ensure PgxAccountRepository implements portsrepo.AccountRepositoryWithTx
+var _ portsrepo.AccountRepositoryWithTx = (*PgxAccountRepository)(nil)
 
 // SaveAccount inserts a new account.
 // Note: Update/Inactivate logic will be added in later milestones/methods.
@@ -48,7 +50,7 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 		parentID = sql.NullString{String: modelAcc.ParentAccountID, Valid: true}
 	}
 
-	_, err := r.pool.Exec(ctx, query,
+	_, err := r.Pool.Exec(ctx, query,
 		modelAcc.AccountID,
 		modelAcc.WorkplaceID,
 		modelAcc.Name,
@@ -88,7 +90,7 @@ func (r *PgxAccountRepository) FindAccountByID(ctx context.Context, accountID st
 	var parentID sql.NullString // Use sql.NullString for scanning
 	var balance decimal.Decimal
 
-	err := r.pool.QueryRow(ctx, query, accountID).Scan(
+	err := r.Pool.QueryRow(ctx, query, accountID).Scan(
 		&modelAcc.AccountID,
 		&modelAcc.WorkplaceID,
 		&modelAcc.Name,
@@ -134,7 +136,7 @@ func (r *PgxAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs
 		WHERE account_id = ANY($1);
 	`
 
-	rows, err := r.pool.Query(ctx, query, accountIDs)
+	rows, err := r.Pool.Query(ctx, query, accountIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query accounts by IDs: %w", err)
 	}
@@ -199,7 +201,7 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 		LIMIT $2 OFFSET $3;
 	`
 
-	rows, err := r.pool.Query(ctx, query, workplaceID, limit, offset)
+	rows, err := r.Pool.Query(ctx, query, workplaceID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query accounts for workplace %s: %w", workplaceID, err)
 	}
@@ -267,7 +269,7 @@ func (r *PgxAccountRepository) UpdateAccount(ctx context.Context, account domain
 		WHERE account_id = $1;
 	`
 
-	result, err := r.pool.Exec(ctx, query,
+	result, err := r.Pool.Exec(ctx, query,
 		modelAcc.AccountID,
 		modelAcc.Name,
 		modelAcc.Description,
@@ -297,7 +299,7 @@ func (r *PgxAccountRepository) DeactivateAccount(ctx context.Context, accountID 
 		WHERE account_id = $3 AND is_active = true;
 	`
 
-	result, err := r.pool.Exec(ctx, query, now, userID, accountID)
+	result, err := r.Pool.Exec(ctx, query, now, userID, accountID)
 	if err != nil {
 		return fmt.Errorf("failed to deactivate account %s: %w", accountID, err)
 	}
@@ -306,7 +308,7 @@ func (r *PgxAccountRepository) DeactivateAccount(ctx context.Context, accountID 
 		// Check if the account exists at all
 		existsQuery := `SELECT EXISTS(SELECT 1 FROM accounts WHERE account_id = $1);`
 		var exists bool
-		err := r.pool.QueryRow(ctx, existsQuery, accountID).Scan(&exists)
+		err := r.Pool.QueryRow(ctx, existsQuery, accountID).Scan(&exists)
 		if err != nil {
 			return fmt.Errorf("failed to check if account %s exists: %w", accountID, err)
 		}
