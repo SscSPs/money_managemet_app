@@ -430,6 +430,139 @@ func (r *PgxJournalRepository) FindTransactionsByAccountID(ctx context.Context, 
 	return toDomainTransactionSlice(transactions), nil
 }
 
+// encodeTransactionToken creates a base64 encoded token from a transaction's journal date and creation time.
+func encodeTransactionToken(journalDate time.Time, createdAt time.Time) string {
+	return encodeToken(journalDate, createdAt)
+}
+
+// decodeTransactionToken parses the base64 encoded token back into journal date and creation time.
+func decodeTransactionToken(token string) (time.Time, time.Time, error) {
+	return decodeToken(token)
+}
+
+// ListTransactionsByAccountID retrieves a paginated list of transactions for a specific account using token-based pagination.
+// It returns the transactions, a token for the next page, and an error.
+func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, workplaceID, accountID string, limit int, nextToken *string) ([]domain.Transaction, *string, error) {
+	// Default limit handling
+	if limit <= 0 {
+		limit = 20 // Or a configurable default
+	}
+	// We fetch one extra item to determine if there's a next page.
+	fetchLimit := limit + 1
+
+	// Base query
+	baseQuery := `
+		SELECT t.transaction_id, t.journal_id, t.account_id, t.amount, t.transaction_type, t.currency_code, t.notes, 
+		       t.created_at, t.created_by, t.last_updated_at, t.last_updated_by, t.running_balance, j.journal_date
+		FROM transactions t
+		JOIN journals j ON t.journal_id = j.journal_id
+		WHERE t.account_id = $1 AND j.workplace_id = $2
+	`
+	// Ordering is crucial and must be stable
+	// We use journal_date DESC, and created_at DESC as a tie-breaker.
+	orderByClause := `ORDER BY j.journal_date DESC, t.created_at DESC`
+
+	var rows pgx.Rows
+	var err error
+	args := []interface{}{accountID, workplaceID}
+
+	if nextToken != nil && *nextToken != "" {
+		// Decode the token to get the cursor values
+		lastJournalDate, lastCreatedAt, decodeErr := decodeTransactionToken(*nextToken)
+		if decodeErr != nil {
+			// Consider logging the error but return a user-friendly error
+			return nil, nil, fmt.Errorf("invalid nextToken: %w", decodeErr) // Return specific error for bad token
+		}
+
+		// Add cursor condition to WHERE clause
+		// Tuple comparison is concise and efficient in Postgres
+		cursorClause := `AND (j.journal_date, t.created_at) < ($3, $4)`
+		args = append(args, lastJournalDate, lastCreatedAt)
+
+		// Construct the full query with cursor
+		query := fmt.Sprintf("%s %s %s LIMIT $%d;", baseQuery, cursorClause, orderByClause, len(args)+1)
+		args = append(args, fetchLimit)
+
+		rows, err = r.pool.Query(ctx, query, args...)
+	} else {
+		// First page request (no token)
+		query := fmt.Sprintf("%s %s LIMIT $%d;", baseQuery, orderByClause, len(args)+1)
+		args = append(args, fetchLimit)
+		rows, err = r.pool.Query(ctx, query, args...)
+	}
+
+	// Error handling for query execution
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to query transactions for account %s in workplace %s: %w", accountID, workplaceID, err)
+	}
+	defer rows.Close()
+
+	// Scan results
+	transactions := make([]struct {
+		transaction models.Transaction
+		journalDate time.Time
+	}, 0, fetchLimit)
+
+	for rows.Next() {
+		var t models.Transaction
+		var journalDate time.Time
+		err := rows.Scan(
+			&t.TransactionID,
+			&t.JournalID,
+			&t.AccountID,
+			&t.Amount,
+			&t.TransactionType,
+			&t.CurrencyCode,
+			&t.Notes,
+			&t.CreatedAt,
+			&t.CreatedBy,
+			&t.LastUpdatedAt,
+			&t.LastUpdatedBy,
+			&t.RunningBalance,
+			&journalDate,
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to scan transaction row for account %s: %w", accountID, err)
+		}
+		transactions = append(transactions, struct {
+			transaction models.Transaction
+			journalDate time.Time
+		}{t, journalDate})
+	}
+
+	// Check for errors during row iteration
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("error iterating transaction rows for account %s: %w", accountID, err)
+	}
+
+	// Determine the next token
+	var nextTokenVal *string
+	var results []models.Transaction
+	if len(transactions) > limit {
+		// There is a next page
+		lastTxn := transactions[limit-1] // The *actual* last item of the *current* page
+		// The token points to the *last item included* in this response page.
+		// The next query will start *after* this item.
+		token := encodeTransactionToken(lastTxn.journalDate, lastTxn.transaction.CreatedAt)
+		nextTokenVal = &token
+
+		// Extract just the transactions for the result (without the extra one)
+		results = make([]models.Transaction, limit)
+		for i := 0; i < limit; i++ {
+			results[i] = transactions[i].transaction
+		}
+	} else {
+		// No next page
+		results = make([]models.Transaction, len(transactions))
+		for i, t := range transactions {
+			results[i] = t.transaction
+		}
+	}
+
+	// Convert models to domain objects
+	return toDomainTransactionSlice(results), nextTokenVal, nil
+}
+
 // --- Token Pagination Helpers ---
 
 const timeFormat = time.RFC3339Nano // Use a precise time format

@@ -58,7 +58,12 @@ type JournalRepository interface {
 	FindTransactionsByJournalIDs(ctx context.Context, journalIDs []string) (map[string][]domain.Transaction, error)
 
 	// FindTransactionsByAccountID retrieves all transactions involving a specific account within a workplace.
+	// This will be deprecated in favor of ListTransactionsByAccountID with pagination.
 	FindTransactionsByAccountID(ctx context.Context, workplaceID, accountID string) ([]domain.Transaction, error)
+
+	// ListTransactionsByAccountID retrieves a paginated list of transactions for a specific account using token-based pagination.
+	// It returns the transactions, a token for the next page, and an error.
+	ListTransactionsByAccountID(ctx context.Context, workplaceID, accountID string, limit int, nextToken *string) ([]domain.Transaction, *string, error)
 
 	// UpdateJournalStatusAndLinks updates the status and reversal linkage (original/reversing IDs) of a journal.
 	UpdateJournalStatusAndLinks(ctx context.Context, journalID string, status domain.JournalStatus, reversingJournalID *string, originalJournalID *string, updatedByUserID string, updatedAt time.Time) error

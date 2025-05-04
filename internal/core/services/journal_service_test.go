@@ -82,6 +82,19 @@ func (m *MockJournalRepository) UpdateJournalStatusAndLinks(ctx context.Context,
 	return args.Error(0)
 }
 
+func (m *MockJournalRepository) ListTransactionsByAccountID(ctx context.Context, workplaceID, accountID string, limit int, nextToken *string) ([]domain.Transaction, *string, error) {
+	args := m.Called(ctx, workplaceID, accountID, limit, nextToken)
+	if args.Get(0) == nil {
+		return nil, nil, args.Error(2)
+	}
+	var returnedNextToken *string
+	if args.Get(1) != nil {
+		tokenVal := args.Get(1).(string)
+		returnedNextToken = &tokenVal
+	}
+	return args.Get(0).([]domain.Transaction), returnedNextToken, args.Error(2)
+}
+
 // --- Mock AccountRepository (as used by JournalService) ---
 type MockAccountService2 struct {
 	mock.Mock

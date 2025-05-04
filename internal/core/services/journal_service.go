@@ -540,7 +540,6 @@ func (s *journalService) DeactivateJournal(ctx context.Context, workplaceID stri
 }
 
 // ListTransactionsByAccount retrieves transactions for a specific account within a workplace.
-// TODO: Implement pagination and filtering based on params.
 func (j *journalService) ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, userID string, params dto.ListTransactionsParams) (*dto.ListTransactionsResponse, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
@@ -550,16 +549,14 @@ func (j *journalService) ListTransactionsByAccount(ctx context.Context, workplac
 		return nil, err
 	}
 
-	// Validate Account belongs to workplace (optional, repo might handle)
-	// _, err := j.accountSvc.GetAccountByID(ctx, workplaceID, accountID)
-	// if err != nil {
-	// 	 logger.Warn("Failed to verify account for ListTransactionsByAccount", "error", err)
-	// 	 return nil, err // Could be ErrNotFound or other error
-	// }
+	// Set default limit if not provided
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 20 // Default limit
+	}
 
-	// Fetch transactions from repository
-	// TODO: Pass limit/offset from params to the repository call eventually
-	transactions, err := j.journalRepo.FindTransactionsByAccountID(ctx, workplaceID, accountID)
+	// Fetch transactions from repository with pagination
+	transactions, nextToken, err := j.journalRepo.ListTransactionsByAccountID(ctx, workplaceID, accountID, limit, params.NextToken)
 	if err != nil {
 		logger.Error("Failed to list transactions by account from repository", "error", err)
 		return nil, fmt.Errorf("failed to retrieve transactions: %w", err)
@@ -568,10 +565,10 @@ func (j *journalService) ListTransactionsByAccount(ctx context.Context, workplac
 	// Convert domain transactions to DTOs
 	transactionResponses := dto.ToTransactionResponses(transactions)
 
-	// TODO: Fetch total count for pagination metadata
+	// Prepare response with pagination
 	resp := &dto.ListTransactionsResponse{
 		Transactions: transactionResponses,
-		// Add pagination fields later
+		NextToken:    nextToken,
 	}
 
 	logger.Info("Transactions listed successfully for account", "count", len(transactions))
