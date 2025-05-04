@@ -17,11 +17,11 @@ import (
 
 // currencyService provides business logic for currency operations.
 type currencyService struct {
-	currencyRepo portsrepo.CurrencyRepository
+	currencyRepo portsrepo.CurrencyRepositoryFacade
 }
 
 // NewCurrencyService creates a new CurrencyService.
-func NewCurrencyService(repo portsrepo.CurrencyRepository) portssvc.CurrencyService {
+func NewCurrencyService(repo portsrepo.CurrencyRepositoryFacade) portssvc.CurrencyService {
 	return &currencyService{currencyRepo: repo}
 }
 

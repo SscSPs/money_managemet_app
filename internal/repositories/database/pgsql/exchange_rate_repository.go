@@ -9,6 +9,7 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/models"
+	"github.com/SscSPs/money_managemet_app/internal/utils/mapping"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,47 +21,15 @@ type PgxExchangeRateRepository struct {
 }
 
 // newPgxExchangeRateRepository creates a new PgxExchangeRateRepository.
-func newPgxExchangeRateRepository(db *pgxpool.Pool) portsrepo.ExchangeRateRepository {
+func newPgxExchangeRateRepository(db *pgxpool.Pool) portsrepo.ExchangeRateRepositoryFacade {
 	return &PgxExchangeRateRepository{db: db}
 }
 
-var _ portsrepo.ExchangeRateRepository = (*PgxExchangeRateRepository)(nil)
-
-func toModelExchangeRate(d domain.ExchangeRate) models.ExchangeRate {
-	return models.ExchangeRate{
-		ExchangeRateID:   d.ExchangeRateID,
-		FromCurrencyCode: d.FromCurrencyCode,
-		ToCurrencyCode:   d.ToCurrencyCode,
-		Rate:             d.Rate,
-		DateEffective:    d.DateEffective,
-		AuditFields: models.AuditFields{
-			CreatedAt:     d.CreatedAt,
-			CreatedBy:     d.CreatedBy,
-			LastUpdatedAt: d.LastUpdatedAt,
-			LastUpdatedBy: d.LastUpdatedBy,
-		},
-	}
-}
-
-func toDomainExchangeRate(m models.ExchangeRate) domain.ExchangeRate {
-	return domain.ExchangeRate{
-		ExchangeRateID:   m.ExchangeRateID,
-		FromCurrencyCode: m.FromCurrencyCode,
-		ToCurrencyCode:   m.ToCurrencyCode,
-		Rate:             m.Rate,
-		DateEffective:    m.DateEffective,
-		AuditFields: domain.AuditFields{
-			CreatedAt:     m.CreatedAt,
-			CreatedBy:     m.CreatedBy,
-			LastUpdatedAt: m.LastUpdatedAt,
-			LastUpdatedBy: m.LastUpdatedBy,
-		},
-	}
-}
+var _ portsrepo.ExchangeRateRepositoryFacade = (*PgxExchangeRateRepository)(nil)
 
 // SaveExchangeRate inserts or updates an exchange rate.
 func (r *PgxExchangeRateRepository) SaveExchangeRate(ctx context.Context, rate domain.ExchangeRate) error {
-	modelRate := toModelExchangeRate(rate)
+	modelRate := mapping.ToModelExchangeRate(rate)
 	query := `
 		INSERT INTO exchange_rates (
 			exchange_rate_id, from_currency_code, to_currency_code, rate, date_effective,
@@ -110,6 +79,6 @@ func (r *PgxExchangeRateRepository) FindExchangeRate(ctx context.Context, fromCu
 		}
 		return nil, fmt.Errorf("failed to find exchange rate %s->%s: %w", fromCurrencyCode, toCurrencyCode, err)
 	}
-	domainRate := toDomainExchangeRate(modelRate)
+	domainRate := mapping.ToDomainExchangeRate(modelRate)
 	return &domainRate, nil
 }

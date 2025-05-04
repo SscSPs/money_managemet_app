@@ -19,12 +19,12 @@ type PgxWorkplaceRepository struct {
 }
 
 // newPgxWorkplaceRepository creates a new repository for workplace data.
-func newPgxWorkplaceRepository(pool *pgxpool.Pool) portsrepo.WorkplaceRepository {
+func newPgxWorkplaceRepository(pool *pgxpool.Pool) portsrepo.WorkplaceRepositoryFacade {
 	return &PgxWorkplaceRepository{pool: pool}
 }
 
-// Ensure PgxWorkplaceRepository implements portsrepo.WorkplaceRepository
-var _ portsrepo.WorkplaceRepository = (*PgxWorkplaceRepository)(nil)
+// Ensure PgxWorkplaceRepository implements portsrepo.WorkplaceRepositoryFacade
+var _ portsrepo.WorkplaceRepositoryFacade = (*PgxWorkplaceRepository)(nil)
 
 func (r *PgxWorkplaceRepository) SaveWorkplace(ctx context.Context, workplace domain.Workplace) error {
 	query := `

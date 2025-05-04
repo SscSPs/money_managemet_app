@@ -17,13 +17,13 @@ import (
 
 // WorkplaceService handles business logic related to workplaces and memberships.
 type WorkplaceService struct {
-	workplaceRepo portsrepo.WorkplaceRepository
-	currencyRepo  portsrepo.CurrencyRepository
-	// userRepo portsrepo.UserRepository // Might be needed for user validation
+	workplaceRepo portsrepo.WorkplaceRepositoryFacade
+	currencyRepo  portsrepo.CurrencyRepositoryFacade
+	// userRepo portsrepo.UserRepositoryFacade // Might be needed for user validation
 }
 
 // NewWorkplaceService creates a new WorkplaceService.
-func NewWorkplaceService(wr portsrepo.WorkplaceRepository, cr portsrepo.CurrencyRepository) portssvc.WorkplaceService {
+func NewWorkplaceService(wr portsrepo.WorkplaceRepositoryFacade, cr portsrepo.CurrencyRepositoryFacade) portssvc.WorkplaceService {
 	return &WorkplaceService{
 		workplaceRepo: wr,
 		currencyRepo:  cr,

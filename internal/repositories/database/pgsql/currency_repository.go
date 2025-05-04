@@ -9,6 +9,7 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/models"
+	"github.com/SscSPs/money_managemet_app/internal/utils/mapping"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -18,57 +19,16 @@ type PgxCurrencyRepository struct {
 }
 
 // newPgxCurrencyRepository creates a new repository for currency data.
-func newPgxCurrencyRepository(pool *pgxpool.Pool) portsrepo.CurrencyRepository {
+func newPgxCurrencyRepository(pool *pgxpool.Pool) portsrepo.CurrencyRepositoryFacade {
 	return &PgxCurrencyRepository{pool: pool}
 }
 
 // Ensure implementation matches interface
-var _ portsrepo.CurrencyRepository = (*PgxCurrencyRepository)(nil)
-
-// Helper to convert domain.Currency to models.Currency
-func toModelCurrency(d domain.Currency) models.Currency {
-	return models.Currency{
-		CurrencyCode: d.CurrencyCode,
-		Symbol:       d.Symbol,
-		Name:         d.Name,
-		Precision:    d.Precision,
-		AuditFields: models.AuditFields{
-			CreatedAt:     d.CreatedAt,
-			CreatedBy:     d.CreatedBy,
-			LastUpdatedAt: d.LastUpdatedAt,
-			LastUpdatedBy: d.LastUpdatedBy,
-		},
-	}
-}
-
-// Helper to convert models.Currency to domain.Currency
-func toDomainCurrency(m models.Currency) domain.Currency {
-	return domain.Currency{
-		CurrencyCode: m.CurrencyCode,
-		Symbol:       m.Symbol,
-		Name:         m.Name,
-		Precision:    m.Precision,
-		AuditFields: domain.AuditFields{
-			CreatedAt:     m.CreatedAt,
-			CreatedBy:     m.CreatedBy,
-			LastUpdatedAt: m.LastUpdatedAt,
-			LastUpdatedBy: m.LastUpdatedBy,
-		},
-	}
-}
-
-// Helper to convert slice of models.Currency to slice of domain.Currency
-func toDomainCurrencySlice(ms []models.Currency) []domain.Currency {
-	ds := make([]domain.Currency, len(ms))
-	for i, m := range ms {
-		ds[i] = toDomainCurrency(m)
-	}
-	return ds
-}
+var _ portsrepo.CurrencyRepositoryFacade = (*PgxCurrencyRepository)(nil)
 
 // SaveCurrency inserts or updates a currency (primarily for initial setup).
 func (r *PgxCurrencyRepository) SaveCurrency(ctx context.Context, currency domain.Currency) error {
-	modelCurr := toModelCurrency(currency)
+	modelCurr := mapping.ToModelCurrency(currency)
 	creatorUserID := modelCurr.CreatedBy
 
 	query := `
@@ -125,7 +85,7 @@ func (r *PgxCurrencyRepository) FindCurrencyByCode(ctx context.Context, currency
 		return nil, fmt.Errorf("failed to find currency by code %s: %w", currencyCode, err)
 	}
 
-	domainCurr := toDomainCurrency(modelCurr)
+	domainCurr := mapping.ToDomainCurrency(modelCurr)
 	return &domainCurr, nil
 }
 
@@ -164,5 +124,5 @@ func (r *PgxCurrencyRepository) ListCurrencies(ctx context.Context) ([]domain.Cu
 		return nil, fmt.Errorf("failed to scan currencies: %w", err)
 	}
 
-	return toDomainCurrencySlice(modelCurrencies), nil
+	return mapping.ToDomainCurrencySlice(modelCurrencies), nil
 }

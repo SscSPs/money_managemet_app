@@ -20,12 +20,12 @@ import (
 
 // exchangeRateService provides business logic for exchange rates.
 type exchangeRateService struct {
-	rateRepo        portsrepo.ExchangeRateRepository
+	rateRepo        portsrepo.ExchangeRateRepositoryFacade
 	currencyService portssvc.CurrencyService // Added CurrencyService dependency
 }
 
 // NewExchangeRateService creates a new ExchangeRateService.
-func NewExchangeRateService(repo portsrepo.ExchangeRateRepository, currencyService portssvc.CurrencyService) portssvc.ExchangeRateService {
+func NewExchangeRateService(repo portsrepo.ExchangeRateRepositoryFacade, currencyService portssvc.CurrencyService) portssvc.ExchangeRateService {
 	return &exchangeRateService{
 		rateRepo:        repo,
 		currencyService: currencyService,

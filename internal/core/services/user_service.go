@@ -18,11 +18,11 @@ import (
 
 // userService provides business logic for user operations.
 type userService struct {
-	UserRepository portsrepo.UserRepository
+	UserRepository portsrepo.UserRepositoryFacade
 }
 
 // NewUserService creates a new UserService.
-func NewUserService(repo portsrepo.UserRepository) portssvc.UserService {
+func NewUserService(repo portsrepo.UserRepositoryFacade) portssvc.UserService {
 	return &userService{UserRepository: repo}
 }
 
