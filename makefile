@@ -20,10 +20,15 @@ swagger:
 	@echo "Generating Swagger documentation..."
 	swag init -g ${BASE_ENTRY}/main.go -o cmd/docs
 
-# Build the binary
+# Build the binary (dynamic)
 build: clean swagger
 	@echo "Building the project..."
 	go build -o $(BIN_PATH) ${BASE_ENTRY}
+
+# Build a statically linked binary (for Docker scratch or distroless)
+build-static: clean swagger
+	@echo "Building static binary for Linux..."
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -a -installsuffix cgo -o $(BIN_PATH) ${BASE_ENTRY}
 
 # Run the application with default settings after passing unit tests
 run: test build
@@ -69,27 +74,34 @@ prod:
 	@echo "Running in production mode..."
 	IS_PRODUCTION=true $(BIN_PATH)
 
+# Create release build (dynamic)
 release: clean swagger build
 	@echo "Release Build Created..."
+
+# Create release build for Docker (static)
+release-static: clean swagger build-static
+	@echo "Static Release Build Created..."
 
 # Display help message
 help:
 	@echo "Makefile for MMA_backend"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make clean          - Clean build artifacts"
-	@echo "  make swagger        - Generate Swagger documentation"
-	@echo "  make build          - Build the project (clean, swagger, then builds)"
-	@echo "  make run            - Run unit tests, build, then run the application"
-	@echo "  make run-fast       - Build and run the application (NO tests)"
-	@echo "  make run-all-tests  - Run all tests (unit+integration), build, then run"
-	@echo "  make test           - Run unit tests"
+	@echo "  make clean            - Clean build artifacts"
+	@echo "  make swagger          - Generate Swagger documentation"
+	@echo "  make build            - Build the project (dynamic binary)"
+	@echo "  make build-static     - Build statically linked binary for Docker scratch/distroless"
+	@echo "  make run              - Run unit tests, build, then run the application"
+	@echo "  make run-fast         - Build and run the application (NO tests)"
+	@echo "  make run-all-tests    - Run all tests (unit+integration), build, then run"
+	@echo "  make test             - Run unit tests"
 	@echo "  make test-integration - Run integration tests (requires Docker)"
-	@echo "  make test-all       - Run both unit and integration tests"
-	@echo "  make lint           - Run linter"
-	@echo "  make deps           - Install Go modules"
-	@echo "  make prod           - Run the app in prod mode (DOES NOT run tests first)"
-	@echo "  make release        - Creates the release build"
-	@echo "  make help           - Show this help message"
+	@echo "  make test-all         - Run both unit and integration tests"
+	@echo "  make lint             - Run linter"
+	@echo "  make deps             - Install Go modules"
+	@echo "  make prod             - Run the app in prod mode (DOES NOT run tests first)"
+	@echo "  make release          - Creates the release build (dynamic)"
+	@echo "  make release-static   - Creates a static release build for Docker"
+	@echo "  make help             - Show this help message"
 
-.PHONY: build run run-fast run-all-tests run-swagger clean test test-integration test-all swagger lint deps dev prod help release
+.PHONY: build build-static run run-fast run-all-tests clean test test-integration test-all swagger lint deps prod release release-static help

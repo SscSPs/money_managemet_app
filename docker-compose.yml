@@ -1,0 +1,33 @@
+version: '3.9'
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: db
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - PORT=8080
+      - IS_PRODUCTION=false
+      - GIN_MODE=release
+      - PGSQL_URL=postgresql://user:pass@postgres:5432/db?sslmode=disable
+      - ENABLE_DB_CHECK=true
+      - JWT_EXPIRY_DURATION=1h
+    ports:
+      - "8080:8080"
+    command: ["./mma_backend"]
+    # If you want to run integration tests here, override the command
+    # command: ["go", "test", "./..."]
