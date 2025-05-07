@@ -12,6 +12,9 @@ type UserReader interface {
 	// FindUserByID retrieves a specific user by their ID.
 	FindUserByID(ctx context.Context, userID string) (*domain.User, error)
 
+	// FindUserByUsername retrieves a user by their username.
+	FindUserByUsername(ctx context.Context, username string) (*domain.User, error)
+
 	// FindUsers retrieves a paginated list of users.
 	FindUsers(ctx context.Context, limit int, offset int) ([]domain.User, error)
 }

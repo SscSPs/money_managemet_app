@@ -28,18 +28,53 @@ func newPgxUserRepository(db *pgxpool.Pool) portsrepo.UserRepositoryWithTx {
 // Ensure PgxUserRepository implements portsrepo.UserRepositoryWithTx
 var _ portsrepo.UserRepositoryWithTx = (*PgxUserRepository)(nil)
 
+// GetUserByUsername fetches a user by username
+func (r *PgxUserRepository) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
+	query := `SELECT user_id, username, password_hash, name, created_at, created_by, last_updated_at, last_updated_by, deleted_at FROM users WHERE username = $1 AND deleted_at IS NULL LIMIT 1`
+	row := r.Pool.QueryRow(ctx, query, username)
+	var user models.User
+	err := row.Scan(&user.UserID, &user.Username, &user.PasswordHash, &user.Name, &user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy, &user.DeletedAt)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, apperrors.ErrNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+// FindUserByUsername fetches a user by username and maps to domain.User
+func (r *PgxUserRepository) FindUserByUsername(ctx context.Context, username string) (*domain.User, error) {
+	query := `SELECT user_id, username, password_hash, name, created_at, created_by, last_updated_at, last_updated_by, deleted_at FROM users WHERE username = $1 AND deleted_at IS NULL LIMIT 1`
+	row := r.Pool.QueryRow(ctx, query, username)
+	var user models.User
+	err := row.Scan(&user.UserID, &user.Username, &user.PasswordHash, &user.Name, &user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy, &user.DeletedAt)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, apperrors.ErrNotFound
+		}
+		return nil, err
+	}
+	domainUser := mapping.ToDomainUser(user)
+	return &domainUser, nil
+}
+
 func (r *PgxUserRepository) SaveUser(ctx context.Context, user domain.User) error {
 	modelUser := mapping.ToModelUser(user)
 	query := `
-        INSERT INTO users (user_id, name, created_at, created_by, last_updated_at, last_updated_by)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO users (user_id, username, password_hash, name, created_at, created_by, last_updated_at, last_updated_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (user_id) DO UPDATE SET
+            username = EXCLUDED.username,
+            password_hash = EXCLUDED.password_hash,
             name = EXCLUDED.name,
             last_updated_at = EXCLUDED.last_updated_at,
             last_updated_by = EXCLUDED.last_updated_by;
     `
 	_, err := r.Pool.Exec(ctx, query,
 		modelUser.UserID,
+		modelUser.Username,
+		modelUser.PasswordHash,
 		modelUser.Name,
 		modelUser.CreatedAt,
 		modelUser.CreatedBy,

@@ -13,6 +13,7 @@ import (
 	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
+	"github.com/SscSPs/money_managemet_app/internal/utils"
 	"github.com/google/uuid"
 )
 
@@ -28,6 +29,10 @@ func NewUserService(repo portsrepo.UserRepositoryFacade) portssvc.UserSvcFacade 
 	}
 }
 
+func (s *userService) GetUserByUsername(ctx context.Context, username string) (*domain.User, error) {
+	return s.userRepo.FindUserByUsername(ctx, username)
+}
+
 func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	now := time.Now()
@@ -37,9 +42,18 @@ func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest)
 	// For now, using a placeholder. This needs proper handling based on the call site.
 	creatorUserID := "PLACEHOLDER_CREATOR_ID" // TODO: Determine creator properly
 
+	// Hash password
+	hash, err := utils.HashPassword(req.Password)
+	if err != nil {
+		logger.Error("Failed to hash password", slog.String("error", err.Error()))
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
 	user := domain.User{
-		UserID: newUserID,
-		Name:   req.Name,
+		UserID:       newUserID,
+		Name:         req.Name,
+		Username:     req.Username,
+		PasswordHash: hash,
 		AuditFields: domain.AuditFields{
 			CreatedAt:     now,
 			CreatedBy:     creatorUserID,
@@ -48,7 +62,7 @@ func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest)
 		},
 	}
 
-	err := s.userRepo.SaveUser(ctx, user)
+	err = s.userRepo.SaveUser(ctx, user)
 	if err != nil {
 		logger.Error("Failed to save user in repository", slog.String("error", err.Error()), slog.String("user_name", req.Name))
 		return nil, fmt.Errorf("failed to create user in service: %w", err)
@@ -150,21 +164,18 @@ func (s *userService) DeleteUser(ctx context.Context, userID string, deleterUser
 }
 
 // AuthenticateUser checks user credentials.
-// TODO: Implement actual authentication logic (e.g., check password hash)
-func (s *userService) AuthenticateUser(ctx context.Context, email, password string) (*domain.User, error) {
+func (s *userService) AuthenticateUser(ctx context.Context, username, password string) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	logger.Warn("AuthenticateUser not implemented", slog.String("email", email))
-	// Placeholder: Find user by email (assuming email is unique identifier for login)
-	// user, err := s.userRepo.FindUserByEmail(ctx, email) // Hypothetical repo method
-	// if err != nil {
-	// 	 return nil, err // Propagate NotFound or other errors
-	// }
-	// // Check password hash here
-	// return user, nil
-
-	// --- TEMPORARY: Return error indicating not implemented --- \
-	return nil, fmt.Errorf("authentication not implemented")
-	// --- /TEMPORARY ---
+	user, err := s.userRepo.FindUserByUsername(ctx, username)
+	if err != nil {
+		logger.Warn("User not found for authentication", slog.String("username", username))
+		return nil, apperrors.ErrNotFound
+	}
+	if !utils.CheckPasswordHash(password, user.PasswordHash) {
+		logger.Warn("Invalid password for user", slog.String("username", username))
+		return nil, apperrors.ErrUnauthorized
+	}
+	return user, nil
 }
 
 // TODO: Add other user management methods (Update, Delete/Deactivate, List) later

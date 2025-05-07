@@ -10,6 +10,7 @@ import (
 	// Use ports
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware" // For logger/user context
+	"github.com/SscSPs/money_managemet_app/internal/utils"
 
 	// "github.com/SscSPs/money_managemet_app/internal/models" // Models not needed directly here
 	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services
@@ -36,17 +37,6 @@ func NewAuthHandler(us portssvc.UserSvcFacade, cfg *config.Config) *AuthHandler 
 	}
 }
 
-// LoginRequest defines the structure for the login request body.
-type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
-}
-
-// LoginResponse defines the structure for the login response body.
-type LoginResponse struct {
-	Token string `json:"token"`
-}
-
 // ErrorResponse is a generic error response structure for handlers.
 // Moved here or define globally if used by other handlers.
 type ErrorResponse struct {
@@ -71,44 +61,32 @@ func registerAuthRoutes(rg *gin.Engine, cfg *config.Config, userService portssvc
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param login body LoginRequest true "Login Credentials"
-// @Success 200 {object} LoginResponse
+// @Param login body dto.LoginRequest true "Login Credentials"
+// @Success 200 {object} dto.LoginResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
-	var req LoginRequest
+	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid request body"})
 		return
 	}
-
-	// TODO: The UserService currently lacks authentication logic.
-	// Assuming a hypothetical AuthenticateUser method exists for now.
-	// user, err := h.userService.AuthenticateUser(c.Request.Context(), req.Username, req.Password)
-	// if err != nil {
-	// 	if errors.Is(err, apperrors.ErrAuthentication) || errors.Is(err, apperrors.ErrNotFound) {
-	// 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid username or password"})
-	// 	} else {
-	// 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Login failed"})
-	// 	}
-	// 	return
-	// }
-
-	// --- Placeholder Login Success ---
-	// Replace with actual user ID after implementing authentication in UserService
-	dummyUserID := "41181354-419f-4847-8405-b10dfd04ccdf"
-	if req.Username != "testuser" || req.Password != "password" { // Basic check for placeholder
-		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid username or password (placeholder check)"})
+	user, err := h.userService.GetUserByUsername(c.Request.Context(), req.Username)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid username or password"})
 		return
 	}
-	// --- End Placeholder ---
+	if !utils.CheckPasswordHash(req.Password, user.PasswordHash) {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid username or password"})
+		return
+	}
 
 	// Generate JWT Token
 	claims := jwt.RegisteredClaims{
 		Issuer:    "mma-backend",
-		Subject:   dummyUserID, // Use actual user.UserID here
+		Subject:   user.UserID,
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(h.jwtDuration)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 		NotBefore: jwt.NewNumericDate(time.Now()),
@@ -122,7 +100,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, LoginResponse{Token: tsignedString})
+	c.JSON(http.StatusOK, dto.LoginResponse{Token: tsignedString})
 }
 
 // Register godoc
@@ -138,15 +116,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
-	var req dto.CreateUserRequest // Use DTO for request binding
+	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid request body: " + err.Error()})
 		return
 	}
-
-	// creatorUserID := "SYSTEM_SELF_REGISTER" // This variable is unused now based on the interface
-
-	// Call the user service to create the user
+	if req.Username == "" || req.Password == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Username and password required"})
+		return
+	}
 	newUser, err := h.userService.CreateUser(c.Request.Context(), req)
 	if err != nil {
 		logger := middleware.GetLoggerFromCtx(c.Request.Context())

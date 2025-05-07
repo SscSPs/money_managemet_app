@@ -12,6 +12,9 @@ type UserReaderSvc interface {
 	// GetUserByID retrieves a user by ID.
 	GetUserByID(ctx context.Context, userID string) (*domain.User, error)
 
+	// GetUserByUsername retrieves a user by username.
+	GetUserByUsername(ctx context.Context, username string) (*domain.User, error)
+
 	// ListUsers retrieves a paginated list of users.
 	ListUsers(ctx context.Context, limit, offset int) ([]domain.User, error)
 }

@@ -565,6 +565,194 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_SaveError() {
 
 // TODO: Add tests for GetJournalByID, ListJournals, UpdateJournal, DeactivateJournal, ListTransactionsByAccount, CalculateAccountBalance
 
+// --- EXHAUSTIVE ACCOUNTING TESTS ---
+
+func (suite *JournalServiceTestSuite) TestCreateJournal_AllAccountTypesCombinations() {
+	ctx := context.Background()
+	accountTypes := []struct {
+		name  string
+		type_ domain.AccountType
+	}{
+		{"Asset", domain.Asset},
+		{"Liability", domain.Liability},
+		{"Equity", domain.Equity},
+		{"Revenue", domain.Revenue},
+		{"Expense", domain.Expense},
+	}
+	for _, debitAcc := range accountTypes {
+		for _, creditAcc := range accountTypes {
+			if debitAcc.type_ == creditAcc.type_ {
+				continue // skip same-type for brevity
+			}
+			debit := domain.Account{AccountID: uuid.NewString(), WorkplaceID: suite.workplaceID, AccountType: debitAcc.type_, CurrencyCode: "USD", IsActive: true}
+			credit := domain.Account{AccountID: uuid.NewString(), WorkplaceID: suite.workplaceID, AccountType: creditAcc.type_, CurrencyCode: "USD", IsActive: true}
+			accountsMap := map[string]domain.Account{
+				debit.AccountID:  debit,
+				credit.AccountID: credit,
+			}
+			req := dto.CreateJournalRequest{
+				Date:         time.Now(),
+				Description:  "Combo " + debitAcc.name + "->" + creditAcc.name,
+				CurrencyCode: "USD",
+				Transactions: []dto.CreateTransactionRequest{
+					{AccountID: debit.AccountID, Amount: decimal.NewFromInt(500), TransactionType: domain.Debit},
+					{AccountID: credit.AccountID, Amount: decimal.NewFromInt(500), TransactionType: domain.Credit},
+				},
+			}
+			suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
+			suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+			suite.mockJournalRepo.On("SaveJournal", ctx, mock.AnythingOfType("domain.Journal"), mock.AnythingOfType("[]domain.Transaction"), mock.AnythingOfType("map[string]decimal.Decimal")).Return(nil).Once()
+			createdJournal, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
+			suite.Require().NoError(err, "%s->%s should succeed", debitAcc.name, creditAcc.name)
+			suite.Require().NotNil(createdJournal)
+			suite.mockWorkplaceSvc.AssertExpectations(suite.T())
+			suite.mockAccountSvc.AssertExpectations(suite.T())
+			suite.mockJournalRepo.AssertExpectations(suite.T())
+		}
+	}
+}
+
+func (suite *JournalServiceTestSuite) TestCreateJournal_ZeroNegativeAmounts() {
+	ctx := context.Background()
+	cases := []struct {
+		amount decimal.Decimal
+		msg    string
+	}{
+		{decimal.Zero, "zero amount"},
+		{decimal.NewFromInt(-100), "negative amount"},
+	}
+	for _, c := range cases {
+		req := dto.CreateJournalRequest{
+			CurrencyCode: "USD",
+			Transactions: []dto.CreateTransactionRequest{
+				{AccountID: suite.assetAccount.AccountID, Amount: c.amount, TransactionType: domain.Debit},
+				{AccountID: suite.liabilityAccount.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Credit},
+			},
+		}
+		suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
+		_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
+		suite.Require().Error(err, c.msg)
+	}
+}
+
+func (suite *JournalServiceTestSuite) TestCreateJournal_UnbalancedAmounts() {
+	ctx := context.Background()
+	accountsMap := map[string]domain.Account{
+		suite.assetAccount.AccountID:     suite.assetAccount,
+		suite.liabilityAccount.AccountID: suite.liabilityAccount,
+	}
+	req := dto.CreateJournalRequest{
+		CurrencyCode: "USD",
+		Transactions: []dto.CreateTransactionRequest{
+			{AccountID: suite.assetAccount.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit},
+			{AccountID: suite.liabilityAccount.AccountID, Amount: decimal.NewFromInt(90), TransactionType: domain.Credit},
+		},
+	}
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
+	suite.Require().Error(err)
+	suite.ErrorIs(err, services.ErrJournalUnbalanced)
+}
+
+func (suite *JournalServiceTestSuite) TestCreateJournal_DuplicateAccounts() {
+	ctx := context.Background()
+	acc := domain.Account{AccountID: uuid.NewString(), WorkplaceID: suite.workplaceID, AccountType: domain.Asset, CurrencyCode: "USD", IsActive: true}
+	accountsMap := map[string]domain.Account{acc.AccountID: acc}
+	req := dto.CreateJournalRequest{
+		CurrencyCode: "USD",
+		Transactions: []dto.CreateTransactionRequest{
+			{AccountID: acc.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit},
+			{AccountID: acc.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Credit},
+		},
+	}
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockJournalRepo.On("SaveJournal", ctx, mock.AnythingOfType("domain.Journal"), mock.AnythingOfType("[]domain.Transaction"), mock.AnythingOfType("map[string]decimal.Decimal")).Return(nil).Once()
+	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
+	suite.Require().NoError(err, "Duplicate debit/credit on same account should be allowed if balanced")
+}
+
+func (suite *JournalServiceTestSuite) TestCreateJournal_MultiLineSplit() {
+	ctx := context.Background()
+	asset := domain.Account{AccountID: uuid.NewString(), WorkplaceID: suite.workplaceID, AccountType: domain.Asset, CurrencyCode: "USD", IsActive: true}
+	liability := domain.Account{AccountID: uuid.NewString(), WorkplaceID: suite.workplaceID, AccountType: domain.Liability, CurrencyCode: "USD", IsActive: true}
+	revenue := domain.Account{AccountID: uuid.NewString(), WorkplaceID: suite.workplaceID, AccountType: domain.Revenue, CurrencyCode: "USD", IsActive: true}
+	accountsMap := map[string]domain.Account{
+		asset.AccountID:     asset,
+		liability.AccountID: liability,
+		revenue.AccountID:   revenue,
+	}
+	req := dto.CreateJournalRequest{
+		CurrencyCode: "USD",
+		Transactions: []dto.CreateTransactionRequest{
+			{AccountID: asset.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit},
+			{AccountID: liability.AccountID, Amount: decimal.NewFromInt(60), TransactionType: domain.Credit},
+			{AccountID: revenue.AccountID, Amount: decimal.NewFromInt(40), TransactionType: domain.Credit},
+		},
+	}
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockJournalRepo.On("SaveJournal", ctx, mock.AnythingOfType("domain.Journal"), mock.AnythingOfType("[]domain.Transaction"), mock.AnythingOfType("map[string]decimal.Decimal")).Return(nil).Once()
+	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
+	suite.Require().NoError(err)
+}
+
+func (suite *JournalServiceTestSuite) TestCreateJournal_CurrencyMismatch_Exhaustive() {
+	ctx := context.Background()
+	usdAcc := domain.Account{AccountID: uuid.NewString(), WorkplaceID: suite.workplaceID, AccountType: domain.Asset, CurrencyCode: "USD", IsActive: true}
+	eurAcc := domain.Account{AccountID: uuid.NewString(), WorkplaceID: suite.workplaceID, AccountType: domain.Liability, CurrencyCode: "EUR", IsActive: true}
+	accountsMap := map[string]domain.Account{
+		usdAcc.AccountID: usdAcc,
+		eurAcc.AccountID: eurAcc,
+	}
+	req := dto.CreateJournalRequest{
+		CurrencyCode: "USD",
+		Transactions: []dto.CreateTransactionRequest{
+			{AccountID: usdAcc.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit},
+			{AccountID: eurAcc.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Credit},
+		},
+	}
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
+	suite.Require().Error(err)
+	suite.ErrorIs(err, services.ErrCurrencyMismatch)
+}
+
+func (suite *JournalServiceTestSuite) TestCreateJournal_Reversal() {
+	ctx := context.Background()
+	asset := domain.Account{AccountID: uuid.NewString(), WorkplaceID: suite.workplaceID, AccountType: domain.Asset, CurrencyCode: "USD", IsActive: true}
+	liability := domain.Account{AccountID: uuid.NewString(), WorkplaceID: suite.workplaceID, AccountType: domain.Liability, CurrencyCode: "USD", IsActive: true}
+	accountsMap := map[string]domain.Account{
+		asset.AccountID:     asset,
+		liability.AccountID: liability,
+	}
+	journalID := uuid.NewString()
+	journal := &domain.Journal{
+		JournalID:    journalID,
+		WorkplaceID:  suite.workplaceID,
+		CurrencyCode: "USD",
+		Status:       domain.Posted,
+		Transactions: []domain.Transaction{
+			{TransactionID: uuid.NewString(), JournalID: journalID, AccountID: asset.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit, CurrencyCode: "USD"},
+			{TransactionID: uuid.NewString(), JournalID: journalID, AccountID: liability.AccountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Credit, CurrencyCode: "USD"},
+		},
+	}
+	suite.mockJournalRepo.On("FindJournalByID", ctx, journalID).Return(journal, nil).Once()
+	suite.mockJournalRepo.On("FindTransactionsByJournalID", ctx, journalID).Return(journal.Transactions, nil).Once()
+	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything).Return(accountsMap, nil).Once()
+	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
+	suite.mockJournalRepo.On("SaveJournal", ctx, mock.AnythingOfType("domain.Journal"), mock.AnythingOfType("[]domain.Transaction"), mock.AnythingOfType("map[string]decimal.Decimal")).Return(nil).Once()
+	suite.mockJournalRepo.On("UpdateJournalStatusAndLinks", ctx, journalID, domain.Reversed, mock.Anything, mock.Anything, suite.userID, mock.Anything).Return(nil).Once()
+	reversed, err := suite.service.ReverseJournal(ctx, suite.workplaceID, journalID, suite.userID)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(reversed)
+	suite.Equal(domain.Posted, reversed.Status)
+}
+
+// More edge and stress tests can be added similarly for very large journals, high-precision decimals, etc.
+
 // --- Run Test Suite ---
 func TestJournalService(t *testing.T) {
 	suite.Run(t, new(JournalServiceTestSuite))

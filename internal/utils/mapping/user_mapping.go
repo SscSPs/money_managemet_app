@@ -8,8 +8,10 @@ import (
 // ToModelUser converts a domain User to a model User
 func ToModelUser(d domain.User) models.User {
 	return models.User{
-		UserID: d.UserID,
-		Name:   d.Name,
+		UserID:       d.UserID,
+		Name:         d.Name,
+		Username:     d.Username,
+		PasswordHash: d.PasswordHash,
 		AuditFields: models.AuditFields{
 			CreatedAt:     d.CreatedAt,
 			CreatedBy:     d.CreatedBy,
@@ -23,8 +25,10 @@ func ToModelUser(d domain.User) models.User {
 // ToDomainUser converts a model User to a domain User
 func ToDomainUser(m models.User) domain.User {
 	return domain.User{
-		UserID: m.UserID,
-		Name:   m.Name,
+		UserID:       m.UserID,
+		Name:         m.Name,
+		Username:     m.Username,
+		PasswordHash: m.PasswordHash,
 		AuditFields: domain.AuditFields{
 			CreatedAt:     m.CreatedAt,
 			CreatedBy:     m.CreatedBy,
