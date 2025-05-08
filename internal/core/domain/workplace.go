@@ -16,10 +16,10 @@ type Workplace struct {
 type UserWorkplaceRole string
 
 const (
-	RoleAdmin   UserWorkplaceRole = "ADMIN"
-	RoleMember  UserWorkplaceRole = "MEMBER"
-	RoleRemoved UserWorkplaceRole = "REMOVED" // For users who have been removed from the workplace
-	// Add other roles as needed (e.g., ReadOnly)
+	RoleAdmin    UserWorkplaceRole = "ADMIN"
+	RoleMember   UserWorkplaceRole = "MEMBER"
+	RoleReadOnly UserWorkplaceRole = "READONLY" // Users with read-only access to workplace data
+	RoleRemoved  UserWorkplaceRole = "REMOVED"  // For users who have been removed from the workplace
 )
 
 // UserWorkplace represents the membership of a User in a Workplace.

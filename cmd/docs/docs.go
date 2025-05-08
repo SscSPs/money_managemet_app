@@ -2512,14 +2512,17 @@ const docTemplate = `{
             "enum": [
                 "ADMIN",
                 "MEMBER",
+                "READONLY",
                 "REMOVED"
             ],
             "x-enum-comments": {
+                "RoleReadOnly": "Users with read-only access to workplace data",
                 "RoleRemoved": "For users who have been removed from the workplace"
             },
             "x-enum-varnames": [
                 "RoleAdmin",
                 "RoleMember",
+                "RoleReadOnly",
                 "RoleRemoved"
             ]
         },

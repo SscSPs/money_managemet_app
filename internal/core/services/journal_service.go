@@ -386,7 +386,7 @@ func (s *journalService) GetJournalByID(ctx context.Context, workplaceID string,
 	// --- Authorization Check --- (Requires WorkplaceService injection)
 	// Check if the requesting user is a member of the target workplace.
 	if s.workplaceSvc != nil {
-		if err := s.workplaceSvc.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleMember); err != nil {
+		if err := s.workplaceSvc.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleReadOnly); err != nil {
 			logger.Warn("Authorization failed for GetJournalByID", slog.String("user_id", requestingUserID), slog.String("workplace_id", workplaceID), slog.String("journal_id", journalID), slog.String("error", err.Error()))
 			return nil, err // Return NotFound or Forbidden
 		}
@@ -470,8 +470,8 @@ type ListJournalsParams struct {
 func (j *journalService) ListJournals(ctx context.Context, workplaceID string, userID string, params dto.ListJournalsParams) (*dto.ListJournalsResponse, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
-	// Authorize user action (at least member required to list journals)
-	if err := j.workplaceSvc.AuthorizeUserAction(ctx, userID, workplaceID, domain.RoleMember); err != nil {
+	// Authorize user action (at least ReadOnly required to list journals)
+	if err := j.workplaceSvc.AuthorizeUserAction(ctx, userID, workplaceID, domain.RoleReadOnly); err != nil {
 		logger.Warn("Authorization failed for ListJournals", "error", err)
 		return nil, err
 	}
@@ -679,8 +679,8 @@ func (s *journalService) DeactivateJournal(ctx context.Context, workplaceID stri
 func (j *journalService) ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, userID string, params dto.ListTransactionsParams) (*dto.ListTransactionsResponse, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
-	// Authorize user action (at least member required to list transactions)
-	if err := j.workplaceSvc.AuthorizeUserAction(ctx, userID, workplaceID, domain.RoleMember); err != nil {
+	// Authorize user action (at least ReadOnly required to list transactions)
+	if err := j.workplaceSvc.AuthorizeUserAction(ctx, userID, workplaceID, domain.RoleReadOnly); err != nil {
 		logger.Warn("Authorization failed for ListTransactionsByAccount", "error", err)
 		return nil, err
 	}
@@ -729,9 +729,9 @@ func uniqueStrings(input []string) []string {
 func (s *journalService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
-	// --- Authorization Check? ---
-	// Should the caller (e.g., handler) already have verified user access to the workplace?
-	// Or should this service check it? Assume caller handles it for now.
+	// --- Authorization Check ---
+	// Since this is a read operation, we only need ReadOnly access
+	// Note: We'll rely on the account service's authorization check when calling GetAccountByID
 
 	// 1. Find the account to verify existence, activity, type, and workplace match
 	account, err := s.accountSvc.GetAccountByID(ctx, workplaceID, accountID)
@@ -938,25 +938,4 @@ func (j *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 	// Return the newly created reversing journal (without transactions populated)
 	reversingJournal.Transactions = nil // Ensure transactions aren't returned by default
 	return &reversingJournal, nil
-}
-
-// ListJournalsByWorkplace retrieves a paginated list of journals for a workplace.
-// It now uses token-based pagination.
-func (j *journalService) ListJournalsByWorkplace(ctx context.Context, params ListJournalsParams) ([]domain.Journal, *string, error) {
-	logger := middleware.GetLoggerFromCtx(ctx)
-
-	// Authorize user against workplace (requires UserWorkplaceRepo later)
-	// TODO: Add workspace authorization check
-
-	// Fetch journals directly from repository (could add filtering, etc. later)
-	journals, nextToken, err := j.journalRepo.ListJournalsByWorkplace(ctx, params.WorkplaceID, params.Limit, params.NextToken, false) // Add a parameter for includeReversals
-	if err != nil {
-		// Log the error for debugging
-		logger.Error("Failed to list journals", "error", err, "workplace_id", params.WorkplaceID)
-		return nil, nil, fmt.Errorf("Error fetching journals: %w", err)
-	}
-
-	// Potentially enrich journal data here if needed
-
-	return journals, nextToken, nil
 }

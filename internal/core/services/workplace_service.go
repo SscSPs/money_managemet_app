@@ -276,7 +276,9 @@ func hasRequiredRole(userRole, requiredRole domain.UserWorkplaceRole) bool {
 
 	// Simple role hierarchy check
 	switch requiredRole {
-	case domain.RoleMember: // Use only roles defined in the domain package
+	case domain.RoleReadOnly: // ReadOnly is the lowest access level
+		return userRole == domain.RoleReadOnly || userRole == domain.RoleMember || userRole == domain.RoleAdmin
+	case domain.RoleMember: 
 		return userRole == domain.RoleMember || userRole == domain.RoleAdmin
 	case domain.RoleAdmin:
 		return userRole == domain.RoleAdmin
@@ -294,8 +296,8 @@ func NewWorkplaceServiceLegacy(wr portsrepo.WorkplaceRepositoryFacade, cr portsr
 // ListWorkplaceUsers retrieves all users and their roles for a specific workplace
 func (s *workplaceService) ListWorkplaceUsers(ctx context.Context, workplaceID string, requestingUserID string) ([]domain.UserWorkplace, error) {
 	// First, check if the requesting user is authorized to view the workplace's members
-	// (must be a member of the workplace)
-	err := s.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleMember)
+	// (ReadOnly role is sufficient for viewing workplace users)
+	err := s.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleReadOnly)
 	if err != nil {
 		s.LogError(ctx, err, "User not authorized to list workplace users",
 			slog.String("user_id", requestingUserID),
