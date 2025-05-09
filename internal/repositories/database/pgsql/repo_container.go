@@ -1,13 +1,11 @@
 package pgsql
 
 import (
-	"log/slog"
-
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func NewRepositoryProvider(dbPool *pgxpool.Pool, logger *slog.Logger) portsrepo.RepositoryProvider {
+func NewRepositoryProvider(dbPool *pgxpool.Pool) portsrepo.RepositoryProvider {
 	accountRepo := newPgxAccountRepository(dbPool)
 	currencyRepo := newPgxCurrencyRepository(dbPool)
 	exchangeRateRepo := newPgxExchangeRateRepository(dbPool)

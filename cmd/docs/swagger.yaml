@@ -409,6 +409,11 @@ definitions:
       toDate:
         type: string
     type: object
+  dto.RefreshTokenResponse:
+    properties:
+      token:
+        type: string
+    type: object
   dto.TransactionResponse:
     properties:
       accountID:
@@ -589,6 +594,55 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       summary: User login
+      tags:
+      - auth
+  /auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Logs out the user and invalidates their refresh token.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: User logout
+      tags:
+      - auth
+  /auth/refresh_token:
+    post:
+      description: Refreshes an access token using a valid refresh token provided
+        as an HttpOnly cookie.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: New access token
+          schema:
+            $ref: '#/definitions/dto.RefreshTokenResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Refresh access token
       tags:
       - auth
   /auth/register:

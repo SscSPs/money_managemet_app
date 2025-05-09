@@ -26,6 +26,12 @@ type UserWriter interface {
 
 	// UpdateUser updates an existing user's details.
 	UpdateUser(ctx context.Context, user domain.User) error
+
+	// UpdateRefreshToken updates the refresh token details for a user.
+	UpdateRefreshToken(ctx context.Context, userID string, refreshTokenHash string, refreshTokenExpiryTime time.Time) error
+
+	// ClearRefreshToken clears the refresh token for a user.
+	ClearRefreshToken(ctx context.Context, userID string) error
 }
 
 // UserLifecycleManager defines operations for managing user lifecycle

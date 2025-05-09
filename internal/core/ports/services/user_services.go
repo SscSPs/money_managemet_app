@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
@@ -26,6 +27,12 @@ type UserWriterSvc interface {
 
 	// UpdateUser updates an existing user.
 	UpdateUser(ctx context.Context, userID string, req dto.UpdateUserRequest, requestingUserID string) (*domain.User, error)
+
+	// UpdateRefreshToken updates the refresh token details for a user.
+	UpdateRefreshToken(ctx context.Context, userID string, refreshTokenHash string, refreshTokenExpiryTime time.Time) error
+
+	// ClearRefreshToken clears the refresh token for a user.
+	ClearRefreshToken(ctx context.Context, userID string) error
 }
 
 // UserLifecycleSvc defines operations for managing user lifecycle

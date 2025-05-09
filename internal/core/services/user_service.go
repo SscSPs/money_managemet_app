@@ -178,4 +178,47 @@ func (s *userService) AuthenticateUser(ctx context.Context, username, password s
 	return user, nil
 }
 
+// UpdateRefreshToken stores the hashed refresh token and its expiry for a user.
+func (s *userService) UpdateRefreshToken(ctx context.Context, userID string, refreshTokenHash string, refreshTokenExpiryTime time.Time) error {
+	logger := middleware.GetLoggerFromCtx(ctx)
+	err := s.userRepo.UpdateRefreshToken(ctx, userID, refreshTokenHash, refreshTokenExpiryTime)
+	if err != nil {
+		logger.Error("Failed to update refresh token in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
+		// Check if it's a not found error from the repo and return it directly if so
+		if errors.Is(err, apperrors.ErrNotFound) {
+			return apperrors.ErrNotFound // Or a more specific error like "user not found for refresh token update"
+		}
+		return fmt.Errorf("failed to update refresh token for user %s: %w", userID, err)
+	}
+	logger.Info("Refresh token updated successfully for user", slog.String("user_id", userID))
+	return nil
+}
+
+// ClearRefreshToken clears the refresh token for a user.
+func (s *userService) ClearRefreshToken(ctx context.Context, userID string) error {
+	logger := middleware.GetLoggerFromCtx(ctx)
+	// Input validation (optional, but good practice)
+	if userID == "" {
+		return fmt.Errorf("%w: userID cannot be empty", apperrors.ErrBadRequest)
+	}
+
+	// Call repository to clear the token
+	err := s.userRepo.ClearRefreshToken(ctx, userID)
+	if err != nil {
+		// Log the error for observability
+		logger.ErrorContext(ctx, "Failed to clear refresh token in repository", slog.String("user_id", userID), slog.String("error", err.Error()))
+		// It's possible the user doesn't exist or the token was already cleared.
+		// Depending on how strict we want to be, we might return the error or handle it.
+		// For logout, if the user isn't found, it's not critical, so we can absorb some errors.
+		// However, if the DB operation itself fails, we should return an error.
+		if !errors.Is(err, apperrors.ErrNotFound) { // Assuming ClearRefreshToken in repo might return ErrNotFound
+			return fmt.Errorf("%w: failed to clear refresh token: %v", apperrors.ErrInternal, err)
+		}
+		// If it's ErrNotFound, we can consider logout successful from the service perspective.
+	}
+
+	logger.InfoContext(ctx, "Refresh token cleared successfully", slog.String("user_id", userID))
+	return nil
+}
+
 // TODO: Add other user management methods (Update, Delete/Deactivate, List) later

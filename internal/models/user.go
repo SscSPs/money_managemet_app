@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 // User represents a user of the application.
 // Now includes username and password hash for authentication.
@@ -12,4 +15,8 @@ type User struct {
 	Name         string `json:"name"`
 	AuditFields
 	DeletedAt *time.Time `json:"deletedAt,omitempty" db:"deleted_at"`
+
+	// Refresh Token Fields
+	RefreshTokenHash       sql.NullString `db:"refresh_token_hash"`        // Store hash of the refresh token
+	RefreshTokenExpiryTime sql.NullTime   `db:"refresh_token_expiry_time"` // Expiry of the stored refresh token
 }

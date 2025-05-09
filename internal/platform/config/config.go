@@ -17,6 +17,11 @@ type Config struct {
 	EnableDBCheck     bool
 	JWTSecret         string
 	JWTExpiryDuration time.Duration
+
+	// Refresh Token Config
+	RefreshTokenExpiryDuration time.Duration
+	RefreshTokenCookieName     string
+	RefreshTokenSecret         string
 }
 
 // LoadConfig loads configuration from environment variables.
@@ -74,12 +79,41 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
+	// Load Refresh Token Expiry Duration (e.g., "168h" for 7 days)
+	refreshTokenExpiryStr := os.Getenv("REFRESH_TOKEN_EXPIRY_DURATION")
+	refreshTokenExpiryDuration, err := time.ParseDuration(refreshTokenExpiryStr)
+	if err != nil {
+		refreshTokenExpiryDuration = time.Hour * 24 * 7 // Default to 7 days
+		if refreshTokenExpiryStr != "" {
+			log.Printf("Warning: Invalid value for REFRESH_TOKEN_EXPIRY_DURATION ('%s'). Defaulting to %s.\n", refreshTokenExpiryStr, refreshTokenExpiryDuration.String())
+		} else {
+			log.Printf("Warning: REFRESH_TOKEN_EXPIRY_DURATION not set. Defaulting to %s.\n", refreshTokenExpiryDuration.String())
+		}
+	}
+
+	refreshTokenCookieName := os.Getenv("REFRESH_TOKEN_COOKIE_NAME")
+	if refreshTokenCookieName == "" {
+		refreshTokenCookieName = "rtid" // Default refresh token cookie name
+		log.Printf("Warning: REFRESH_TOKEN_COOKIE_NAME not set. Defaulting to %s.\n", refreshTokenCookieName)
+	}
+
+	refreshTokenSecret := os.Getenv("REFRESH_TOKEN_SECRET")
+	if refreshTokenSecret == "" {
+		// Provide a fallback or ensure it's set if critical, for now, let's log if it's empty in a real scenario
+		// For development, a default might be acceptable but not for production.
+		log.Println("Warning: REFRESH_TOKEN_SECRET is not set, using default insecure secret. THIS IS NOT FOR PRODUCTION.")
+		refreshTokenSecret = "default_insecure_refresh_secret_please_change_this_!@#$"
+	}
+
 	return &Config{
-		DatabaseURL:       dbURL,
-		Port:              port,
-		IsProduction:      isProd,
-		EnableDBCheck:     enableDBCheck,
-		JWTSecret:         jwtSecret,
-		JWTExpiryDuration: jwtExpiryDuration,
+		DatabaseURL:                dbURL,
+		Port:                       port,
+		IsProduction:               isProd,
+		EnableDBCheck:              enableDBCheck,
+		JWTSecret:                  jwtSecret,
+		JWTExpiryDuration:          jwtExpiryDuration,
+		RefreshTokenExpiryDuration: refreshTokenExpiryDuration,
+		RefreshTokenCookieName:     refreshTokenCookieName,
+		RefreshTokenSecret:         refreshTokenSecret,
 	}, nil
 }

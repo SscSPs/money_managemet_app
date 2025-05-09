@@ -61,7 +61,7 @@ func main() {
 
 	// --- Dependency Injection Setup ---
 	logger.Info("Initializing repositories...")
-	repoProvider := pgsql.NewRepositoryProvider(dbPool, logger)
+	repoProvider := pgsql.NewRepositoryProvider(dbPool)
 
 	// Create Service Container
 	logger.Info("Initializing services...")

@@ -28,18 +28,20 @@ func (m *MockUserRepository) SaveUser(ctx context.Context, user domain.User) err
 
 func (m *MockUserRepository) FindUserByID(ctx context.Context, userID string) (*domain.User, error) {
 	args := m.Called(ctx, userID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
+	var user *domain.User
+	if args.Get(0) != nil {
+		user = args.Get(0).(*domain.User)
 	}
-	return args.Get(0).(*domain.User), args.Error(1)
+	return user, args.Error(1)
 }
 
 func (m *MockUserRepository) FindUsers(ctx context.Context, limit, offset int) ([]domain.User, error) {
 	args := m.Called(ctx, limit, offset)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
+	var users []domain.User
+	if args.Get(0) != nil {
+		users = args.Get(0).([]domain.User)
 	}
-	return args.Get(0).([]domain.User), args.Error(1)
+	return users, args.Error(1)
 }
 
 func (m *MockUserRepository) UpdateUser(ctx context.Context, user domain.User) error {
@@ -54,10 +56,35 @@ func (m *MockUserRepository) MarkUserDeleted(ctx context.Context, userID string,
 
 func (m *MockUserRepository) FindUserByUsername(ctx context.Context, username string) (*domain.User, error) {
 	args := m.Called(ctx, username)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
+	var user *domain.User
+	if args.Get(0) != nil {
+		user = args.Get(0).(*domain.User)
 	}
-	return args.Get(0).(*domain.User), args.Error(1)
+	return user, args.Error(1)
+}
+
+func (m *MockUserRepository) UpdateRefreshToken(ctx context.Context, userID string, refreshTokenHash string, refreshTokenExpiryTime time.Time) error {
+	args := m.Called(ctx, userID, refreshTokenHash, refreshTokenExpiryTime)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) ClearRefreshToken(ctx context.Context, userID string) error {
+	args := m.Called(ctx, userID)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) DeleteUser(ctx context.Context, userID string) error {
+	args := m.Called(ctx, userID)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) GetUserByUsername(ctx context.Context, username string) (*domain.User, error) {
+	args := m.Called(ctx, username)
+	var user *domain.User
+	if args.Get(0) != nil {
+		user = args.Get(0).(*domain.User)
+	}
+	return user, args.Error(1)
 }
 
 // --- Test Suite ---

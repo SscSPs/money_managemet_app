@@ -1,17 +1,17 @@
 package handlers
 
 import (
+	"errors" // For error checking
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/ulule/limiter/v3"
-	"github.com/ulule/limiter/v3/drivers/store/memory"
 	limitergin "github.com/ulule/limiter/v3/drivers/middleware/gin"
-
-	// For error checking
+	"github.com/ulule/limiter/v3/drivers/store/memory"
 
 	// Use ports
+	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware" // For logger/user context
 	"github.com/SscSPs/money_managemet_app/internal/utils"
@@ -20,24 +20,30 @@ import (
 	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services
 	"github.com/SscSPs/money_managemet_app/internal/platform/config"              // For JWT config access
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
+	// "github.com/golang-jwt/jwt/v5" // No longer directly used here
 	// "github.com/google/uuid" // Use actual user ID from service
 	// Import for error handling
 )
 
 // AuthHandler handles authentication related requests.
 type AuthHandler struct {
-	userService portssvc.UserSvcFacade
-	jwtSecret   string
-	jwtDuration time.Duration
+	userService            portssvc.UserSvcFacade
+	jwtSecret              string
+	jwtDuration            time.Duration
+	refreshTokenDuration   time.Duration
+	refreshTokenCookieName string
+	refreshTokenSecret     string
 }
 
 // NewAuthHandler creates a new AuthHandler.
 func NewAuthHandler(us portssvc.UserSvcFacade, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
-		userService: us,
-		jwtSecret:   cfg.JWTSecret,         // Store secret
-		jwtDuration: cfg.JWTExpiryDuration, // Store duration
+		userService:            us,
+		jwtSecret:              cfg.JWTSecret,
+		jwtDuration:            cfg.JWTExpiryDuration,
+		refreshTokenDuration:   cfg.RefreshTokenExpiryDuration,
+		refreshTokenCookieName: cfg.RefreshTokenCookieName,
+		refreshTokenSecret:     cfg.RefreshTokenSecret,
 	}
 }
 
@@ -62,6 +68,8 @@ func registerAuthRoutes(rg *gin.Engine, cfg *config.Config, userService portssvc
 	{
 		auth.POST("/login", limitMiddleware, h.Login) // Apply rate limiting middleware here
 		auth.POST("/register", h.Register)
+		auth.POST("/refresh_token", h.RefreshToken)
+		auth.POST("/logout", middleware.AuthMiddleware(h.jwtSecret), h.Logout) // Protected by auth middleware
 	}
 }
 
@@ -94,15 +102,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// Generate JWT Token
-	claims := jwt.RegisteredClaims{
-		Issuer:    "mma-backend",
-		Subject:   user.UserID,
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(h.jwtDuration)),
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
-		NotBefore: jwt.NewNumericDate(time.Now()),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tsignedString, err := token.SignedString([]byte(h.jwtSecret))
+	token, err := utils.GenerateJWT(user.UserID, h.jwtSecret, h.jwtDuration, "mma-backend")
 	if err != nil {
 		logger := middleware.GetLoggerFromCtx(c.Request.Context())
 		logger.Error("Failed to sign JWT token", slog.String("error", err.Error()))
@@ -110,7 +110,168 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.LoginResponse{Token: tsignedString})
+	// Generate Refresh Token
+	refreshTokenString, err := utils.GenerateJWT(user.UserID, h.refreshTokenSecret, h.refreshTokenDuration, "mma-backend-refresh")
+	if err != nil {
+		logger := middleware.GetLoggerFromCtx(c.Request.Context())
+		logger.Error("Failed to sign refresh token", slog.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to generate token"})
+		return
+	}
+
+	// Hash and Store Refresh Token
+	hashedRefreshToken := utils.HashRefreshToken(refreshTokenString)
+	refreshTokenExpiryTime := time.Now().Add(h.refreshTokenDuration)
+	if err := h.userService.UpdateRefreshToken(c.Request.Context(), user.UserID, hashedRefreshToken, refreshTokenExpiryTime); err != nil {
+		logger := middleware.GetLoggerFromCtx(c.Request.Context())
+		logger.Error("Failed to store refresh token hash", slog.String("error", err.Error()), slog.String("user_id", user.UserID))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to store token"})
+		return
+	}
+
+	// Set Refresh Token Cookie
+	// TODO: Make Secure flag conditional on environment (e.g. cfg.Environment == "production")
+	c.SetCookie(h.refreshTokenCookieName, refreshTokenString, int(h.refreshTokenDuration.Seconds()), "/api/v1/auth", "", true, true) // Secure=true, HttpOnly=true
+	// Consider SameSite policy, e.g. http.SameSiteLaxMode
+	// For gin, you might need to set the cookie fields more directly if SetCookie doesn't support SameSite:
+	// http.SetCookie(c.Writer, &http.Cookie{
+	// 	Name:     h.refreshTokenCookieName,
+	// 	Value:    refreshTokenString,
+	// 	Expires:  refreshTokenExpiryTime,
+	// 	Path:     "/api/v1/auth",
+	// 	Domain:   "", // Set your domain if needed
+	// 	Secure:   true, // Should be true in production
+	// 	HttpOnly: true,
+	// 	SameSite: http.SameSiteLaxMode, // Or http.SameSiteStrictMode
+	// })
+
+	c.JSON(http.StatusOK, dto.LoginResponse{Token: token})
+}
+
+// RefreshToken godoc
+// @Summary Refresh access token
+// @Description Refreshes an access token using a valid refresh token provided as an HttpOnly cookie.
+// @Tags auth
+// @Produce json
+// @Success 200 {object} dto.RefreshTokenResponse "New access token"
+// @Failure 401 {object} ErrorResponse "Unauthorized"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Router /auth/refresh_token [post]
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+
+	// 1. Extract refresh token from cookie
+	refreshTokenString, err := c.Cookie(h.refreshTokenCookieName)
+	if err != nil {
+		logger.Warn("Refresh token cookie not found", slog.String("error", err.Error()))
+		c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: "Refresh token not found"})
+		return
+	}
+
+	// 2. Parse and validate the refresh token JWT
+	claims, err := utils.ParseAndValidateJWT(refreshTokenString, h.refreshTokenSecret)
+	if err != nil {
+		logger.Warn("Invalid refresh token", slog.String("error", err.Error()))
+		c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid refresh token"})
+		return
+	}
+
+	// 3. Get User ID from claims
+	userID := claims.Subject
+	if userID == "" {
+		logger.Warn("User ID not found in refresh token claims")
+		c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid refresh token claims"})
+		return
+	}
+
+	// 4. Fetch user from service
+	user, err := h.userService.GetUserByID(c.Request.Context(), userID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("User not found for refresh token", slog.String("user_id", userID))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: "User not found"})
+		} else {
+			logger.Error("Failed to get user by ID for refresh token", slog.String("error", err.Error()), slog.String("user_id", userID))
+			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to process request"})
+		}
+		return
+	}
+
+	// 5. Validate stored refresh token hash and expiry
+	hashedReceivedToken := utils.HashRefreshToken(refreshTokenString)
+	if hashedReceivedToken != user.RefreshTokenHash {
+		logger.Warn("Refresh token mismatch", slog.String("user_id", userID))
+		// This could be a sign of token theft or an old token being used.
+		// Optionally, invalidate all refresh tokens for this user here.
+		c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid refresh token"})
+		return
+	}
+
+	if user.RefreshTokenExpiryTime == nil || time.Now().After(*user.RefreshTokenExpiryTime) {
+		logger.Warn("Refresh token expired in DB", slog.String("user_id", userID))
+		c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: "Refresh token expired"})
+		return
+	}
+
+	// 6. Generate new access token
+	newAccessToken, err := utils.GenerateJWT(user.UserID, h.jwtSecret, h.jwtDuration, "mma-backend")
+	if err != nil {
+		logger.Error("Failed to generate new access token", slog.String("error", err.Error()), slog.String("user_id", userID))
+		c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to generate new token"})
+		return
+	}
+
+	// 7. Return new access token
+	c.JSON(http.StatusOK, dto.RefreshTokenResponse{Token: newAccessToken})
+}
+
+// Logout godoc
+// @Summary User logout
+// @Description Logs out the user and invalidates their refresh token.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Success 200 {object} object
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /auth/logout [post]
+func (h *AuthHandler) Logout(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c)
+
+	userID, exists := middleware.GetUserIDFromContext(c)
+	if !exists || userID == "" {
+		logger.Error("User ID not found in context for logout")
+		// This shouldn't happen if auth middleware is working correctly
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "User context not found"})
+		return
+	}
+
+	// Clear the refresh token from the database
+	err := h.userService.ClearRefreshToken(c.Request.Context(), userID)
+	if err != nil {
+		// Log the error, but proceed to clear cookie anyway. Clearing the cookie is the primary goal for the client.
+		logger.Error("Failed to clear refresh token from DB during logout", slog.String("user_id", userID), slog.String("error", err.Error()))
+		// Depending on the error, we might not want to abort, as clearing the cookie is still beneficial.
+		// If err is critical (e.g., DB down), a 500 might be appropriate. For now, we log and continue.
+	}
+
+	// Clear the refresh token cookie
+	// Use the same cookie name, path, and domain as when it was set during login.
+	// Setting MaxAge to -1 tells the browser to delete the cookie immediately.
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     h.refreshTokenCookieName,
+		Value:    "",
+		Path:     "/api/v1/auth", // Ensure this matches the path used when setting the cookie
+		Domain:   "",             // Set if you used a specific domain
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   c.Request.TLS != nil, // Secure flag based on connection (true if HTTPS)
+		SameSite: http.SameSiteLaxMode, // Or http.SameSiteStrictMode, depending on your needs
+	})
+
+	logger.Info("User logged out successfully", slog.String("user_id", userID))
+	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
 
 // Register godoc

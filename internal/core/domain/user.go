@@ -10,6 +10,10 @@ type User struct {
 	Name         string `json:"name"`
 	AuditFields
 	DeletedAt *time.Time `json:"deletedAt,omitempty" db:"deleted_at"`
+
+	// Refresh Token Fields
+	RefreshTokenHash       string     `json:"-" db:"refresh_token_hash"`        // Store hash of the refresh token
+	RefreshTokenExpiryTime *time.Time `json:"-" db:"refresh_token_expiry_time"` // Expiry of the stored refresh token
 }
 
 func (u *User) GetUserID() string   { return u.UserID }
