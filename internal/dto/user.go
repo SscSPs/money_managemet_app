@@ -4,12 +4,6 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 )
 
-
-
-
-
-
-
 // UpdateUserRequest defines the data allowed for updating a user.
 // Using pointers to differentiate between omitted fields and zero-value fields.
 type UpdateUserRequest struct {

@@ -18,8 +18,8 @@ type TrialBalanceRowResponse struct {
 
 // TrialBalanceResponse represents the trial balance report response
 type TrialBalanceResponse struct {
-	AsOf  string                   `json:"asOf"`
-	Rows  []TrialBalanceRowResponse `json:"rows"`
+	AsOf   string                    `json:"asOf"`
+	Rows   []TrialBalanceRowResponse `json:"rows"`
 	Totals struct {
 		Debit  decimal.Decimal `json:"debit"`
 		Credit decimal.Decimal `json:"credit"`
@@ -35,11 +35,11 @@ type AccountAmountResponse struct {
 
 // ProfitAndLossResponse represents the profit and loss report response
 type ProfitAndLossResponse struct {
-	FromDate  string                 `json:"fromDate"`
-	ToDate    string                 `json:"toDate"`
-	Revenue   []AccountAmountResponse `json:"revenue"`
-	Expenses  []AccountAmountResponse `json:"expenses"`
-	Summary   struct {
+	FromDate string                  `json:"fromDate"`
+	ToDate   string                  `json:"toDate"`
+	Revenue  []AccountAmountResponse `json:"revenue"`
+	Expenses []AccountAmountResponse `json:"expenses"`
+	Summary  struct {
 		TotalRevenue  decimal.Decimal `json:"totalRevenue"`
 		TotalExpenses decimal.Decimal `json:"totalExpenses"`
 		NetProfit     decimal.Decimal `json:"netProfit"`
@@ -48,7 +48,7 @@ type ProfitAndLossResponse struct {
 
 // BalanceSheetResponse represents the balance sheet report response
 type BalanceSheetResponse struct {
-	AsOf        string                 `json:"asOf"`
+	AsOf        string                  `json:"asOf"`
 	Assets      []AccountAmountResponse `json:"assets"`
 	Liabilities []AccountAmountResponse `json:"liabilities"`
 	Equity      []AccountAmountResponse `json:"equity"`

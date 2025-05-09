@@ -22,17 +22,17 @@ type AccountAmount struct {
 
 // PAndLReport represents a profit and loss report
 type PAndLReport struct {
-	Revenue   []AccountAmount  `json:"revenue"`   // Net revenue accounts
-	Expenses  []AccountAmount  `json:"expenses"`  // Net expense accounts
-	NetProfit decimal.Decimal  `json:"netProfit"` // Total revenue minus total expenses
+	Revenue   []AccountAmount `json:"revenue"`   // Net revenue accounts
+	Expenses  []AccountAmount `json:"expenses"`  // Net expense accounts
+	NetProfit decimal.Decimal `json:"netProfit"` // Total revenue minus total expenses
 }
 
 // BalanceSheetReport represents a balance sheet report
 type BalanceSheetReport struct {
-	Assets           []AccountAmount  `json:"assets"`
-	Liabilities      []AccountAmount  `json:"liabilities"`
-	Equity           []AccountAmount  `json:"equity"`
-	TotalAssets      decimal.Decimal  `json:"totalAssets"`
-	TotalLiabilities decimal.Decimal  `json:"totalLiabilities"`
-	TotalEquity      decimal.Decimal  `json:"totalEquity"`
+	Assets           []AccountAmount `json:"assets"`
+	Liabilities      []AccountAmount `json:"liabilities"`
+	Equity           []AccountAmount `json:"equity"`
+	TotalAssets      decimal.Decimal `json:"totalAssets"`
+	TotalLiabilities decimal.Decimal `json:"totalLiabilities"`
+	TotalEquity      decimal.Decimal `json:"totalEquity"`
 }
