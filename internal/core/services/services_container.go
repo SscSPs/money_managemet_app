@@ -33,6 +33,7 @@ func NewServiceContainer(repos portsrepo.RepositoryProvider) *portssvc.ServiceCo
 	container.User = NewUserService(repos.UserRepo)
 	container.ExchangeRate = NewExchangeRateService(repos.ExchangeRateRepo, container.Currency)
 	container.Journal = NewJournalService(repos.JournalRepo, container.Account, container.Workplace)
+	container.Reporting = NewReportingService(repos.ReportingRepo, WithReportingWorkplaceAuthorizer(container.Workplace))
 
 	return container
 }

@@ -14,6 +14,7 @@ func NewRepositoryProvider(dbPool *pgxpool.Pool, logger *slog.Logger) portsrepo.
 	userRepo := newPgxUserRepository(dbPool)
 	journalRepo := newPgxJournalRepository(dbPool, accountRepo)
 	workplaceRepo := newPgxWorkplaceRepository(dbPool)
+	reportingRepo := newReportingRepository(dbPool)
 
 	return portsrepo.RepositoryProvider{
 		AccountRepo:      accountRepo,
@@ -22,5 +23,6 @@ func NewRepositoryProvider(dbPool *pgxpool.Pool, logger *slog.Logger) portsrepo.
 		UserRepo:         userRepo,
 		JournalRepo:      journalRepo,
 		WorkplaceRepo:    workplaceRepo,
+		ReportingRepo:    reportingRepo,
 	}
 }

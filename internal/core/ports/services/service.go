@@ -14,6 +14,7 @@ type ServiceContainer struct {
 	User         UserSvcFacade
 	Journal      JournalSvcFacade
 	Workplace    WorkplaceSvcFacade
+	Reporting    ReportingService
 }
 
 // Legacy monolithic service interfaces have been removed.

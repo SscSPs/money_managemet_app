@@ -278,7 +278,7 @@ func hasRequiredRole(userRole, requiredRole domain.UserWorkplaceRole) bool {
 	switch requiredRole {
 	case domain.RoleReadOnly: // ReadOnly is the lowest access level
 		return userRole == domain.RoleReadOnly || userRole == domain.RoleMember || userRole == domain.RoleAdmin
-	case domain.RoleMember: 
+	case domain.RoleMember:
 		return userRole == domain.RoleMember || userRole == domain.RoleAdmin
 	case domain.RoleAdmin:
 		return userRole == domain.RoleAdmin

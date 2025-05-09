@@ -2116,6 +2116,244 @@ const docTemplate = `{
                 }
             }
         },
+        "/workplaces/{workplace_id}/reports/balance-sheet": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Generates a balance sheet report as of a specific date",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Generate balance sheet report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "current date",
+                        "description": "Report date (YYYY-MM-DD)",
+                        "name": "asOf",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.BalanceSheetResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User not authorized)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to generate report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workplaces/{workplace_id}/reports/profit-and-loss": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Generates a profit and loss report for a specific period",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Generate profit and loss report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "first day of current month",
+                        "description": "Start date (YYYY-MM-DD)",
+                        "name": "fromDate",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "current date",
+                        "description": "End date (YYYY-MM-DD)",
+                        "name": "toDate",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProfitAndLossResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User not authorized)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to generate report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/workplaces/{workplace_id}/reports/trial-balance": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Generates a trial balance report as of a specific date",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Generate trial balance report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workplace ID",
+                        "name": "workplace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "current date",
+                        "description": "Report date (YYYY-MM-DD)",
+                        "name": "asOf",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.TrialBalanceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (User not authorized)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to generate report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/workplaces/{workplace_id}/users": {
             "get": {
                 "security": [
@@ -2526,6 +2764,20 @@ const docTemplate = `{
                 "RoleRemoved"
             ]
         },
+        "dto.AccountAmountResponse": {
+            "type": "object",
+            "properties": {
+                "accountID": {
+                    "type": "string"
+                },
+                "amount": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.AccountResponse": {
             "type": "object",
             "properties": {
@@ -2594,6 +2846,46 @@ const docTemplate = `{
                 },
                 "userID": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.BalanceSheetResponse": {
+            "type": "object",
+            "properties": {
+                "asOf": {
+                    "type": "string"
+                },
+                "assets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AccountAmountResponse"
+                    }
+                },
+                "equity": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AccountAmountResponse"
+                    }
+                },
+                "liabilities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AccountAmountResponse"
+                    }
+                },
+                "summary": {
+                    "type": "object",
+                    "properties": {
+                        "totalAssets": {
+                            "type": "number"
+                        },
+                        "totalEquity": {
+                            "type": "number"
+                        },
+                        "totalLiabilities": {
+                            "type": "number"
+                        }
+                    }
                 }
             }
         },
@@ -2983,6 +3275,43 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ProfitAndLossResponse": {
+            "type": "object",
+            "properties": {
+                "expenses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AccountAmountResponse"
+                    }
+                },
+                "fromDate": {
+                    "type": "string"
+                },
+                "revenue": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AccountAmountResponse"
+                    }
+                },
+                "summary": {
+                    "type": "object",
+                    "properties": {
+                        "netProfit": {
+                            "type": "number"
+                        },
+                        "totalExpenses": {
+                            "type": "number"
+                        },
+                        "totalRevenue": {
+                            "type": "number"
+                        }
+                    }
+                },
+                "toDate": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.TransactionResponse": {
             "type": "object",
             "properties": {
@@ -3017,6 +3346,51 @@ const docTemplate = `{
                 },
                 "transactionType": {
                     "$ref": "#/definitions/domain.TransactionType"
+                }
+            }
+        },
+        "dto.TrialBalanceResponse": {
+            "type": "object",
+            "properties": {
+                "asOf": {
+                    "type": "string"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.TrialBalanceRowResponse"
+                    }
+                },
+                "totals": {
+                    "type": "object",
+                    "properties": {
+                        "credit": {
+                            "type": "number"
+                        },
+                        "debit": {
+                            "type": "number"
+                        }
+                    }
+                }
+            }
+        },
+        "dto.TrialBalanceRowResponse": {
+            "type": "object",
+            "properties": {
+                "accountID": {
+                    "type": "string"
+                },
+                "accountName": {
+                    "type": "string"
+                },
+                "accountType": {
+                    "type": "string"
+                },
+                "credit": {
+                    "type": "number"
+                },
+                "debit": {
+                    "type": "number"
                 }
             }
         },

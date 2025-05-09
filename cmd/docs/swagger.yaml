@@ -45,6 +45,15 @@ definitions:
     - RoleMember
     - RoleReadOnly
     - RoleRemoved
+  dto.AccountAmountResponse:
+    properties:
+      accountID:
+        type: string
+      amount:
+        type: number
+      name:
+        type: string
+    type: object
   dto.AccountResponse:
     properties:
       accountID:
@@ -92,6 +101,32 @@ definitions:
     required:
     - role
     - userID
+    type: object
+  dto.BalanceSheetResponse:
+    properties:
+      asOf:
+        type: string
+      assets:
+        items:
+          $ref: '#/definitions/dto.AccountAmountResponse'
+        type: array
+      equity:
+        items:
+          $ref: '#/definitions/dto.AccountAmountResponse'
+        type: array
+      liabilities:
+        items:
+          $ref: '#/definitions/dto.AccountAmountResponse'
+        type: array
+      summary:
+        properties:
+          totalAssets:
+            type: number
+          totalEquity:
+            type: number
+          totalLiabilities:
+            type: number
+        type: object
     type: object
   dto.CreateAccountRequest:
     properties:
@@ -350,6 +385,30 @@ definitions:
       token:
         type: string
     type: object
+  dto.ProfitAndLossResponse:
+    properties:
+      expenses:
+        items:
+          $ref: '#/definitions/dto.AccountAmountResponse'
+        type: array
+      fromDate:
+        type: string
+      revenue:
+        items:
+          $ref: '#/definitions/dto.AccountAmountResponse'
+        type: array
+      summary:
+        properties:
+          netProfit:
+            type: number
+          totalExpenses:
+            type: number
+          totalRevenue:
+            type: number
+        type: object
+      toDate:
+        type: string
+    type: object
   dto.TransactionResponse:
     properties:
       accountID:
@@ -374,6 +433,35 @@ definitions:
         type: string
       transactionType:
         $ref: '#/definitions/domain.TransactionType'
+    type: object
+  dto.TrialBalanceResponse:
+    properties:
+      asOf:
+        type: string
+      rows:
+        items:
+          $ref: '#/definitions/dto.TrialBalanceRowResponse'
+        type: array
+      totals:
+        properties:
+          credit:
+            type: number
+          debit:
+            type: number
+        type: object
+    type: object
+  dto.TrialBalanceRowResponse:
+    properties:
+      accountID:
+        type: string
+      accountName:
+        type: string
+      accountType:
+        type: string
+      credit:
+        type: number
+      debit:
+        type: number
     type: object
   dto.UpdateAccountRequest:
     properties:
@@ -1841,6 +1929,161 @@ paths:
       summary: Reverse a journal entry in workplace
       tags:
       - journals
+  /workplaces/{workplace_id}/reports/balance-sheet:
+    get:
+      description: Generates a balance sheet report as of a specific date
+      parameters:
+      - description: Workplace ID
+        in: path
+        name: workplace_id
+        required: true
+        type: string
+      - default: current date
+        description: Report date (YYYY-MM-DD)
+        in: query
+        name: asOf
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.BalanceSheetResponse'
+        "400":
+          description: Invalid input
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden (User not authorized)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to generate report
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Generate balance sheet report
+      tags:
+      - reports
+  /workplaces/{workplace_id}/reports/profit-and-loss:
+    get:
+      description: Generates a profit and loss report for a specific period
+      parameters:
+      - description: Workplace ID
+        in: path
+        name: workplace_id
+        required: true
+        type: string
+      - default: first day of current month
+        description: Start date (YYYY-MM-DD)
+        in: query
+        name: fromDate
+        type: string
+      - default: current date
+        description: End date (YYYY-MM-DD)
+        in: query
+        name: toDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProfitAndLossResponse'
+        "400":
+          description: Invalid input
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden (User not authorized)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to generate report
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Generate profit and loss report
+      tags:
+      - reports
+  /workplaces/{workplace_id}/reports/trial-balance:
+    get:
+      description: Generates a trial balance report as of a specific date
+      parameters:
+      - description: Workplace ID
+        in: path
+        name: workplace_id
+        required: true
+        type: string
+      - default: current date
+        description: Report date (YYYY-MM-DD)
+        in: query
+        name: asOf
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TrialBalanceResponse'
+        "400":
+          description: Invalid input
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden (User not authorized)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to generate report
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Generate trial balance report
+      tags:
+      - reports
   /workplaces/{workplace_id}/users:
     get:
       description: Retrieves a list of users and their roles in the specified workplace.

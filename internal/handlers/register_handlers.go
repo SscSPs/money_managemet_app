@@ -41,7 +41,7 @@ func setupAPIV1Routes(
 	registerUserRoutes(v1, service.User)
 	registerCurrencyRoutes(v1, service.Currency)
 	registerExchangeRateRoutes(v1, service.ExchangeRate)
-	registerWorkplaceRoutes(v1, service.Workplace, service.Journal, service.Account)
+	registerWorkplaceRoutes(v1, service.Workplace, service.Journal, service.Account, service.Reporting)
 }
 
 // setupSwaggerRoutes configures the swagger documentation routes

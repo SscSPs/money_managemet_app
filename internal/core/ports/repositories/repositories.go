@@ -9,4 +9,5 @@ type RepositoryProvider struct {
 	UserRepo         UserRepositoryWithTx
 	JournalRepo      JournalRepositoryWithTx
 	WorkplaceRepo    WorkplaceRepositoryWithTx
+	ReportingRepo    ReportingRepository
 }
