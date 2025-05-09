@@ -5,6 +5,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ulule/limiter/v3"
+	"github.com/ulule/limiter/v3/drivers/store/memory"
+	limitergin "github.com/ulule/limiter/v3/drivers/middleware/gin"
+
 	// For error checking
 
 	// Use ports
@@ -48,9 +52,15 @@ type ErrorResponse struct {
 func registerAuthRoutes(rg *gin.Engine, cfg *config.Config, userService portssvc.UserSvcFacade) {
 	h := NewAuthHandler(userService, cfg)
 
+	// Define rate limit: 5 requests per minute
+	rate, _ := limiter.NewRateFromFormatted("5-M")
+	store := memory.NewStore()
+	ipLimiter := limiter.New(store, rate)
+	limitMiddleware := limitergin.NewMiddleware(ipLimiter)
+
 	auth := rg.Group("/api/v1/auth")
 	{
-		auth.POST("/login", h.Login)
+		auth.POST("/login", limitMiddleware, h.Login) // Apply rate limiting middleware here
 		auth.POST("/register", h.Register)
 	}
 }
