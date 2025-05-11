@@ -3,10 +3,11 @@ package services
 import (
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
+	"github.com/SscSPs/money_managemet_app/internal/platform/config"
 )
 
 // NewServiceContainer creates a new service container with properly initialized dependencies
-func NewServiceContainer(repos portsrepo.RepositoryProvider) *portssvc.ServiceContainer {
+func NewServiceContainer(cfg *config.Config, repos portsrepo.RepositoryProvider) *portssvc.ServiceContainer {
 	// Create the container structure first
 	container := &portssvc.ServiceContainer{}
 
@@ -34,6 +35,12 @@ func NewServiceContainer(repos portsrepo.RepositoryProvider) *portssvc.ServiceCo
 	container.ExchangeRate = NewExchangeRateService(repos.ExchangeRateRepo, container.Currency)
 	container.Journal = NewJournalService(repos.JournalRepo, container.Account, container.Workplace)
 	container.Reporting = NewReportingService(repos.ReportingRepo, WithReportingWorkplaceAuthorizer(container.Workplace))
+
+	// Initialize TokenService
+	container.TokenService = NewTokenService(cfg, container.User)
+
+	// Initialize GoogleOAuthHandlerSvcFacade
+	container.GoogleOAuthHandler = NewGoogleOAuthHandlerService(cfg)
 
 	return container
 }

@@ -1,31 +1,25 @@
 package handlers
 
 import (
-	"errors" // For error checking
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/ulule/limiter/v3"
-	limitergin "github.com/ulule/limiter/v3/drivers/middleware/gin"
-	"github.com/ulule/limiter/v3/drivers/store/memory"
-
-	// Use ports
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
-	"github.com/SscSPs/money_managemet_app/internal/middleware" // For logger/user context
+	"github.com/SscSPs/money_managemet_app/internal/middleware"
+	"github.com/SscSPs/money_managemet_app/internal/platform/config"
 	"github.com/SscSPs/money_managemet_app/internal/utils"
+	"github.com/SscSPs/money_managemet_app/internal/utils/mapping"
 
-	// "github.com/SscSPs/money_managemet_app/internal/models" // Models not needed directly here
-	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services
-	"github.com/SscSPs/money_managemet_app/internal/platform/config"              // For JWT config access
 	"github.com/gin-gonic/gin"
-	// "github.com/golang-jwt/jwt/v5" // No longer directly used here
-	// "github.com/google/uuid" // Use actual user ID from service
-	// Import for error handling
+	"github.com/ulule/limiter/v3"
+	"github.com/ulule/limiter/v3/drivers/store/memory"
 )
 
-// AuthHandler handles authentication related requests.
+// AuthHandler handles authentication-related HTTP requests.
 type AuthHandler struct {
 	userService            portssvc.UserSvcFacade
 	jwtSecret              string
@@ -33,12 +27,16 @@ type AuthHandler struct {
 	refreshTokenDuration   time.Duration
 	refreshTokenCookieName string
 	refreshTokenSecret     string
+	tokenService           portssvc.TokenSvcFacade
+	googleHandler          portssvc.GoogleOAuthHandlerSvcFacade
 }
 
-// NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler(us portssvc.UserSvcFacade, cfg *config.Config) *AuthHandler {
+// NewAuthHandler creates a new AuthHandler with necessary dependencies.
+func NewAuthHandler(us portssvc.UserSvcFacade, tokenService portssvc.TokenSvcFacade, googleHandler portssvc.GoogleOAuthHandlerSvcFacade, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
 		userService:            us,
+		tokenService:           tokenService,
+		googleHandler:          googleHandler,
 		jwtSecret:              cfg.JWTSecret,
 		jwtDuration:            cfg.JWTExpiryDuration,
 		refreshTokenDuration:   cfg.RefreshTokenExpiryDuration,
@@ -48,28 +46,37 @@ func NewAuthHandler(us portssvc.UserSvcFacade, cfg *config.Config) *AuthHandler 
 }
 
 // ErrorResponse is a generic error response structure for handlers.
-// Moved here or define globally if used by other handlers.
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
 // registerAuthRoutes sets up the routes for authentication.
 // Pass the instantiated handler.
-func registerAuthRoutes(rg *gin.Engine, cfg *config.Config, userService portssvc.UserSvcFacade) {
-	h := NewAuthHandler(userService, cfg)
+func registerAuthRoutes(rg *gin.Engine, cfg *config.Config, services *portssvc.ServiceContainer) {
+	h := NewAuthHandler(services.User, services.TokenService, services.GoogleOAuthHandler, cfg)
 
 	// Define rate limit: 5 requests per minute
 	rate, _ := limiter.NewRateFromFormatted("5-M")
 	store := memory.NewStore()
 	ipLimiter := limiter.New(store, rate)
-	limitMiddleware := limitergin.NewMiddleware(ipLimiter)
+
+	jwtAuthMiddleware := middleware.AuthMiddleware(cfg.JWTSecret) // Define JWT middleware once
+
+	limitMiddleware := middleware.RateLimit(ipLimiter)
+
+	// Placeholder for OAuth Google Handler registration if it's separate
+	// If GoogleOAuthHandlerSvcFacade is actually an implementation with its own routes:
 
 	auth := rg.Group("/api/v1/auth")
 	{
-		auth.POST("/login", limitMiddleware, h.Login) // Apply rate limiting middleware here
+		auth.POST("/login", limitMiddleware, h.Login)
 		auth.POST("/register", h.Register)
 		auth.POST("/refresh_token", h.RefreshToken)
-		auth.POST("/logout", middleware.AuthMiddleware(h.jwtSecret), h.Logout) // Protected by auth middleware
+		auth.POST("/logout", jwtAuthMiddleware, h.Logout)
+		auth.GET("/me", jwtAuthMiddleware, h.GetMe)
+
+		// Register Google OAuth routes
+		registerGoogleOAuthRoutes(auth, services)
 	}
 }
 
@@ -96,7 +103,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid username or password"})
 		return
 	}
-	if !utils.CheckPasswordHash(req.Password, user.PasswordHash) {
+	if user.PasswordHash == nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid username or password"})
+		return
+	}
+
+	if !utils.CheckPasswordHash(req.Password, *user.PasswordHash) {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Invalid username or password"})
 		return
 	}
@@ -300,15 +312,63 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if err != nil {
 		logger := middleware.GetLoggerFromCtx(c.Request.Context())
 		// TODO: Add specific check for duplicate errors if the repo/service supports it
-		// if errors.Is(err, apperrors.ErrDuplicate) {
+		// For example, if CreateUser returns a specific error type for duplicates:
+		// if errors.Is(err, customerrors.ErrDuplicateUser) {
 		// 	 c.JSON(http.StatusConflict, ErrorResponse{Error: "User already exists"})
 		// 	 return
 		// }
-		logger.Error("Failed to register user", slog.String("error", err.Error()))
+		if errors.Is(err, apperrors.ErrDuplicate) {
+			c.JSON(http.StatusConflict, ErrorResponse{Error: "User already exists"})
+			return
+		}
+		logger.Error("Failed to register user due to service error", "error", err)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to register user"})
 		return
 	}
 
 	// Return the created user details (using UserResponse DTO)
 	c.JSON(http.StatusCreated, dto.ToUserResponse(newUser))
+}
+
+// GetMe godoc
+// @Summary Get current user details
+// @Description Retrieves details for the currently authenticated user.
+// @Tags auth
+// @Security ApiKeyAuth
+// @Produce json
+// @Success 200 {object} dto.UserMeResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /auth/me [get]
+func (h *AuthHandler) GetMe(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c)
+
+	userID, ok := c.Get("userID")
+	if !ok {
+		logger.Error("User ID not found in context")
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Unauthorized: User ID missing"})
+		return
+	}
+
+	userUUID, ok := userID.(string)
+	if !ok {
+		logger.Error("User ID in context is not a string", slog.Any("userID", userID))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error: Invalid user ID format"})
+		return
+	}
+
+	existingUser, err := h.userService.GetUserByID(c.Request.Context(), userUUID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("User not found for ID from token", slog.String("userID", userUUID), slog.String("error", err.Error()))
+			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Unauthorized: User not found"})
+			return
+		}
+		logger.Error("Failed to retrieve user by ID", slog.String("userID", userUUID), slog.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to retrieve user details"})
+		return
+	}
+
+	userResponse := mapping.ToUserMeResponse(existingUser)
+	c.JSON(http.StatusOK, userResponse)
 }

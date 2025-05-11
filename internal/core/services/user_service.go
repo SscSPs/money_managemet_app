@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
@@ -14,74 +13,122 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/SscSPs/money_managemet_app/internal/utils"
+
 	"github.com/google/uuid"
 )
 
-// userService provides business logic for user operations.
+var _ portssvc.UserSvcFacade = (*userService)(nil)
+
 type userService struct {
-	userRepo portsrepo.UserRepositoryFacade
+	userRepo portsrepo.UserRepositoryWithTx
 }
 
-// NewUserService creates a new UserService.
-func NewUserService(repo portsrepo.UserRepositoryFacade) portssvc.UserSvcFacade {
+// NewUserService creates a new user service.
+func NewUserService(repo portsrepo.UserRepositoryWithTx) *userService {
 	return &userService{
 		userRepo: repo,
 	}
 }
 
 func (s *userService) GetUserByUsername(ctx context.Context, username string) (*domain.User, error) {
-	return s.userRepo.FindUserByUsername(ctx, username)
+	logger := middleware.GetLoggerFromCtx(ctx)
+	logger.Debug("Attempting to get user by username", "username", username)
+	foundUser, err := s.userRepo.FindUserByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Debug("User not found by username", "username", username)
+		} else {
+			logger.Error("Error finding user by username from repository", "username", username, "error", err)
+		}
+		return nil, err
+	}
+	logger.Debug("Successfully found user by username", "username", username, "user_id", foundUser.UserID)
+	return foundUser, nil
 }
 
+// CreateUser creates a new user.
+// It hashes the password before saving it.
+// If the username is not provided, it's generated from the email.
+// It checks if the username or email already exists.
 func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	now := time.Now()
 	newUserID := uuid.NewString()
-	// Determine creatorUserID - for self-registration via /auth/register, it might be the user ID itself or a system ID.
-	// For creation via /users endpoint, it should come from the authenticated admin user context.
-	// For now, using a placeholder. This needs proper handling based on the call site.
-	creatorUserID := "PLACEHOLDER_CREATOR_ID" // TODO: Determine creator properly
+
+	// Validate password (DTO binding should ensure it's present)
+	if req.Password == "" {
+		logger.Warn("CreateUser called with empty password despite DTO validation", "username", req.Username)
+		return nil, fmt.Errorf("%w: password is required", apperrors.ErrValidation)
+	}
+
+	// Username generation logic (e.g., from email) is not applicable here
+	// as CreateUserRequest does not contain Email.
+	// If Username is empty, DTO validation `binding:"required"` for Username should catch it.
+	if req.Username == "" {
+		logger.Warn("CreateUser called with empty username despite DTO validation", "username_attempt", req.Username)
+		return nil, fmt.Errorf("%w: username is required", apperrors.ErrValidation)
+	}
+
+	// Check if username already exists
+	logger.Debug("Checking if username exists", "username", req.Username)
+	existingUserByUsername, err := s.userRepo.FindUserByUsername(ctx, req.Username)
+	if err != nil && !errors.Is(err, apperrors.ErrNotFound) {
+		logger.Error("Error checking if username exists from repository", "username", req.Username, "error", err)
+		return nil, fmt.Errorf("error checking username: %w", err)
+	}
+	if existingUserByUsername != nil {
+		logger.Warn("Username already exists", "username", req.Username)
+		return nil, fmt.Errorf("username '%s' already exists: %w", req.Username, apperrors.ErrDuplicate)
+	}
 
 	// Hash password
 	hash, err := utils.HashPassword(req.Password)
 	if err != nil {
-		logger.Error("Failed to hash password", slog.String("error", err.Error()))
+		logger.Error("Failed to hash password for new user", "username", req.Username, "error", err)
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	user := domain.User{
+	user := &domain.User{
 		UserID:       newUserID,
 		Name:         req.Name,
 		Username:     req.Username,
-		PasswordHash: hash,
+		PasswordHash: &hash,
+		AuthProvider: domain.ProviderLocal,
+		IsVerified:   false,
 		AuditFields: domain.AuditFields{
 			CreatedAt:     now,
-			CreatedBy:     creatorUserID,
 			LastUpdatedAt: now,
-			LastUpdatedBy: creatorUserID,
+			CreatedBy:     newUserID,
+			LastUpdatedBy: newUserID,
 		},
 	}
 
-	err = s.userRepo.SaveUser(ctx, user)
+	// Save the new user to the repository
+	logger.Info("Attempting to save new user", "username", user.Username, "user_id", user.UserID)
+	err = s.userRepo.SaveUser(ctx, *user)
 	if err != nil {
-		logger.Error("Failed to save user in repository", slog.String("error", err.Error()), slog.String("user_name", req.Name))
-		return nil, fmt.Errorf("failed to create user in service: %w", err)
+		logger.Error("Failed to save new user to repository", "username", user.Username, "error", err)
+		return nil, fmt.Errorf("failed to save user: %w", err)
 	}
 
-	logger.Info("User created successfully in service", slog.String("user_id", user.UserID))
-	return &user, nil
+	logger.Info("User created successfully", "username", user.Username, "user_id", user.UserID)
+	user.PasswordHash = nil // Clear password hash before returning
+	return user, nil
 }
 
 func (s *userService) GetUserByID(ctx context.Context, userID string) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
+	logger.Debug("Attempting to get user by ID", "user_id", userID)
 	user, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil {
-		if !errors.Is(err, apperrors.ErrNotFound) {
-			logger.Error("Failed to find user by ID in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Debug("User not found by ID", "user_id", userID)
+		} else {
+			logger.Error("Error finding user by ID from repository", "user_id", userID, "error", err)
 		}
 		return nil, err
 	}
-	logger.Debug("User retrieved successfully by ID from service", slog.String("user_id", user.UserID))
+	logger.Debug("Successfully found user by ID", "user_id", userID)
 	return user, nil
 }
 
@@ -97,13 +144,13 @@ func (s *userService) ListUsers(ctx context.Context, limit, offset int) ([]domai
 		offset = 0 // Default offset
 	}
 
+	logger.Debug("Attempting to list users", "limit", limit, "offset", offset)
 	users, err := s.userRepo.FindUsers(ctx, limit, offset)
 	if err != nil {
-		logger.Error("Failed to find users in repository", slog.String("error", err.Error()), slog.Int("limit", limit), slog.Int("offset", offset))
-		return nil, fmt.Errorf("failed to list users: %w", err)
+		logger.Error("Error listing users from repository", "limit", limit, "offset", offset, "error", err)
+		return nil, err
 	}
-
-	logger.Debug("Users listed successfully from service", slog.Int("count", len(users)), slog.Int("limit", limit), slog.Int("offset", offset))
+	logger.Debug("Successfully listed users", "count", len(users), "limit", limit, "offset", offset)
 	// Return the domain slice directly as required by the interface
 	if users == nil {
 		return []domain.User{}, nil // Ensure non-nil slice is returned
@@ -113,22 +160,30 @@ func (s *userService) ListUsers(ctx context.Context, limit, offset int) ([]domai
 
 func (s *userService) UpdateUser(ctx context.Context, userID string, req dto.UpdateUserRequest, updaterUserID string) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
+	logger.Info("Attempting to update user", "user_id_to_update", userID, "updater_user_id", updaterUserID, "request_name", req.Name)
 	existingUser, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil {
-		if !errors.Is(err, apperrors.ErrNotFound) {
-			logger.Error("Failed to find user by ID for update", slog.String("error", err.Error()), slog.String("user_id", userID))
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("User to update not found", "user_id", userID)
+		} else {
+			logger.Error("Failed to find user for update from repository", "user_id", userID, "error", err)
 		}
-		return nil, err
+		return nil, fmt.Errorf("user with ID %s not found for update: %w", userID, err) // Keep specific error for handler
 	}
 
 	updateOccurred := false
-	if req.Name != nil && *req.Name != existingUser.Name {
+	if req.Name != nil && existingUser.Name != *req.Name {
 		existingUser.Name = *req.Name
 		updateOccurred = true
+		logger.Debug("User name updated", "user_id", userID, "new_name", req.Name)
 	}
 
+	// Note: Username and Email updates are typically handled by more specific methods
+	// like UpdateUserProviderDetails or dedicated email/username change flows due to uniqueness constraints and verification.
+	// This UpdateUser is intentionally kept simple for fields like 'Name'.
+
 	if !updateOccurred {
-		logger.Debug("No update needed for user", slog.String("user_id", userID))
+		logger.Info("No changes detected for user update", "user_id", userID)
 		return existingUser, nil
 	}
 
@@ -137,88 +192,297 @@ func (s *userService) UpdateUser(ctx context.Context, userID string, req dto.Upd
 
 	err = s.userRepo.UpdateUser(ctx, *existingUser)
 	if err != nil {
-		logger.Error("Failed to update user in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
-		if errors.Is(err, apperrors.ErrNotFound) {
-			logger.Warn("Update failed because user was not found (possibly deleted concurrently)", slog.String("user_id", userID))
-			return nil, apperrors.ErrNotFound
-		}
-		return nil, fmt.Errorf("failed to update user: %w", err)
+		logger.Error("Failed to update user in repository", "user_id", existingUser.UserID, "error", err)
+		return nil, fmt.Errorf("error updating user: %w", err)
 	}
+	logger.Info("User updated successfully", "user_id", existingUser.UserID)
 
-	logger.Info("User updated successfully in service", slog.String("user_id", userID))
 	return existingUser, nil
 }
 
 func (s *userService) DeleteUser(ctx context.Context, userID string, deleterUserID string) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
 	now := time.Now()
-	err := s.userRepo.MarkUserDeleted(ctx, userID, now, deleterUserID)
+	logger.Info("Attempting to delete user", "user_id_to_delete", userID, "deleter_user_id", deleterUserID)
+
+	// First, check if the user exists to provide a clearer error if not.
+	_, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil {
-		if !errors.Is(err, apperrors.ErrNotFound) {
-			logger.Error("Failed to mark user deleted in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("User to delete not found", "user_id", userID)
+		} else {
+			logger.Error("Error finding user to delete from repository", "user_id", userID, "error", err)
 		}
-		return err
+		return fmt.Errorf("error finding user to delete: %w", err)
 	}
-	logger.Info("User marked as deleted successfully in service", slog.String("user_id", userID))
+
+	// Proceed with marking the user as deleted
+	// The MarkUserDeleted method in the repo should handle setting DeletedAt, etc.
+	// Assuming the repository method handles the actual deletion marking.
+	err = s.userRepo.MarkUserDeleted(ctx, userID, now, deleterUserID)
+	if err != nil {
+		logger.Error("Failed to delete user from repository", "user_id", userID, "error", err)
+		return fmt.Errorf("error deleting user: %w", err)
+	}
+
+	logger.Info("User deleted successfully", "user_id", userID)
 	return nil
 }
 
 // AuthenticateUser checks user credentials.
 func (s *userService) AuthenticateUser(ctx context.Context, username, password string) (*domain.User, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
+	logger.Info("Attempting to authenticate user", "username", username)
+
 	user, err := s.userRepo.FindUserByUsername(ctx, username)
 	if err != nil {
-		logger.Warn("User not found for authentication", slog.String("username", username))
-		return nil, apperrors.ErrNotFound
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Authentication failed: user not found", "username", username)
+		} else {
+			logger.Error("Error finding user by username for authentication from repository", "username", username, "error", err)
+		}
+		return nil, fmt.Errorf("authentication error: %w", err) // Keep original error for context
 	}
-	if !utils.CheckPasswordHash(password, user.PasswordHash) {
-		logger.Warn("Invalid password for user", slog.String("username", username))
+
+	if user.AuthProvider != domain.ProviderLocal {
+		logger.Warn("Authentication attempt for non-local provider user", "username", username, "user_id", user.UserID, "auth_provider", user.AuthProvider)
+		return nil, apperrors.ErrUnauthorized // Cannot use password auth for OAuth users
+	}
+
+	if user.PasswordHash == nil || *user.PasswordHash == "" {
+		logger.Warn("Authentication failed: user has no password hash set", "username", username, "user_id", user.UserID)
 		return nil, apperrors.ErrUnauthorized
 	}
+
+	if !utils.CheckPasswordHash(password, *user.PasswordHash) {
+		logger.Warn("Authentication failed: invalid password", "username", username, "user_id", user.UserID)
+		return nil, apperrors.ErrUnauthorized
+	}
+
+	logger.Info("User authenticated successfully", "username", username, "user_id", user.UserID)
 	return user, nil
 }
 
 // UpdateRefreshToken stores the hashed refresh token and its expiry for a user.
-func (s *userService) UpdateRefreshToken(ctx context.Context, userID string, refreshTokenHash string, refreshTokenExpiryTime time.Time) error {
+func (s *userService) UpdateRefreshToken(ctx context.Context, userID string, refreshTokenHash string, refreshTokenExpiry time.Time) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	err := s.userRepo.UpdateRefreshToken(ctx, userID, refreshTokenHash, refreshTokenExpiryTime)
+	logger.Info("Attempting to update refresh token", "user_id", userID)
+
+	_, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil {
-		logger.Error("Failed to update refresh token in repository", slog.String("error", err.Error()), slog.String("user_id", userID))
-		// Check if it's a not found error from the repo and return it directly if so
 		if errors.Is(err, apperrors.ErrNotFound) {
-			return apperrors.ErrNotFound // Or a more specific error like "user not found for refresh token update"
+			logger.Warn("User not found for refresh token update", "user_id", userID)
+		} else {
+			logger.Error("Error finding user for refresh token update from repository", "user_id", userID, "error", err)
 		}
-		return fmt.Errorf("failed to update refresh token for user %s: %w", userID, err)
+		return err // Return original error (ErrNotFound or other)
 	}
-	logger.Info("Refresh token updated successfully for user", slog.String("user_id", userID))
+
+	err = s.userRepo.UpdateRefreshToken(ctx, userID, refreshTokenHash, refreshTokenExpiry)
+	if err != nil {
+		logger.Error("Failed to update user with refresh token in repository", "user_id", userID, "error", err)
+		return fmt.Errorf("%w: failed to update user with refresh token: %v", apperrors.ErrInternal, err)
+	}
+	logger.Info("Refresh token updated successfully", "user_id", userID)
 	return nil
 }
 
-// ClearRefreshToken clears the refresh token for a user.
 func (s *userService) ClearRefreshToken(ctx context.Context, userID string) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	// Input validation (optional, but good practice)
+	logger.Info("Attempting to clear refresh token", "user_id", userID)
+
 	if userID == "" {
+		logger.Error("UserID cannot be empty for ClearRefreshToken")
 		return fmt.Errorf("%w: userID cannot be empty", apperrors.ErrBadRequest)
 	}
 
-	// Call repository to clear the token
 	err := s.userRepo.ClearRefreshToken(ctx, userID)
 	if err != nil {
-		// Log the error for observability
-		logger.ErrorContext(ctx, "Failed to clear refresh token in repository", slog.String("user_id", userID), slog.String("error", err.Error()))
-		// It's possible the user doesn't exist or the token was already cleared.
-		// Depending on how strict we want to be, we might return the error or handle it.
-		// For logout, if the user isn't found, it's not critical, so we can absorb some errors.
-		// However, if the DB operation itself fails, we should return an error.
-		if !errors.Is(err, apperrors.ErrNotFound) { // Assuming ClearRefreshToken in repo might return ErrNotFound
-			return fmt.Errorf("%w: failed to clear refresh token: %v", apperrors.ErrInternal, err)
-		}
-		// If it's ErrNotFound, we can consider logout successful from the service perspective.
+		logger.Error("Failed to clear refresh token in repository", "user_id", userID, "error", err)
+		// Depending on repo implementation, an error here might mean user not found or DB error.
+		return fmt.Errorf("error clearing refresh token: %w", err)
 	}
 
-	logger.InfoContext(ctx, "Refresh token cleared successfully", slog.String("user_id", userID))
+	logger.Info("Refresh token cleared successfully", "user_id", userID)
 	return nil
 }
 
-// TODO: Add other user management methods (Update, Delete/Deactivate, List) later
+func (s *userService) FindUserByEmail(ctx context.Context, email string) (*domain.User, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+	logger.Debug("Attempting to find user by email", "email", email)
+	user, err := s.userRepo.FindUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Debug("User not found by email", "email", email)
+		} else {
+			logger.Error("Error finding user by email from repository", "email", email, "error", err)
+		}
+		return nil, err
+	}
+	logger.Debug("Successfully found user by email", "email", email, "user_id", user.UserID)
+	return user, nil
+}
+
+// FindUserByProvider is a more specific version if domain.AuthProviderType is used directly.
+func (s *userService) FindUserByProvider(ctx context.Context, provider domain.AuthProviderType, providerUserID string) (*domain.User, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+	logger.Debug("Attempting to find user by provider details", "provider", provider, "provider_user_id", providerUserID)
+	user, err := s.userRepo.FindUserByProviderDetails(ctx, string(provider), providerUserID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Debug("User not found by provider details", "provider", provider, "provider_user_id", providerUserID)
+		} else {
+			logger.Error("Error finding user by provider details from repository", "provider", provider, "provider_user_id", providerUserID, "error", err)
+		}
+		return nil, err
+	}
+	logger.Debug("Successfully found user by provider details", "provider", provider, "provider_user_id", providerUserID, "user_id", user.UserID)
+	return user, nil
+}
+
+func (s *userService) CreateOAuthUser(ctx context.Context, name, email, authProviderStr, providerUserID string, emailVerified bool) (*domain.User, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+	logger.Info("Attempting to create OAuth user", "email", email, "auth_provider", authProviderStr, "provider_user_id", providerUserID)
+
+	providerType := domain.AuthProviderType(authProviderStr)
+	if providerType != domain.ProviderGoogle { // Add other supported providers here
+		logger.Error("Unsupported OAuth provider for CreateOAuthUser", "auth_provider_attempted", authProviderStr)
+		return nil, fmt.Errorf("%w: unsupported OAuth provider: %s", apperrors.ErrBadRequest, authProviderStr)
+	}
+
+	// Check if user already exists with this provider and providerUserID
+	existingUser, err := s.userRepo.FindUserByProviderDetails(ctx, string(providerType), providerUserID)
+	if err == nil && existingUser != nil {
+		logger.Info("OAuth user already exists, returning existing user", "user_id", existingUser.UserID, "auth_provider", authProviderStr, "provider_user_id", providerUserID)
+		return existingUser, nil // User already exists, return them
+	} else if !errors.Is(err, apperrors.ErrNotFound) {
+		// Handle unexpected errors from FindUserByProviderDetails
+		logger.Error("Error finding user by provider details during OAuth creation", "auth_provider", authProviderStr, "provider_user_id", providerUserID, "error", err)
+		return nil, fmt.Errorf("error finding user by provider details: %w", err)
+	}
+
+	// At this point, user does not exist with this specific providerID. Create them.
+	now := time.Now()
+	newUserID := uuid.NewString()
+
+	user := &domain.User{
+		UserID:         newUserID,
+		Username:       email,
+		Email:          email,
+		Name:           name,
+		AuthProvider:   providerType,
+		ProviderUserID: providerUserID,
+		IsVerified:     emailVerified,
+		AuditFields: domain.AuditFields{
+			CreatedAt:     now,
+			LastUpdatedAt: now,
+			CreatedBy:     newUserID,
+			LastUpdatedBy: newUserID,
+		},
+	}
+
+	// Before creating, check if the email is already in use by a *different* account.
+	if email != "" {
+		userByEmail, emailErr := s.userRepo.FindUserByEmail(ctx, email)
+		if emailErr == nil && userByEmail != nil {
+			// Email exists. If it's for a different provider or a local account, it's a conflict.
+			if userByEmail.AuthProvider != providerType || userByEmail.ProviderUserID != providerUserID {
+				logger.Warn("Email already associated with a different account during OAuth creation", "email", email, "existing_auth_provider", userByEmail.AuthProvider, "existing_provider_user_id", userByEmail.ProviderUserID)
+				return nil, fmt.Errorf("%w: email '%s' is already associated with another account", apperrors.ErrConflict, email)
+			}
+			// If it's the same provider and ID, existingUser check above should have caught it.
+		} else if !errors.Is(emailErr, apperrors.ErrNotFound) {
+			logger.Error("Error checking email for OAuth user creation from repository", "email", email, "error", emailErr)
+			return nil, fmt.Errorf("error checking email for OAuth user: %w", emailErr)
+		}
+	}
+
+	err = s.userRepo.SaveUser(ctx, *user)
+	if err != nil {
+		logger.Error("Error saving new OAuth user to repository", "email", email, "auth_provider", authProviderStr, "provider_user_id", providerUserID, "error", err)
+		return nil, fmt.Errorf("error saving OAuth user: %w", err)
+	}
+
+	logger.Info("New OAuth user created successfully", "user_id", user.UserID, "email", email, "auth_provider", authProviderStr)
+	user.PasswordHash = nil // Ensure password hash is not exposed
+	return user, nil
+}
+
+func (s *userService) UpdateUserProviderDetails(ctx context.Context, userID string, details domain.UpdateUserProviderDetails) (*domain.User, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+	logger.Info("Attempting to update user provider details", "user_id", userID, "details_auth_provider", details.AuthProvider, "details_provider_user_id", details.ProviderUserID)
+
+	user, err := s.userRepo.FindUserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("User not found for UpdateUserProviderDetails", "user_id", userID)
+		} else {
+			logger.Error("Error finding user by ID for UpdateUserProviderDetails from repository", "user_id", userID, "error", err)
+		}
+		return nil, err // Return original error
+	}
+
+	updated := false
+
+	if details.AuthProvider != "" && user.AuthProvider != details.AuthProvider {
+		logger.Debug("Updating AuthProvider", "user_id", userID, "old_auth_provider", user.AuthProvider, "new_auth_provider", details.AuthProvider)
+		user.AuthProvider = details.AuthProvider
+		updated = true
+	}
+	if details.ProviderUserID != "" && user.ProviderUserID != details.ProviderUserID {
+		logger.Debug("Updating ProviderUserID", "user_id", userID, "old_provider_user_id", user.ProviderUserID, "new_provider_user_id", details.ProviderUserID)
+		user.ProviderUserID = details.ProviderUserID
+		updated = true
+	}
+
+	if details.Name != nil && user.Name != *details.Name {
+		logger.Debug("Updating Name", "user_id", userID, "old_name", user.Name, "new_name", *details.Name)
+		user.Name = *details.Name
+		updated = true
+	}
+
+	if details.Email != nil && user.Email != *details.Email {
+		newEmail := *details.Email
+		logger.Debug("Attempting to update Email", "user_id", userID, "old_email", user.Email, "new_email", newEmail)
+		// Check if the new email is already in use by another user
+		existingUserWithNewEmail, emailErr := s.userRepo.FindUserByEmail(ctx, newEmail)
+		if emailErr == nil && existingUserWithNewEmail != nil && existingUserWithNewEmail.UserID != userID {
+			logger.Warn("Email update conflict: email already in use by another account", "user_id", userID, "new_email", newEmail, "conflicting_user_id", existingUserWithNewEmail.UserID)
+			return nil, fmt.Errorf("%w: email '%s' is already in use by another account", apperrors.ErrConflict, newEmail)
+		} else if !errors.Is(emailErr, apperrors.ErrNotFound) {
+			// Handle unexpected errors from FindUserByEmail
+			logger.Error("Error checking email for conflicts during UpdateUserProviderDetails from repository", "user_id", userID, "new_email", newEmail, "error", emailErr)
+			return nil, fmt.Errorf("error checking email for conflicts: %w", emailErr)
+		}
+		user.Email = newEmail
+		updated = true
+		logger.Debug("Email updated", "user_id", userID, "new_email", newEmail)
+	}
+
+	if details.IsVerified != nil && user.IsVerified != *details.IsVerified {
+		logger.Debug("Updating IsVerified status", "user_id", userID, "old_is_verified", user.IsVerified, "new_is_verified", *details.IsVerified)
+		user.IsVerified = *details.IsVerified
+		updated = true
+	}
+	if details.ProfilePicURL != nil && user.ProfilePicURL != *details.ProfilePicURL {
+		logger.Debug("Updating ProfilePicURL", "user_id", userID)
+		user.ProfilePicURL = *details.ProfilePicURL
+		updated = true
+	}
+
+	if updated {
+		user.AuditFields.LastUpdatedAt = time.Now()
+		user.AuditFields.LastUpdatedBy = userID // Or a system ID, or specific updater if available
+		logger.Info("Applying updates to user provider details in repository", "user_id", userID)
+		err = s.userRepo.UpdateUser(ctx, *user)
+		if err != nil {
+			logger.Error("Error updating user provider details in repository", "user_id", userID, "error", err)
+			return nil, fmt.Errorf("error updating user: %w", err)
+		}
+		logger.Info("User provider details updated successfully", "user_id", userID)
+	} else {
+		logger.Info("No changes detected for UpdateUserProviderDetails", "user_id", userID)
+	}
+
+	return user, nil
+}

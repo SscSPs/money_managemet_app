@@ -504,6 +504,20 @@ definitions:
     required:
     - role
     type: object
+  dto.UserMeResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        description: Pointer to allow null/omitted if not set
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+      username:
+        type: string
+    type: object
   dto.UserResponse:
     properties:
       name:
@@ -621,6 +635,29 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       summary: User logout
+      tags:
+      - auth
+  /auth/me:
+    get:
+      description: Retrieves details for the currently authenticated user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserMeResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get current user details
       tags:
       - auth
   /auth/refresh_token:

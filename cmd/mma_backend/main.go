@@ -65,7 +65,7 @@ func main() {
 
 	// Create Service Container
 	logger.Info("Initializing services...")
-	serviceContainer := services.NewServiceContainer(repoProvider)
+	serviceContainer := services.NewServiceContainer(cfg, repoProvider)
 
 	logger.Info("Dependencies initialized.")
 	// --- End Dependency Injection Setup ---

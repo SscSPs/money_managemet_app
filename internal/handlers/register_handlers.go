@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"github.com/SscSPs/money_managemet_app/cmd/docs"
-	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services import
-
-	// "github.com/SscSPs/money_managemet_app/internal/core/services" // Remove concrete services import
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/SscSPs/money_managemet_app/internal/platform/config"
 	"github.com/gin-gonic/gin"
@@ -19,7 +17,7 @@ func RegisterRoutes(
 	services *portssvc.ServiceContainer,
 ) {
 	// Register public authentication routes
-	registerAuthRoutes(r, cfg, services.User)
+	registerAuthRoutes(r, cfg, services)
 
 	// Setup API v1 routes with Auth Middleware, passing service interfaces
 	setupAPIV1Routes(r, cfg, services)

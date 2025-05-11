@@ -6,9 +6,7 @@ import (
 	"net/http"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
-	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services" // Use ports services
-
-	// "github.com/SscSPs/money_managemet_app/internal/core/services" // Remove concrete services
+	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 
@@ -37,6 +35,7 @@ func registerUserRoutes(rg *gin.RouterGroup, userService portssvc.UserSvcFacade)
 		users.GET("/:id", h.getUser)       // Own or admin
 		users.PUT("/:id", h.updateUser)    // Own or admin
 		users.DELETE("/:id", h.deleteUser) // Admin only
+		users.POST("", h.createUser)       // Admin only
 	}
 }
 
@@ -57,7 +56,7 @@ func (h *userHandler) createUser(c *gin.Context) {
 	logger := middleware.GetLoggerFromCtx(c.Request.Context())
 	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Warn("Failed to bind JSON for CreateUser", slog.String("error", err.Error()))
+		logger.Error("Failed to bind JSON for create user request", slog.String("error", err.Error()))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format: " + err.Error()})
 		return
 	}
@@ -75,7 +74,7 @@ func (h *userHandler) createUser(c *gin.Context) {
 	logger = logger.With(slog.String("creator_user_id", creatorUserID))
 	logger.Info("Received request to create user", slog.String("user_name", req.Name))
 
-	newUser, err := h.userService.CreateUser(c.Request.Context(), req)
+	createdUser, err := h.userService.CreateUser(c.Request.Context(), req)
 	if err != nil {
 		// TODO: Handle specific errors like duplicate username/email if implemented
 		logger.Error("Failed to create user in service", slog.String("error", err.Error()))
@@ -83,8 +82,8 @@ func (h *userHandler) createUser(c *gin.Context) {
 		return
 	}
 
-	logger.Info("User created successfully", slog.String("new_user_id", newUser.UserID))
-	c.JSON(http.StatusCreated, dto.ToUserResponse(newUser))
+	logger.Info("User created successfully", slog.String("new_user_id", createdUser.UserID))
+	c.JSON(http.StatusCreated, dto.ToUserResponse(createdUser))
 }
 
 // getUser godoc

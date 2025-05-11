@@ -34,8 +34,8 @@ func (r *PgxUserRepository) GetUserByUsername(ctx context.Context, username stri
 	row := r.Pool.QueryRow(ctx, query, username)
 	var user models.User
 	err := row.Scan(
-		&user.UserID, &user.Username, &user.PasswordHash, &user.Name, 
-		&user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy, 
+		&user.UserID, &user.Username, &user.PasswordHash, &user.Name,
+		&user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy,
 		&user.DeletedAt, &user.RefreshTokenHash, &user.RefreshTokenExpiryTime,
 	)
 	if err != nil {
@@ -49,19 +49,62 @@ func (r *PgxUserRepository) GetUserByUsername(ctx context.Context, username stri
 
 // FindUserByUsername fetches a user by username and maps to domain.User
 func (r *PgxUserRepository) FindUserByUsername(ctx context.Context, username string) (*domain.User, error) {
-	query := `SELECT user_id, username, password_hash, name, created_at, created_by, last_updated_at, last_updated_by, deleted_at, refresh_token_hash, refresh_token_expiry_time FROM users WHERE username = $1 AND deleted_at IS NULL LIMIT 1`
+	query := `SELECT user_id, username, email, password_hash, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, deleted_at, refresh_token_hash, refresh_token_expiry_time FROM users WHERE username = $1 AND deleted_at IS NULL LIMIT 1`
 	row := r.Pool.QueryRow(ctx, query, username)
 	var user models.User
 	err := row.Scan(
-		&user.UserID, &user.Username, &user.PasswordHash, &user.Name, 
-		&user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy, 
+		&user.UserID, &user.Username, &user.Email, &user.PasswordHash, &user.Name,
+		&user.AuthProvider, &user.ProviderUserID,
+		&user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy,
 		&user.DeletedAt, &user.RefreshTokenHash, &user.RefreshTokenExpiryTime,
 	)
 	if err != nil {
-		if err.Error() == "no rows in result set" {
+		if errors.Is(err, pgx.ErrNoRows) { // Use errors.Is for pgx.ErrNoRows
 			return nil, apperrors.ErrNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to scan user by username: %w", err)
+	}
+	domainUser := mapping.ToDomainUser(user)
+	return &domainUser, nil
+}
+
+// FindUserByEmail fetches a user by email and maps to domain.User
+func (r *PgxUserRepository) FindUserByEmail(ctx context.Context, email string) (*domain.User, error) {
+	query := `SELECT user_id, username, email, password_hash, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, deleted_at, refresh_token_hash, refresh_token_expiry_time FROM users WHERE email = $1 AND deleted_at IS NULL LIMIT 1`
+	row := r.Pool.QueryRow(ctx, query, email)
+	var user models.User
+	err := row.Scan(
+		&user.UserID, &user.Username, &user.Email, &user.PasswordHash, &user.Name,
+		&user.AuthProvider, &user.ProviderUserID,
+		&user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy,
+		&user.DeletedAt, &user.RefreshTokenHash, &user.RefreshTokenExpiryTime,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperrors.ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to scan user by email: %w", err)
+	}
+	domainUser := mapping.ToDomainUser(user)
+	return &domainUser, nil
+}
+
+// FindUserByProvider fetches a user by auth provider and provider user ID, then maps to domain.User
+func (r *PgxUserRepository) FindUserByProviderDetails(ctx context.Context, authProvider string, providerUserID string) (*domain.User, error) {
+	query := `SELECT user_id, username, email, password_hash, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, deleted_at, refresh_token_hash, refresh_token_expiry_time FROM users WHERE auth_provider = $1 AND provider_user_id = $2 AND deleted_at IS NULL LIMIT 1`
+	row := r.Pool.QueryRow(ctx, query, authProvider, providerUserID)
+	var user models.User
+	err := row.Scan(
+		&user.UserID, &user.Username, &user.Email, &user.PasswordHash, &user.Name,
+		&user.AuthProvider, &user.ProviderUserID,
+		&user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy,
+		&user.DeletedAt, &user.RefreshTokenHash, &user.RefreshTokenExpiryTime,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperrors.ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to scan user by provider details: %w", err)
 	}
 	domainUser := mapping.ToDomainUser(user)
 	return &domainUser, nil
@@ -70,22 +113,32 @@ func (r *PgxUserRepository) FindUserByUsername(ctx context.Context, username str
 func (r *PgxUserRepository) SaveUser(ctx context.Context, user domain.User) error {
 	modelUser := mapping.ToModelUser(user)
 	query := `
-        INSERT INTO users (user_id, username, password_hash, name, created_at, created_by, last_updated_at, last_updated_by, refresh_token_hash, refresh_token_expiry_time)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO users (user_id, username, email, password_hash, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, refresh_token_hash, refresh_token_expiry_time)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         ON CONFLICT (user_id) DO UPDATE SET
             username = EXCLUDED.username,
+            email = EXCLUDED.email,
             password_hash = EXCLUDED.password_hash,
             name = EXCLUDED.name,
+            auth_provider = EXCLUDED.auth_provider,
+            provider_user_id = EXCLUDED.provider_user_id,
             last_updated_at = EXCLUDED.last_updated_at,
             last_updated_by = EXCLUDED.last_updated_by,
             refresh_token_hash = EXCLUDED.refresh_token_hash,
-            refresh_token_expiry_time = EXCLUDED.refresh_token_expiry_time;
+            refresh_token_expiry_time = EXCLUDED.refresh_token_expiry_time
+        WHERE users.deleted_at IS NULL; -- Ensure we don't update a soft-deleted user
     `
+	// Note: For ON CONFLICT (email) DO NOTHING or DO UPDATE, we need to handle potential races and unique constraint violations more carefully.
+	// If email needs to be unique and updatable, separate logic or error handling for unique violation might be needed.
+
 	_, err := r.Pool.Exec(ctx, query,
 		modelUser.UserID,
 		modelUser.Username,
+		modelUser.Email, // Added email to insert and update
 		modelUser.PasswordHash,
 		modelUser.Name,
+		modelUser.AuthProvider,   // Added auth_provider
+		modelUser.ProviderUserID, // Added provider_user_id
 		modelUser.CreatedAt,
 		modelUser.CreatedBy,
 		modelUser.LastUpdatedAt,
@@ -94,6 +147,8 @@ func (r *PgxUserRepository) SaveUser(ctx context.Context, user domain.User) erro
 		modelUser.RefreshTokenExpiryTime,
 	)
 	if err != nil {
+		// Check for unique constraint violation on email if necessary here, though the query might handle it
+		// e.g., if strings.Contains(err.Error(), "unique constraint") && strings.Contains(err.Error(), "users_email_key") { ... }
 		return fmt.Errorf("failed to save user: %w", err)
 	}
 	return nil
@@ -101,30 +156,25 @@ func (r *PgxUserRepository) SaveUser(ctx context.Context, user domain.User) erro
 
 func (r *PgxUserRepository) FindUserByID(ctx context.Context, userID string) (*domain.User, error) {
 	query := `
-		SELECT user_id, username, password_hash, name, created_at, created_by, last_updated_at, last_updated_by, deleted_at, refresh_token_hash, refresh_token_expiry_time
-		FROM users
-		WHERE user_id = $1 AND deleted_at IS NULL;
-	`
+        SELECT user_id, username, email, password_hash, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, deleted_at, refresh_token_hash, refresh_token_expiry_time
+        FROM users
+        WHERE user_id = $1 AND deleted_at IS NULL
+        LIMIT 1;
+    `
+	row := r.Pool.QueryRow(ctx, query, userID)
 	var modelUser models.User
-	err := r.Pool.QueryRow(ctx, query, userID).Scan(
-		&modelUser.UserID,
-		&modelUser.Username, // Added username
-		&modelUser.PasswordHash, // Added password hash
-		&modelUser.Name,
-		&modelUser.CreatedAt,
-		&modelUser.CreatedBy,
-		&modelUser.LastUpdatedAt,
-		&modelUser.LastUpdatedBy,
-		&modelUser.DeletedAt, 
-		&modelUser.RefreshTokenHash, 
-		&modelUser.RefreshTokenExpiryTime,
+	err := row.Scan(
+		&modelUser.UserID, &modelUser.Username, &modelUser.Email, &modelUser.PasswordHash, &modelUser.Name,
+		&modelUser.AuthProvider, &modelUser.ProviderUserID,
+		&modelUser.CreatedAt, &modelUser.CreatedBy, &modelUser.LastUpdatedAt, &modelUser.LastUpdatedBy,
+		&modelUser.DeletedAt, &modelUser.RefreshTokenHash, &modelUser.RefreshTokenExpiryTime,
 	)
 
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) { // Use errors.Is for pgx.ErrNoRows
 			return nil, apperrors.ErrNotFound
 		}
-		return nil, fmt.Errorf("failed to find user by ID %s: %w", userID, err)
+		return nil, fmt.Errorf("failed to scan user by ID: %w", err)
 	}
 
 	domainUser := mapping.ToDomainUser(modelUser)
@@ -142,7 +192,7 @@ func (r *PgxUserRepository) FindUsers(ctx context.Context, limit int, offset int
 	}
 
 	query := `
-        SELECT user_id, name, created_at, created_by, last_updated_at, last_updated_by, deleted_at
+        SELECT user_id, username, email, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, deleted_at
         FROM users
         WHERE deleted_at IS NULL
         ORDER BY created_at DESC -- Or name, or user_id
@@ -154,8 +204,13 @@ func (r *PgxUserRepository) FindUsers(ctx context.Context, limit int, offset int
 	}
 	defer rows.Close()
 
+	// pgx.CollectRows will scan into the fields of models.User based on their names or order.
+	// Ensure the SELECT statement matches the fields expected by pgx.RowToStructByName or the scan order.
 	modelUsers, err := pgx.CollectRows(rows, pgx.RowToStructByName[models.User])
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) { // It's possible to get no rows, which is not an error for a list.
+			return []domain.User{}, nil
+		}
 		return nil, fmt.Errorf("failed to collect user rows: %w", err)
 	}
 
@@ -166,11 +221,15 @@ func (r *PgxUserRepository) UpdateUser(ctx context.Context, user domain.User) er
 	modelUser := mapping.ToModelUser(user)
 	query := `
         UPDATE users
-        SET name = $1, last_updated_at = $2, last_updated_by = $3
-        WHERE user_id = $4 AND deleted_at IS NULL;
+        SET name = $1, email = $2, username = $3, auth_provider = $4, provider_user_id = $5, last_updated_at = $6, last_updated_by = $7
+        WHERE user_id = $8 AND deleted_at IS NULL;
     `
 	cmdTag, err := r.Pool.Exec(ctx, query,
 		modelUser.Name,
+		modelUser.Email,          // Added email
+		modelUser.Username,       // Added username
+		modelUser.AuthProvider,   // Added auth_provider
+		modelUser.ProviderUserID, // Added provider_user_id
 		modelUser.LastUpdatedAt,
 		modelUser.LastUpdatedBy,
 		modelUser.UserID,
