@@ -90,7 +90,7 @@ func main() {
 	handlers.RegisterRoutes(r, cfg, serviceContainer)
 
 	logger.Info("Server starting", slog.String("port", cfg.Port))
-	if err := r.Run(":" + cfg.Port); err != nil {
+	if err := r.Run("0.0.0.0:" + cfg.Port); err != nil {
 		logger.Error("Server failed to run", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
