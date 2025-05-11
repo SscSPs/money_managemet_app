@@ -21,7 +21,6 @@ WORKDIR /app
 
 COPY --from=builder /app/bin/mma_backend .
 COPY --from=builder /app/migrations ./migrations
-COPY --from=builder /app/.env.integration .env
 
 # Port default is 8080
 
