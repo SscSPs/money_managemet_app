@@ -20,14 +20,12 @@ type Config struct {
 	// Refresh Token Config
 	RefreshTokenExpiryDuration time.Duration
 	RefreshTokenCookieName     string
-	RefreshTokenCookiePath     string `mapstructure:"REFRESH_TOKEN_COOKIE_PATH"` // Added RefreshTokenCookiePath
 	RefreshTokenSecret         string
 
 	// External OAuth Providers
 	GoogleClientID     string `mapstructure:"GOOGLE_CLIENT_ID"`
 	GoogleClientSecret string `mapstructure:"GOOGLE_CLIENT_SECRET"`
 	GoogleRedirectURL  string `mapstructure:"GOOGLE_REDIRECT_URL"`
-	FrontendBaseURL    string `mapstructure:"FRONTEND_BASE_URL"`
 }
 
 // LoadConfig loads configuration from environment variables and .env file if present.
@@ -44,12 +42,10 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("JWT_ISSUER", "money-management-app") // Added default for JWT_ISSUER
 	viper.SetDefault("REFRESH_TOKEN_EXPIRY_DURATION", "168h")
 	viper.SetDefault("REFRESH_TOKEN_COOKIE_NAME", "rtid")
-	viper.SetDefault("REFRESH_TOKEN_COOKIE_PATH", "/api/v1/auth") // Added default for REFRESH_TOKEN_COOKIE_PATH
 	viper.SetDefault("REFRESH_TOKEN_SECRET", "default_insecure_refresh_secret_please_change_this_!@#$")
 	viper.SetDefault("GOOGLE_CLIENT_ID", "")
 	viper.SetDefault("GOOGLE_CLIENT_SECRET", "")
 	viper.SetDefault("GOOGLE_REDIRECT_URL", "")
-	viper.SetDefault("FRONTEND_BASE_URL", "http://localhost:3000")
 
 	// Read .env file if it exists
 	// This allows overriding defaults with .env file values, which can then be overridden by actual environment variables.
@@ -128,7 +124,6 @@ func LoadConfig() (*Config, error) {
 	cfg.GoogleClientID = viper.GetString("GOOGLE_CLIENT_ID")
 	cfg.GoogleClientSecret = viper.GetString("GOOGLE_CLIENT_SECRET")
 	cfg.GoogleRedirectURL = viper.GetString("GOOGLE_REDIRECT_URL")
-	cfg.FrontendBaseURL = viper.GetString("FRONTEND_BASE_URL")
 
 	// Log warnings for missing critical OAuth ENV variables
 	if cfg.GoogleClientID == "" {
@@ -150,7 +145,6 @@ func LoadConfig() (*Config, error) {
 	cfg.JWTIssuer = jwtIssuer
 	cfg.RefreshTokenExpiryDuration = refreshTokenExpiryDuration
 	cfg.RefreshTokenCookieName = refreshTokenCookieName
-	cfg.RefreshTokenCookiePath = refreshTokenCookiePath
 	cfg.RefreshTokenSecret = refreshTokenSecret
 
 	return cfg, nil

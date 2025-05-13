@@ -569,6 +569,18 @@ definitions:
       error:
         type: string
     type: object
+  handlers.ExchangeCodeRequest:
+    properties:
+      code:
+        type: string
+    required:
+    - code
+    type: object
+  handlers.ExchangeCodeResponse:
+    properties:
+      token:
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact: {}
@@ -912,6 +924,42 @@ paths:
       summary: Get an exchange rate
       tags:
       - exchange rates
+  /google/exchange-code:
+    post:
+      consumes:
+      - application/json
+      description: Exchange authorization code for access token
+      parameters:
+      - description: Authorization code
+        in: body
+        name: code
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ExchangeCodeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.ExchangeCodeResponse'
+        "400":
+          description: Invalid authorization code
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to exchange authorization code for access token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Exchange authorization code for access token
+      tags:
+      - oauth
   /users:
     get:
       description: Retrieves a list of users (potentially admin only)
