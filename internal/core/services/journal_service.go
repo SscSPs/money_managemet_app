@@ -156,6 +156,15 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 		return nil, ErrJournalMinEntries
 	}
 
+	// Check that transactions involve at least 2 different accounts
+	accountSet := make(map[string]bool)
+	for _, txn := range req.Transactions {
+		accountSet[txn.AccountID] = true
+	}
+	if len(accountSet) < 2 {
+		return nil, fmt.Errorf("%w: journal must affect at least 2 different accounts", apperrors.ErrValidation)
+	}
+
 	now := time.Now().UTC()
 	journalID := uuid.NewString()
 
