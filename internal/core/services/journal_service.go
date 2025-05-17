@@ -117,78 +117,24 @@ func (s *journalService) calculateJournalAmount(transactions []domain.Transactio
 		return decimal.Zero
 	}
 
-	// In double-entry accounting, for a balanced journal:
-	// - The sum of all debits equals the sum of all credits
-	// - The economic value of the transaction is the amount that changed hands
-
-	// We need to determine the "purpose" of the transaction to get the correct economic value
-
-	// Group transactions by account type to understand what's happening
-	expenseDebits := decimal.Zero
-	incomeCredits := decimal.Zero
-	assetDebits := decimal.Zero
-	assetCredits := decimal.Zero
-	liabilityDebits := decimal.Zero
-	liabilityCredits := decimal.Zero
-
-	// First classify all transactions
+	// For a balanced journal, the sum of all debit entries equals the sum of all credit entries.
+	// This sum represents the total economic value of the journal.
+	totalDebits := decimal.Zero
 	for _, txn := range transactions {
-		accountType, exists := accountTypes[txn.AccountID]
+		// Ensure the account exists in the provided accountTypes map.
+		// This retains a safety check from the original logic, though the accountType itself isn't used in the simplified sum.
+		_, exists := accountTypes[txn.AccountID]
 		if !exists {
+			// If a logger was available and this scenario is unexpected, it could be logged.
+			// e.g., s.logger.Warnf("Transaction for unknown account ID %s skipped in amount calculation", txn.AccountID)
 			continue
 		}
 
-		isDebit := txn.TransactionType == domain.Debit
-
-		switch accountType {
-		case domain.Expense:
-			if isDebit {
-				expenseDebits = expenseDebits.Add(txn.Amount)
-			}
-		case domain.Revenue:
-			if !isDebit { // Credit
-				incomeCredits = incomeCredits.Add(txn.Amount)
-			}
-		case domain.Asset:
-			if isDebit {
-				assetDebits = assetDebits.Add(txn.Amount)
-			} else {
-				assetCredits = assetCredits.Add(txn.Amount)
-			}
-		case domain.Liability:
-			if isDebit {
-				liabilityDebits = liabilityDebits.Add(txn.Amount)
-			} else {
-				liabilityCredits = liabilityCredits.Add(txn.Amount)
-			}
+		if txn.TransactionType == domain.Debit {
+			totalDebits = totalDebits.Add(txn.Amount)
 		}
 	}
-
-	// Now determine the transaction purpose based on the accounts involved
-
-	// Case 1: Expense transaction (money spent)
-	if !expenseDebits.IsZero() {
-		return expenseDebits
-	}
-
-	// Case 2: Income transaction (money received)
-	if !incomeCredits.IsZero() {
-		return incomeCredits
-	}
-
-	// Case 3: Expense paid with credit (DEBIT LIABILITY, CREDIT EXPENSE)
-	// This is your case - paying for expenses with a credit card - this should return the amount spent
-	if !liabilityDebits.IsZero() && transactions[0].Amount.Equal(transactions[1].Amount) {
-		return transactions[0].Amount
-	}
-
-	// Case 4: Asset transfer or payment (between assets, or asset to liability)
-	if !assetDebits.IsZero() || !assetCredits.IsZero() {
-		return transactions[0].Amount
-	}
-
-	// Fallback to just returning the first transaction amount
-	return transactions[0].Amount
+	return totalDebits
 }
 
 // calculateJournalAmountSimple is a simplified fallback when account types aren't available.
