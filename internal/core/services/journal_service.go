@@ -431,59 +431,6 @@ func (j *journalService) ListJournals(ctx context.Context, workplaceID string, u
 		return nil, err
 	}
 
-	// Extract journal IDs for bulk transaction fetch
-	journalIDs := make([]string, len(journals))
-	for i, journal := range journals {
-		journalIDs[i] = journal.JournalID
-	}
-
-	// Fetch transactions for all journals to calculate amounts
-	if len(journalIDs) > 0 {
-		transactionsMap, err := j.journalRepo.FindTransactionsByJournalIDs(ctx, journalIDs)
-		if err != nil {
-			logger.Error("Failed to fetch transactions for journals", "error", err)
-			// Continue without amounts if transaction fetch fails
-		} else {
-			// Collect all account IDs used in any transaction
-			allAccountIDs := make([]string, 0)
-			for _, txns := range transactionsMap {
-				for _, txn := range txns {
-					allAccountIDs = append(allAccountIDs, txn.AccountID)
-				}
-			}
-
-			// Fetch account details to get types
-			var accountTypes map[string]domain.AccountType
-			accountsMap, err := j.accountSvc.GetAccountByIDs(ctx, workplaceID, uniqueStrings(allAccountIDs))
-			if err != nil {
-				logger.Warn("Could not fetch account types for journal amounts calculation", "error", err)
-				// Will fall back to simple calculation below
-			} else {
-				// Create account types map
-				accountTypes = make(map[string]domain.AccountType)
-				for id, account := range accountsMap {
-					accountTypes[id] = account.AccountType
-				}
-			}
-
-			// Calculate amount for each journal
-			for i := range journals {
-				txns, exists := transactionsMap[journals[i].JournalID]
-				if exists {
-					if accountTypes != nil {
-						// Use accurate calculation with account types
-						totalAmount := j.calculateJournalAmount(txns, accountTypes)
-						journals[i].Amount = totalAmount
-					} else {
-						// Fall back to simple calculation if account types aren't available
-						totalAmount := calculateJournalAmountSimple(txns)
-						journals[i].Amount = totalAmount
-					}
-				}
-			}
-		}
-	}
-
 	// Convert domain journals to DTO responses
 	journalResponses := make([]dto.JournalResponse, len(journals))
 	for i, journal := range journals {
