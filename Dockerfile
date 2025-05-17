@@ -37,6 +37,9 @@ WORKDIR /app
 COPY --from=builder /app/bin/app_binary ./mma_backend
 COPY --from=builder /app/migrations ./migrations
 
+# copy CA Certs because scratch doesn't have that, and we want to call google for oauth
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
 # Port default is 8080
 
 EXPOSE 8080
