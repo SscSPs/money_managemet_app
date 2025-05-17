@@ -16,6 +16,12 @@ func RegisterRoutes(
 	cfg *config.Config,
 	services *portssvc.ServiceContainer,
 ) {
+
+	// Add health check route
+	r.GET("/health", func(c *gin.Context) {
+		c.String(200, "OK")
+	})
+
 	// Register public authentication routes
 	registerAuthRoutes(r, cfg, services)
 
