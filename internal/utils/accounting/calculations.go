@@ -33,48 +33,6 @@ func CalculateSignedAmount(txn domain.Transaction, accountType domain.AccountTyp
 	return signedAmount, nil
 }
 
-// CalculateJournalAmount computes the true economic value of a journal.
-// For a balanced journal with equal debit and credit sides,
-// we need to pick one side that represents the actual money movement.
-func CalculateJournalAmount(transactions []domain.Transaction, accountTypes map[string]domain.AccountType) decimal.Decimal {
-	if len(transactions) == 0 {
-		return decimal.Zero
-	}
-
-	// In double-entry accounting, for a balanced journal:
-	// - The sum of all debits equals the sum of all credits
-	// - The economic value of the transaction is the amount that changed hands
-
-	// We'll calculate the sum of:
-	// - DEBIT amounts for ASSET and EXPENSE accounts (money spent/used)
-	// - CREDIT amounts for LIABILITY, EQUITY, and REVENUE accounts (money received/gained)
-
-	totalAmount := decimal.Zero
-	for _, txn := range transactions {
-		accountType, exists := accountTypes[txn.AccountID]
-		if !exists {
-			// Skip if account type isn't provided (this should be caught in validation)
-			continue
-		}
-
-		isDebit := txn.TransactionType == domain.Debit
-
-		// Only count the transaction if it represents money movement in the positive direction
-		switch accountType {
-		case domain.Asset, domain.Expense:
-			if isDebit {
-				totalAmount = totalAmount.Add(txn.Amount)
-			}
-		case domain.Liability, domain.Equity, domain.Revenue:
-			if !isDebit { // Credit
-				totalAmount = totalAmount.Add(txn.Amount)
-			}
-		}
-	}
-
-	return totalAmount
-}
-
 // CalculateJournalAmountSimple is a simplified version that just returns the first transaction amount
 // when account types aren't available.
 func CalculateJournalAmountSimple(transactions []domain.Transaction) decimal.Decimal {
