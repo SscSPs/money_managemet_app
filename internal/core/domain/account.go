@@ -20,6 +20,7 @@ const (
 type Account struct {
 	AccountID       string          `json:"accountID"`       // Primary Key (e.g., UUID)
 	WorkplaceID     string          `json:"workplaceID"`     // FK -> workplaces.workplace_id (NON-NULL)
+	CFID            string          `json:"cfid"`            // Customer Facing ID (optional, user-defined)
 	Name            string          `json:"name"`            // User-defined name
 	AccountType     AccountType     `json:"accountType"`     // ASSET, LIABILITY, etc.
 	CurrencyCode    string          `json:"currencyCode"`    // FK -> currencies.code (NON-NULL)

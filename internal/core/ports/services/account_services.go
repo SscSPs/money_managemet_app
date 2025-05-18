@@ -11,10 +11,13 @@ import (
 // AccountReaderSvc defines read operations for account data
 type AccountReaderSvc interface {
 	// GetAccountByID retrieves a specific account by its unique identifier.
-	GetAccountByID(ctx context.Context, workplaceID string, accountID string) (*domain.Account, error)
+	GetAccountByID(ctx context.Context, workplaceID string, accountID string, userID string) (*domain.Account, error)
+
+	// GetAccountByCFID retrieves an account by its CFID (Customer Facing ID) and workplace ID
+	GetAccountByCFID(ctx context.Context, workplaceID string, cfid string, userID string) (*domain.Account, error)
 
 	// GetAccountByIDs retrieves multiple accounts by their IDs.
-	GetAccountByIDs(ctx context.Context, workplaceID string, accountIDs []string) (map[string]domain.Account, error)
+	GetAccountByIDs(ctx context.Context, workplaceID string, accountIDs []string, userID string) (map[string]domain.Account, error)
 
 	// ListAccounts retrieves a paginated list of accounts for a given workplace.
 	ListAccounts(ctx context.Context, workplaceID string, limit int, offset int) ([]domain.Account, error)
@@ -35,7 +38,7 @@ type AccountWriterSvc interface {
 // AccountCalculatorSvc defines calculation operations for account data
 type AccountCalculatorSvc interface {
 	// CalculateAccountBalance calculates the current balance of an account.
-	CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error)
+	CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string, userID string) (decimal.Decimal, error)
 }
 
 // AccountSvcFacade combines all account-related service interfaces

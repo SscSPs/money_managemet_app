@@ -10,6 +10,7 @@ func ToModelAccount(d domain.Account) models.Account {
 	return models.Account{
 		AccountID:       d.AccountID,
 		WorkplaceID:     d.WorkplaceID,
+		CFID:            d.CFID,
 		Name:            d.Name,
 		AccountType:     models.AccountType(d.AccountType),
 		CurrencyCode:    d.CurrencyCode,
@@ -31,6 +32,7 @@ func ToDomainAccount(m models.Account) domain.Account {
 	return domain.Account{
 		AccountID:       m.AccountID,
 		WorkplaceID:     m.WorkplaceID,
+		CFID:            m.CFID,
 		Name:            m.Name,
 		AccountType:     domain.AccountType(m.AccountType),
 		CurrencyCode:    m.CurrencyCode,

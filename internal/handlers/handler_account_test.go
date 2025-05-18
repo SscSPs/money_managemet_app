@@ -34,15 +34,15 @@ func (m *MockAccountService) CreateAccount(ctx context.Context, workplaceID stri
 	}
 	return args.Get(0).(*domain.Account), args.Error(1)
 }
-func (m *MockAccountService) GetAccountByID(ctx context.Context, workplaceID string, accountID string) (*domain.Account, error) {
-	args := m.Called(ctx, workplaceID, accountID)
+func (m *MockAccountService) GetAccountByID(ctx context.Context, workplaceID string, accountID string, userID string) (*domain.Account, error) {
+	args := m.Called(ctx, workplaceID, accountID, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*domain.Account), args.Error(1)
 }
-func (m *MockAccountService) GetAccountByIDs(ctx context.Context, workplaceID string, accountIDs []string) (map[string]domain.Account, error) {
-	args := m.Called(ctx, workplaceID, accountIDs)
+func (m *MockAccountService) GetAccountByIDs(ctx context.Context, workplaceID string, accountIDs []string, userID string) (map[string]domain.Account, error) {
+	args := m.Called(ctx, workplaceID, accountIDs, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -66,9 +66,17 @@ func (m *MockAccountService) DeactivateAccount(ctx context.Context, workplaceID 
 	args := m.Called(ctx, workplaceID, accountID, userID)
 	return args.Error(0)
 }
-func (m *MockAccountService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
-	args := m.Called(ctx, workplaceID, accountID)
+func (m *MockAccountService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string, userID string) (decimal.Decimal, error) {
+	args := m.Called(ctx, workplaceID, accountID, userID)
 	return args.Get(0).(decimal.Decimal), args.Error(1)
+}
+
+func (m *MockAccountService) GetAccountByCFID(ctx context.Context, workplaceID string, cfid string, userID string) (*domain.Account, error) {
+	args := m.Called(ctx, workplaceID, cfid, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Account), args.Error(1)
 }
 
 // Ensure mock implements the interface
@@ -118,8 +126,8 @@ func (m *MockJournalService) ListTransactionsByAccount(ctx context.Context, work
 	}
 	return args.Get(0).(*dto.ListTransactionsResponse), args.Error(1)
 }
-func (m *MockJournalService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
-	args := m.Called(ctx, workplaceID, accountID)
+func (m *MockJournalService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string, userID string) (decimal.Decimal, error) {
+	args := m.Called(ctx, workplaceID, accountID, userID)
 	if args.Get(0) == nil {
 		return decimal.Decimal{}, args.Error(1)
 	}

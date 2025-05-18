@@ -407,25 +407,3 @@ func (h *journalHandler) reverseJournal(c *gin.Context) {
 	logger.Info("Journal reversed successfully", slog.String("reversing_journal_id", reversingJournal.JournalID))
 	c.JSON(http.StatusOK, dto.ToJournalResponse(reversingJournal))
 }
-
-/* // Placeholder: Balance endpoint likely belongs with Accounts handler
-func (h *journalHandler) getAccountBalance(c *gin.Context) {
-	logger := middleware.GetLoggerFromCtx(c.Request.Context())
-	accountID := c.Param("id")
-
-	balance, err := h.journalService.CalculateAccountBalance(c.Request.Context(), accountID)
-	if err != nil {
-		if errors.Is(err, services.ErrAccountNotFound) || errors.Is(err, apperrors.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found or inactive"})
-		} else if strings.Contains(err.Error(), "inactive") { // Simple check for inactive error message
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		} else {
-			logger.Error("Failed to calculate account balance", slog.String("error", err.Error()), slog.String("account_id", accountID))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate balance"})
-		}
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"accountID": accountID, "balance": balance})
-}
-*/

@@ -10,6 +10,7 @@ import (
 // CreateAccountRequest defines the data needed to create a new account.
 type CreateAccountRequest struct {
 	Name            string             `json:"name" binding:"required"`
+	CFID            string             `json:"cfid,omitempty"` // Optional customer-facing ID
 	AccountType     domain.AccountType `json:"accountType" binding:"required,oneof=ASSET LIABILITY EQUITY REVENUE EXPENSE"`
 	CurrencyCode    string             `json:"currencyCode" binding:"required,iso4217"`
 	Description     string             `json:"description"`
@@ -23,6 +24,7 @@ type CreateAccountRequest struct {
 type AccountResponse struct {
 	AccountID       string             `json:"accountID"`
 	WorkplaceID     string             `json:"workplaceID"`
+	CFID            string             `json:"cfid,omitempty"` // Customer Facing ID (if provided)
 	Name            string             `json:"name"`
 	AccountType     domain.AccountType `json:"accountType"`
 	CurrencyCode    string             `json:"currencyCode"`
@@ -43,6 +45,7 @@ type UpdateAccountRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
 	IsActive    *bool   `json:"isActive,omitempty"`
+	CFID        *string `json:"cfid,omitempty"`
 	// Note: AccountType, CurrencyCode, ParentAccountID are usually not updatable.
 }
 
@@ -51,6 +54,7 @@ func ToAccountResponse(acc *domain.Account) AccountResponse {
 	return AccountResponse{
 		AccountID:       acc.AccountID,
 		WorkplaceID:     acc.WorkplaceID,
+		CFID:            acc.CFID,
 		Name:            acc.Name,
 		AccountType:     acc.AccountType,
 		CurrencyCode:    acc.CurrencyCode,

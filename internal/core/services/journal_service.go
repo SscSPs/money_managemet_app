@@ -20,10 +20,13 @@ import (
 )
 
 var (
-	ErrJournalUnbalanced = errors.New("journal entries do not balance to zero")
-	ErrJournalMinEntries = errors.New("journal must have at least two transaction entries")
-	ErrAccountNotFound   = errors.New("account not found")
-	ErrCurrencyMismatch  = errors.New("account currency does not match journal currency")
+	ErrJournalUnbalanced  = errors.New("journal entries do not balance to zero")
+	ErrJournalMinEntries  = errors.New("journal must have at least two transaction entries")
+	ErrJournalMinAccounts = errors.New("journal must affect at least two different accounts")
+	ErrAccountNotFound    = errors.New("account not found")
+	ErrCurrencyMismatch   = errors.New("account currency does not match journal currency")
+	ErrNotPosted          = errors.New("journal must be posted to be updated")
+	ErrDescriptionMissing = errors.New("journal description is required")
 )
 
 // journalService provides core journal and transaction operations.
@@ -81,7 +84,6 @@ func (s *journalService) validateJournalBalance(transactions []domain.Transactio
 	zero := decimal.NewFromInt(0)
 
 	// For double-entry accounting, the sum of debits should equal the sum of credits
-	// regardless of account type
 	debitsSum := zero
 	creditsSum := zero
 
@@ -91,7 +93,7 @@ func (s *journalService) validateJournalBalance(transactions []domain.Transactio
 			return fmt.Errorf("transaction amount must be positive for transaction ID %s", txn.TransactionID)
 		}
 
-		// Simply sum all debits and credits separately
+		// Sum all debits and credits
 		if txn.TransactionType == domain.Debit {
 			debitsSum = debitsSum.Add(txn.Amount)
 		} else {
@@ -162,7 +164,12 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 		accountSet[txn.AccountID] = true
 	}
 	if len(accountSet) < 2 {
-		return nil, fmt.Errorf("%w: journal must affect at least 2 different accounts", apperrors.ErrValidation)
+		return nil, ErrJournalMinAccounts
+	}
+
+	//the description must not be empty
+	if req.Description == "" {
+		return nil, ErrDescriptionMissing
 	}
 
 	now := time.Now().UTC()
@@ -197,7 +204,7 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 
 	// --- Fetch Accounts and Validate Further ---
 	uniqueAccountIDs := uniqueStrings(accountIDs)
-	accountsMap, err := s.accountSvc.GetAccountByIDs(ctx, workplaceID, uniqueAccountIDs)
+	accountsMap, err := s.accountSvc.GetAccountByIDs(ctx, workplaceID, uniqueAccountIDs, creatorUserID)
 	if err != nil {
 		logger.Error("Failed to fetch accounts for journal creation", slog.String("error", err.Error()), slog.String("workplace_id", workplaceID))
 		return nil, fmt.Errorf("failed to fetch accounts: %w", err)
@@ -407,8 +414,9 @@ func (s *journalService) UpdateJournal(ctx context.Context, workplaceID string, 
 		return nil, apperrors.ErrNotFound
 	}
 
-	// TODO: Add check: Can only update journals with status 'Posted'?
-	// if journal.Status != domain.Posted { ... return apperrors.ErrValidation(...) }
+	if journal.Status != domain.Posted {
+		return nil, ErrNotPosted
+	}
 
 	// Apply updates from request DTO
 	updated := false
@@ -542,70 +550,70 @@ func uniqueStrings(input []string) []string {
 	return result
 }
 
-// CalculateAccountBalance calculates the current balance for a specific account.
-// Note: This might be better placed in AccountService if it doesn't need journal specifics beyond transactions.
-func (s *journalService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string) (decimal.Decimal, error) {
-	logger := middleware.GetLoggerFromCtx(ctx)
+// // CalculateAccountBalance calculates the current balance for a specific account.
+// // Note: This might be better placed in AccountService if it doesn't need journal specifics beyond transactions.
+// func (s *journalService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string, userID string) (decimal.Decimal, error) {
+// 	logger := middleware.GetLoggerFromCtx(ctx)
 
-	// --- Authorization Check ---
-	// Since this is a read operation, we only need ReadOnly access
-	// Note: We'll rely on the account service's authorization check when calling GetAccountByID
+// 	// --- Authorization Check ---
+// 	// Since this is a read operation, we only need ReadOnly access
+// 	// Note: We'll rely on the account service's authorization check when calling GetAccountByID
 
-	// 1. Find the account to verify existence, activity, type, and workplace match
-	account, err := s.accountSvc.GetAccountByID(ctx, workplaceID, accountID)
-	if err != nil {
-		if errors.Is(err, apperrors.ErrNotFound) {
-			return decimal.Zero, fmt.Errorf("%w: ID %s", ErrAccountNotFound, accountID)
-		}
-		return decimal.Zero, fmt.Errorf("failed to find account %s: %w", accountID, err)
-	}
-	if account.WorkplaceID != workplaceID {
-		logger.Warn("CalculateAccountBalance requested for account in wrong workplace", slog.String("account_id", accountID), slog.String("account_workplace", account.WorkplaceID), slog.String("requested_workplace", workplaceID))
-		return decimal.Zero, fmt.Errorf("account %s not found in workplace %s", accountID, workplaceID)
-	}
-	if !account.IsActive {
-		return decimal.Zero, fmt.Errorf("account %s is inactive", accountID)
-	}
+// 	// 1. Find the account to verify existence, activity, type, and workplace match
+// 	account, err := s.accountSvc.GetAccountByID(ctx, workplaceID, accountID, userID)
+// 	if err != nil {
+// 		if errors.Is(err, apperrors.ErrNotFound) {
+// 			return decimal.Zero, fmt.Errorf("%w: ID %s", ErrAccountNotFound, accountID)
+// 		}
+// 		return decimal.Zero, fmt.Errorf("failed to find account %s: %w", accountID, err)
+// 	}
+// 	if account.WorkplaceID != workplaceID {
+// 		logger.Warn("CalculateAccountBalance requested for account in wrong workplace", slog.String("account_id", accountID), slog.String("account_workplace", account.WorkplaceID), slog.String("requested_workplace", workplaceID))
+// 		return decimal.Zero, fmt.Errorf("account %s not found in workplace %s", accountID, workplaceID)
+// 	}
+// 	if !account.IsActive {
+// 		return decimal.Zero, fmt.Errorf("account %s is inactive", accountID)
+// 	}
 
-	// 2. Fetch all transactions for this account within the workplace using pagination
-	balance := decimal.Zero
-	var nextToken *string
-	const pageSize = 100 // Fetch more transactions per page for efficiency
+// 	// 2. Fetch all transactions for this account within the workplace using pagination
+// 	balance := decimal.Zero
+// 	var nextToken *string
+// 	const pageSize = 100 // Fetch more transactions per page for efficiency
 
-	// Paginate through all transactions
-	for {
-		transactions, newNextToken, err := s.journalRepo.ListTransactionsByAccountID(ctx, workplaceID, accountID, pageSize, nextToken)
-		if err != nil {
-			logger.Error("Failed to fetch transactions page for account balance", slog.String("error", err.Error()), slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
-			return decimal.Zero, fmt.Errorf("failed to fetch transactions for account %s in workplace %s: %w", accountID, workplaceID, err)
-		}
+// 	// Paginate through all transactions
+// 	for {
+// 		transactions, newNextToken, err := s.journalRepo.ListTransactionsByAccountID(ctx, workplaceID, accountID, pageSize, nextToken)
+// 		if err != nil {
+// 			logger.Error("Failed to fetch transactions page for account balance", slog.String("error", err.Error()), slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
+// 			return decimal.Zero, fmt.Errorf("failed to fetch transactions for account %s in workplace %s: %w", accountID, workplaceID, err)
+// 		}
 
-		// Process this page of transactions
-		for _, txn := range transactions {
-			if txn.Amount.LessThanOrEqual(decimal.Zero) {
-				logger.Error("Invalid non-positive transaction amount found during balance calculation", slog.String("transaction_id", txn.TransactionID), slog.String("account_id", accountID))
-				return decimal.Zero, fmt.Errorf("invalid non-positive transaction amount found (ID: %s) for account %s", txn.TransactionID, accountID)
-			}
+// 		// Process this page of transactions
+// 		for _, txn := range transactions {
+// 			if txn.Amount.LessThanOrEqual(decimal.Zero) {
+// 				logger.Error("Invalid non-positive transaction amount found during balance calculation", slog.String("transaction_id", txn.TransactionID), slog.String("account_id", accountID))
+// 				return decimal.Zero, fmt.Errorf("invalid non-positive transaction amount found (ID: %s) for account %s", txn.TransactionID, accountID)
+// 			}
 
-			signedAmount, err := s.getSignedAmount(txn, account.AccountType)
-			if err != nil {
-				return decimal.Zero, fmt.Errorf("error calculating signed amount for transaction %s: %w", txn.TransactionID, err)
-			}
-			balance = balance.Add(signedAmount)
-		}
+// 			signedAmount, err := s.getSignedAmount(txn, account.AccountType)
+// 			if err != nil {
+// 				return decimal.Zero, fmt.Errorf("error calculating signed amount for transaction %s: %w", txn.TransactionID, err)
+// 			}
+// 			balance = balance.Add(signedAmount)
+// 		}
 
-		// If no more pages, break the loop
-		if newNextToken == nil || *newNextToken == "" {
-			break
-		}
+// 		// If no more pages, break the loop
+// 		if newNextToken == nil || *newNextToken == "" {
+// 			break
+// 		}
 
-		// Continue with next page
-		nextToken = newNextToken
-	}
+// 		// Continue with next page
+// 		nextToken = newNextToken
+// 	}
 
-	logger.Debug("Account balance calculated successfully", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID), slog.String("balance", balance.String()))
-	return balance, nil
-}
+// 	logger.Debug("Account balance calculated successfully", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID), slog.String("balance", balance.String()))
+// 	return balance, nil
+// }
 
 // ReverseJournal creates a new journal entry that reverses a previously posted journal.
 func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string, journalID string, userID string) (*domain.Journal, error) {
@@ -703,7 +711,7 @@ func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 	for id := range accountIDs {
 		accIDList = append(accIDList, id)
 	}
-	accountsMap, err := s.accountSvc.GetAccountByIDs(ctx, workplaceID, accIDList)
+	accountsMap, err := s.accountSvc.GetAccountByIDs(ctx, workplaceID, accIDList, userID)
 	if err != nil {
 		logger.Error("Failed to fetch accounts for reversal balance calculation", "error", err)
 		return nil, fmt.Errorf("failed to get account details for reversal: %w", err)

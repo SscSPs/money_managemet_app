@@ -20,6 +20,7 @@ const (
 type Account struct {
 	AccountID       string          `db:"account_id"`
 	WorkplaceID     string          `db:"workplace_id"` // Added workplace_id
+	CFID            string          `db:"cfid"`         // Customer Facing ID (optional, user-defined)
 	Name            string          `db:"name"`
 	AccountType     AccountType     `db:"account_type"` // Use type from common.go
 	CurrencyCode    string          `db:"currency_code"`

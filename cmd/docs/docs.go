@@ -2958,6 +2958,10 @@ const docTemplate = `{
                     "description": "Balance is not typically included directly; might be a separate endpoint or calculation",
                     "type": "number"
                 },
+                "cfid": {
+                    "description": "Customer Facing ID (if provided)",
+                    "type": "string"
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -3077,6 +3081,10 @@ const docTemplate = `{
                             "$ref": "#/definitions/domain.AccountType"
                         }
                     ]
+                },
+                "cfid": {
+                    "description": "Optional customer-facing ID",
+                    "type": "string"
                 },
                 "currencyCode": {
                     "type": "string"
@@ -3375,7 +3383,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "nextToken": {
-                    "description": "Pagination metadata (e.g., NextToken) to be added",
+                    "description": "Token to fetch the next page",
                     "type": "string"
                 },
                 "transactions": {
@@ -3572,6 +3580,9 @@ const docTemplate = `{
         "dto.UpdateAccountRequest": {
             "type": "object",
             "properties": {
+                "cfid": {
+                    "type": "string"
+                },
                 "description": {
                     "type": "string"
                 },

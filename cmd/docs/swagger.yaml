@@ -64,6 +64,9 @@ definitions:
         description: Balance is not typically included directly; might be a separate
           endpoint or calculation
         type: number
+      cfid:
+        description: Customer Facing ID (if provided)
+        type: string
       createdAt:
         type: string
       createdBy:
@@ -139,6 +142,9 @@ definitions:
         - EQUITY
         - REVENUE
         - EXPENSE
+      cfid:
+        description: Optional customer-facing ID
+        type: string
       currencyCode:
         type: string
       description:
@@ -342,7 +348,7 @@ definitions:
   dto.ListTransactionsResponse:
     properties:
       nextToken:
-        description: Pagination metadata (e.g., NextToken) to be added
+        description: Token to fetch the next page
         type: string
       transactions:
         items:
@@ -470,6 +476,8 @@ definitions:
     type: object
   dto.UpdateAccountRequest:
     properties:
+      cfid:
+        type: string
       description:
         type: string
       isActive:

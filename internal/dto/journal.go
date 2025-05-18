@@ -130,17 +130,13 @@ func ToTransactionResponses(ts []domain.Transaction) []TransactionResponse {
 }
 
 // ListTransactionsParams defines query parameters for listing transactions.
-// TODO: Implement pagination (likely token-based).
 type ListTransactionsParams struct {
-	// Pagination params (e.g., Limit, NextToken) to be added
 	Limit     int     `form:"limit" binding:"omitempty,gte=1,lte=100"` // Limit results, default 20, max 100
 	NextToken *string `form:"nextToken"`                               // Token for the next page
 }
 
 // ListTransactionsResponse wraps a list of transaction responses.
-// TODO: Implement pagination (likely token-based).
 type ListTransactionsResponse struct {
 	Transactions []TransactionResponse `json:"transactions"`
-	// Pagination metadata (e.g., NextToken) to be added
-	NextToken *string `json:"nextToken,omitempty"` // Token to fetch the next page
+	NextToken    *string               `json:"nextToken,omitempty"` // Token to fetch the next page
 }

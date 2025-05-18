@@ -41,22 +41,33 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 	modelAcc := mapping.ToModelAccount(account)
 
 	query := `
-		INSERT INTO accounts (account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by, balance)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
+		INSERT INTO accounts (
+			account_id, workplace_id, cfid, name, account_type, 
+			currency_code, parent_account_id, description, is_active, 
+			created_at, created_by, last_updated_at, last_updated_by, balance
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
 	`
-	// Use sql.NullString for potentially NULL parent_account_id
+	// Use sql.NullString for potentially NULL parent_account_id and cfid
 	var parentID sql.NullString
 	if modelAcc.ParentAccountID != "" {
-		parentID = sql.NullString{String: modelAcc.ParentAccountID, Valid: true}
+		parentID.String = modelAcc.ParentAccountID
+		parentID.Valid = true
+	}
+
+	var cfid sql.NullString
+	if modelAcc.CFID != "" {
+		cfid.String = modelAcc.CFID
+		cfid.Valid = true
 	}
 
 	_, err := r.Pool.Exec(ctx, query,
 		modelAcc.AccountID,
 		modelAcc.WorkplaceID,
+		cfid,
 		modelAcc.Name,
 		modelAcc.AccountType,
 		modelAcc.CurrencyCode,
-		parentID, // Pass sql.NullString
+		parentID,
 		modelAcc.Description,
 		modelAcc.IsActive,
 		modelAcc.CreatedAt,
@@ -79,20 +90,88 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 	return nil
 }
 
+// FindAccountByCFID retrieves an account by its CFID (Customer Facing ID) and workplace ID.
+func (r *PgxAccountRepository) FindAccountByCFID(ctx context.Context, cfid string, workplaceID string) (*domain.Account, error) {
+	if cfid == "" {
+		return nil, fmt.Errorf("CFID cannot be empty")
+	}
+
+	query := `
+		SELECT 
+			account_id, workplace_id, cfid, name, account_type, 
+			currency_code, parent_account_id, description, is_active, 
+			created_at, created_by, last_updated_at, last_updated_by, balance
+		FROM accounts
+		WHERE cfid = $1 AND workplace_id = $2;
+	`
+
+	var modelAcc models.Account
+	var parentID sql.NullString // For potentially NULL parent_account_id
+	var cfidVal sql.NullString  // For potentially NULL cfid
+	var balance decimal.Decimal
+
+	err := r.Pool.QueryRow(ctx, query, cfid, workplaceID).Scan(
+		&modelAcc.AccountID,
+		&modelAcc.WorkplaceID,
+		&cfidVal,
+		&modelAcc.Name,
+		&modelAcc.AccountType,
+		&modelAcc.CurrencyCode,
+		&parentID,
+		&modelAcc.Description,
+		&modelAcc.IsActive,
+		&modelAcc.CreatedAt,
+		&modelAcc.CreatedBy,
+		&modelAcc.LastUpdatedAt,
+		&modelAcc.LastUpdatedBy,
+		&balance,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: account with CFID %s not found in workplace %s", apperrors.ErrNotFound, cfid, workplaceID)
+		}
+		return nil, fmt.Errorf("failed to query account by CFID: %w", err)
+	}
+
+	if parentID.Valid {
+		modelAcc.ParentAccountID = parentID.String
+	} else {
+		modelAcc.ParentAccountID = ""
+	}
+
+	if cfidVal.Valid {
+		modelAcc.CFID = cfidVal.String
+	} else {
+		modelAcc.CFID = ""
+	}
+
+	modelAcc.Balance = balance
+
+	// Convert to domain model
+	account := mapping.ToDomainAccount(modelAcc)
+	return &account, nil
+}
+
 // FindAccountByID retrieves an account by its ID.
 func (r *PgxAccountRepository) FindAccountByID(ctx context.Context, accountID string) (*domain.Account, error) {
 	query := `
-		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by, balance
+		SELECT 
+			account_id, workplace_id, cfid, name, account_type, 
+			currency_code, parent_account_id, description, is_active, 
+			created_at, created_by, last_updated_at, last_updated_by, balance
 		FROM accounts
 		WHERE account_id = $1;
 	`
 	var modelAcc models.Account
-	var parentID sql.NullString // Use sql.NullString for scanning
+	var parentID sql.NullString // For potentially NULL parent_account_id
+	var cfid sql.NullString     // For potentially NULL cfid
 	var balance decimal.Decimal
 
 	err := r.Pool.QueryRow(ctx, query, accountID).Scan(
 		&modelAcc.AccountID,
 		&modelAcc.WorkplaceID,
+		&cfid, // Scan into sql.NullString
 		&modelAcc.Name,
 		&modelAcc.AccountType,
 		&modelAcc.CurrencyCode,
@@ -119,6 +198,12 @@ func (r *PgxAccountRepository) FindAccountByID(ctx context.Context, accountID st
 		modelAcc.ParentAccountID = ""
 	}
 
+	if cfid.Valid {
+		modelAcc.CFID = cfid.String
+	} else {
+		modelAcc.CFID = ""
+	}
+
 	modelAcc.Balance = balance
 	domainAcc := mapping.ToDomainAccount(modelAcc)
 	return &domainAcc, nil
@@ -131,7 +216,10 @@ func (r *PgxAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs
 	}
 
 	query := `
-		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by, balance
+		SELECT 
+			account_id, workplace_id, cfid, name, account_type, 
+			currency_code, parent_account_id, description, is_active, 
+			created_at, created_by, last_updated_at, last_updated_by, balance
 		FROM accounts
 		WHERE account_id = ANY($1);
 	`
@@ -145,11 +233,14 @@ func (r *PgxAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs
 	accountsMap := make(map[string]domain.Account)
 	for rows.Next() {
 		var modelAcc models.Account
-		var parentID sql.NullString // Use sql.NullString
+		var parentID sql.NullString // For potentially NULL parent_account_id
+		var cfid sql.NullString     // For potentially NULL cfid
 		var balance decimal.Decimal
+
 		err := rows.Scan(
 			&modelAcc.AccountID,
 			&modelAcc.WorkplaceID,
+			&cfid, // Scan into sql.NullString
 			&modelAcc.Name,
 			&modelAcc.AccountType,
 			&modelAcc.CurrencyCode,
@@ -194,7 +285,10 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 	}
 
 	query := `
-		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by, balance
+		SELECT 
+			account_id, workplace_id, cfid, name, account_type, 
+			currency_code, parent_account_id, description, is_active, 
+			created_at, created_by, last_updated_at, last_updated_by, balance
 		FROM accounts
 		WHERE workplace_id = $1
 		ORDER BY name
@@ -210,15 +304,18 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 	var accounts []models.Account
 	for rows.Next() {
 		var modelAcc models.Account
-		var parentID sql.NullString // Use sql.NullString
+		var parentID sql.NullString
+		var cfid sql.NullString
 		var balance decimal.Decimal
+
 		err := rows.Scan(
 			&modelAcc.AccountID,
 			&modelAcc.WorkplaceID,
+			&cfid,
 			&modelAcc.Name,
 			&modelAcc.AccountType,
 			&modelAcc.CurrencyCode,
-			&parentID, // Scan into sql.NullString
+			&parentID,
 			&modelAcc.Description,
 			&modelAcc.IsActive,
 			&modelAcc.CreatedAt,
@@ -237,6 +334,12 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 			modelAcc.ParentAccountID = ""
 		}
 
+		if cfid.Valid {
+			modelAcc.CFID = cfid.String
+		} else {
+			modelAcc.CFID = ""
+		}
+
 		modelAcc.Balance = balance
 		accounts = append(accounts, modelAcc)
 	}
@@ -252,10 +355,15 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 func (r *PgxAccountRepository) UpdateAccount(ctx context.Context, account domain.Account) error {
 	modelAcc := mapping.ToModelAccount(account)
 
-	// Use sql.NullString for potentially NULL parent_account_id
+	// Use sql.NullString for potentially NULL parent_account_id and cfid
 	var parentID sql.NullString
 	if modelAcc.ParentAccountID != "" {
 		parentID = sql.NullString{String: modelAcc.ParentAccountID, Valid: true}
+	}
+
+	var cfid sql.NullString
+	if modelAcc.CFID != "" {
+		cfid = sql.NullString{String: modelAcc.CFID, Valid: true}
 	}
 
 	query := `
@@ -263,9 +371,10 @@ func (r *PgxAccountRepository) UpdateAccount(ctx context.Context, account domain
 		SET name = $2,
 			description = $3,
 			parent_account_id = $4,
-			is_active = $5,
-			last_updated_at = $6,
-			last_updated_by = $7
+			cfid = $5,
+			is_active = $6,
+			last_updated_at = $7,
+			last_updated_by = $8
 		WHERE account_id = $1;
 	`
 
@@ -274,6 +383,7 @@ func (r *PgxAccountRepository) UpdateAccount(ctx context.Context, account domain
 		modelAcc.Name,
 		modelAcc.Description,
 		parentID,
+		cfid,
 		modelAcc.IsActive,
 		modelAcc.LastUpdatedAt,
 		modelAcc.LastUpdatedBy,
@@ -330,7 +440,10 @@ func (r *PgxAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, t
 	}
 
 	query := `
-		SELECT account_id, workplace_id, name, account_type, currency_code, parent_account_id, description, is_active, created_at, created_by, last_updated_at, last_updated_by, balance
+		SELECT 
+			account_id, workplace_id, cfid, name, account_type, 
+			currency_code, parent_account_id, description, is_active, 
+			created_at, created_by, last_updated_at, last_updated_by, balance
 		FROM accounts
 		WHERE account_id = ANY($1)
 		FOR UPDATE; -- Lock rows for update
@@ -347,11 +460,13 @@ func (r *PgxAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, t
 	foundIDs := make(map[string]struct{})
 	for rows.Next() {
 		var modelAcc models.Account
-		var parentID sql.NullString // Use sql.NullString
+		var parentID sql.NullString // For potentially NULL parent_account_id
+		var cfid sql.NullString     // For potentially NULL cfid
 		var balance decimal.Decimal
 		err := rows.Scan(
 			&modelAcc.AccountID,
 			&modelAcc.WorkplaceID,
+			&cfid, // Scan into sql.NullString
 			&modelAcc.Name,
 			&modelAcc.AccountType,
 			&modelAcc.CurrencyCode,
@@ -372,6 +487,12 @@ func (r *PgxAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, t
 			modelAcc.ParentAccountID = parentID.String
 		} else {
 			modelAcc.ParentAccountID = ""
+		}
+
+		if cfid.Valid {
+			modelAcc.CFID = cfid.String
+		} else {
+			modelAcc.CFID = ""
 		}
 
 		modelAcc.Balance = balance

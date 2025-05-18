@@ -138,7 +138,7 @@ func (h *accountHandler) getAccount(c *gin.Context) {
 	logger = logger.With(slog.String("target_account_id", accountID), slog.String("workplace_id", workplaceID), slog.String("requesting_user_id", loggedInUserID))
 	logger.Info("Received request to get account")
 
-	account, err := h.accountService.GetAccountByID(c.Request.Context(), workplaceID, accountID) // Pass workplaceID
+	account, err := h.accountService.GetAccountByID(c.Request.Context(), workplaceID, accountID, loggedInUserID) // Pass workplaceID
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNotFound) {
 			logger.Warn("Account not found or not in this workplace")
@@ -214,7 +214,7 @@ func (h *accountHandler) listAccounts(c *gin.Context) {
 	accountResponses := make([]dto.AccountResponse, len(respAccounts))
 	for i, acc := range respAccounts {
 		// Calculate balance for each account
-		balance, err := h.accountService.CalculateAccountBalance(c.Request.Context(), workplaceID, acc.AccountID)
+		balance, err := h.accountService.CalculateAccountBalance(c.Request.Context(), workplaceID, acc.AccountID, loggedInUserID)
 		if err != nil {
 			// Log error and set balance to 0 for this account, but continue with others
 			logger.Error("Failed to calculate balance for account", slog.String("account_id", acc.AccountID), slog.String("error", err.Error()))

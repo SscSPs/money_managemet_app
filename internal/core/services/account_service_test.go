@@ -38,6 +38,14 @@ func (m *MockAccountRepositoryFacade) FindAccountByID(ctx context.Context, accou
 	return args.Get(0).(*domain.Account), args.Error(1)
 }
 
+func (m *MockAccountRepositoryFacade) FindAccountByCFID(ctx context.Context, cfid string, workplaceID string) (*domain.Account, error) {
+	args := m.Called(ctx, cfid, workplaceID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Account), args.Error(1)
+}
+
 func (m *MockAccountRepositoryFacade) FindAccountsByIDs(ctx context.Context, accountIDs []string) (map[string]domain.Account, error) {
 	args := m.Called(ctx, accountIDs)
 	if args.Get(0) == nil {
@@ -96,6 +104,63 @@ func (suite *AccountServiceTestSuite) SetupTest() {
 }
 
 // --- Test Cases ---
+
+func (suite *AccountServiceTestSuite) TestGetAccountByCFID_Success() {
+	// Setup
+	ctx := context.Background()
+	expectedAccount := domain.Account{
+		AccountID:    "test-account-id",
+		WorkplaceID:  "test-workplace-id",
+		CFID:         "CUST-123",
+		Name:         "Test Account",
+		AccountType:  domain.Asset,
+		CurrencyCode: "USD",
+		IsActive:     true,
+	}
+
+	suite.mockRepo.On("FindAccountByCFID", ctx, "CUST-123", "test-workplace-id").
+		Return(&expectedAccount, nil)
+
+	// Execute
+	account, err := suite.service.GetAccountByCFID(ctx, "test-workplace-id", "CUST-123", "userid")
+
+	// Assert
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), account)
+	assert.Equal(suite.T(), "CUST-123", account.CFID)
+	assert.Equal(suite.T(), "test-account-id", account.AccountID)
+	suite.mockRepo.AssertExpectations(suite.T())
+}
+
+func (suite *AccountServiceTestSuite) TestGetAccountByCFID_NotFound() {
+	// Setup
+	ctx := context.Background()
+
+	suite.mockRepo.On("FindAccountByCFID", ctx, "NON-EXISTENT", "test-workplace-id").
+		Return((*domain.Account)(nil), fmt.Errorf("account not found"))
+
+	// Execute
+	account, err := suite.service.GetAccountByCFID(ctx, "test-workplace-id", "NON-EXISTENT", "userid")
+
+	// Assert
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), account)
+	suite.mockRepo.AssertExpectations(suite.T())
+}
+
+func (suite *AccountServiceTestSuite) TestGetAccountByCFID_EmptyCFID() {
+	// Setup
+	ctx := context.Background()
+
+	// Execute - Note: We don't set up any mock expectations since the method should fail before making any repository calls
+	account, err := suite.service.GetAccountByCFID(ctx, "test-workplace-id", "", "userid")
+
+	// Assert
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), account)
+	assert.Contains(suite.T(), err.Error(), "CFID cannot be empty")
+	suite.mockRepo.AssertExpectations(suite.T()) // Verify no unexpected calls were made
+}
 
 func (suite *AccountServiceTestSuite) TestCreateAccount_Success() {
 	ctx := context.Background()
@@ -170,7 +235,7 @@ func (suite *AccountServiceTestSuite) TestGetAccountByID_Success() {
 
 	suite.mockRepo.On("FindAccountByID", ctx, testID).Return(expectedAccount, nil).Once()
 
-	account, err := suite.service.GetAccountByID(ctx, dummyWorkplaceID, testID)
+	account, err := suite.service.GetAccountByID(ctx, dummyWorkplaceID, testID, "userid")
 
 	suite.Require().NoError(err)
 	suite.Require().NotNil(account)
@@ -193,7 +258,7 @@ func (suite *AccountServiceTestSuite) TestGetAccountByID_WrongWorkplace() {
 
 	suite.mockRepo.On("FindAccountByID", ctx, testID).Return(accountFromRepo, nil).Once()
 
-	account, err := suite.service.GetAccountByID(ctx, correctWorkplaceID, testID)
+	account, err := suite.service.GetAccountByID(ctx, correctWorkplaceID, testID, "userid")
 
 	suite.Require().Error(err)
 	suite.Nil(account)
@@ -209,7 +274,7 @@ func (suite *AccountServiceTestSuite) TestGetAccountByID_NotFound() {
 
 	suite.mockRepo.On("FindAccountByID", ctx, testID).Return(nil, apperrors.ErrNotFound).Once()
 
-	account, err := suite.service.GetAccountByID(ctx, dummyWorkplaceID, testID)
+	account, err := suite.service.GetAccountByID(ctx, dummyWorkplaceID, testID, "userid")
 
 	suite.Require().Error(err)
 	suite.Nil(account)
@@ -226,7 +291,7 @@ func (suite *AccountServiceTestSuite) TestGetAccountByID_RepoError() {
 
 	suite.mockRepo.On("FindAccountByID", ctx, testID).Return(nil, expectedErr).Once()
 
-	account, err := suite.service.GetAccountByID(ctx, dummyWorkplaceID, testID)
+	account, err := suite.service.GetAccountByID(ctx, dummyWorkplaceID, testID, "userid")
 
 	suite.Require().Error(err)
 	suite.Nil(account)

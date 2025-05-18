@@ -14,6 +14,9 @@ type AccountReader interface {
 	// FindAccountByID retrieves a specific account by its unique identifier.
 	FindAccountByID(ctx context.Context, accountID string) (*domain.Account, error)
 
+	// FindAccountByCFID retrieves an account by its CFID (Customer Facing ID) and workplace ID
+	FindAccountByCFID(ctx context.Context, cfid string, workplaceID string) (*domain.Account, error)
+
 	// FindAccountsByIDs retrieves multiple accounts by their IDs.
 	FindAccountsByIDs(ctx context.Context, accountIDs []string) (map[string]domain.Account, error)
 
