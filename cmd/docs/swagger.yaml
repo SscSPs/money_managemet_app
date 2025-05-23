@@ -433,6 +433,10 @@ definitions:
         type: string
       currencyCode:
         type: string
+      journalDate:
+        type: string
+      journalDescription:
+        type: string
       journalID:
         type: string
       notes:

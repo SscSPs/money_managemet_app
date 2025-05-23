@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"sort"
-	"time"
 	"strconv"
+	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
@@ -281,10 +281,10 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 	// Base query
 	baseQuery := `
 		SELECT t.transaction_id, t.journal_id, t.account_id, t.amount, t.transaction_type, t.currency_code, t.notes, 
-		       t.created_at, t.created_by, t.last_updated_at, t.last_updated_by, t.running_balance, j.journal_date
+		       t.created_at, t.created_by, t.last_updated_at, t.last_updated_by, t.running_balance, j.journal_date, j.description
 		FROM transactions t
 		JOIN journals j ON t.journal_id = j.journal_id
-		WHERE t.account_id = $1 AND j.workplace_id = $2
+		WHERE t.account_id = $1 AND j.workplace_id = $2 AND j.status = 'POSTED' AND j.original_journal_id IS NULL
 	`
 	// Ordering is crucial and must be stable
 	// We use journal_date DESC, and created_at DESC as a tie-breaker.
@@ -328,12 +328,10 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 	// Scan results
 	transactions := make([]struct {
 		transaction models.Transaction
-		journalDate time.Time
 	}, 0, fetchLimit)
 
 	for rows.Next() {
 		var t models.Transaction
-		var journalDate time.Time
 		err := rows.Scan(
 			&t.TransactionID,
 			&t.JournalID,
@@ -347,15 +345,16 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 			&t.LastUpdatedAt,
 			&t.LastUpdatedBy,
 			&t.RunningBalance,
-			&journalDate,
+			&t.JournalDate,
+			&t.JournalDescription,
 		)
+
 		if err != nil {
 			return nil, nil, apperrors.NewAppError(500, "failed to scan transaction row for account "+accountID, err)
 		}
 		transactions = append(transactions, struct {
 			transaction models.Transaction
-			journalDate time.Time
-		}{t, journalDate})
+		}{t})
 	}
 
 	// Check for errors during row iteration
@@ -371,7 +370,7 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 		lastTxn := transactions[limit-1] // The *actual* last item of the *current* page
 		// The token points to the *last item included* in this response page.
 		// The next query will start *after* this item.
-		token := pagination.EncodeToken(lastTxn.journalDate, lastTxn.transaction.CreatedAt)
+		token := pagination.EncodeToken(lastTxn.transaction.JournalDate, lastTxn.transaction.CreatedAt)
 		nextTokenVal = &token
 
 		// Extract just the transactions for the result (without the extra one)
@@ -619,7 +618,7 @@ func (r *PgxJournalRepository) UpdateJournalStatusAndLinks(ctx context.Context, 
 
 	if cmdTag.RowsAffected() == 0 {
 		// Journal with the given ID was not found
-		return apperrors.NewNotFoundError("journal "+journalID+" not found for update")
+		return apperrors.NewNotFoundError("journal " + journalID + " not found for update")
 	}
 
 	return nil
@@ -654,7 +653,7 @@ func (r *PgxJournalRepository) UpdateJournal(ctx context.Context, journal domain
 
 	if cmdTag.RowsAffected() == 0 {
 		// Journal with the given ID was not found
-		return apperrors.NewNotFoundError("journal "+modelJournal.JournalID+" not found for update")
+		return apperrors.NewNotFoundError("journal " + modelJournal.JournalID + " not found for update")
 	}
 
 	return nil

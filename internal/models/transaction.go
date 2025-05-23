@@ -1,6 +1,10 @@
 package models
 
-import "github.com/shopspring/decimal"
+import (
+	"time"
+
+	"github.com/shopspring/decimal"
+)
 
 // TransactionType indicates whether a transaction line is a Debit or a Credit.
 type TransactionType string
@@ -21,5 +25,7 @@ type Transaction struct {
 	CurrencyCode    string          `json:"currencyCode"`    // Must match Journal currency (Not Null)
 	Notes           string          `json:"notes"`           // Nullable
 	AuditFields
-	RunningBalance decimal.Decimal `json:"runningBalance"` // Added: Balance after this transaction
+	RunningBalance     decimal.Decimal `json:"runningBalance"`     // Balance after this transaction
+	JournalDate        time.Time       `json:"journalDate"`        // Date of the journal this transaction is part of
+	JournalDescription string          `json:"journalDescription"` // Description of the journal this transaction is part of
 }

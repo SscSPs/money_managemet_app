@@ -89,31 +89,35 @@ type UpdateJournalRequest struct {
 
 // TransactionResponse defines the data returned for a transaction entry.
 type TransactionResponse struct {
-	TransactionID   string                 `json:"transactionID"`
-	JournalID       string                 `json:"journalID"`
-	AccountID       string                 `json:"accountID"`
-	Amount          decimal.Decimal        `json:"amount"` // Always positive
-	TransactionType domain.TransactionType `json:"transactionType"`
-	CurrencyCode    string                 `json:"currencyCode"`
-	Notes           string                 `json:"notes"`
-	CreatedAt       time.Time              `json:"createdAt"`
-	CreatedBy       string                 `json:"createdBy"`
-	RunningBalance  decimal.Decimal        `json:"runningBalance,omitempty"` // Added running balance
+	TransactionID      string                 `json:"transactionID"`
+	JournalID          string                 `json:"journalID"`
+	AccountID          string                 `json:"accountID"`
+	Amount             decimal.Decimal        `json:"amount"` // Always positive
+	TransactionType    domain.TransactionType `json:"transactionType"`
+	CurrencyCode       string                 `json:"currencyCode"`
+	Notes              string                 `json:"notes"`
+	CreatedAt          time.Time              `json:"createdAt"`
+	CreatedBy          string                 `json:"createdBy"`
+	RunningBalance     decimal.Decimal        `json:"runningBalance,omitempty"` // Added running balance
+	JournalDate        time.Time              `json:"journalDate,omitempty"`
+	JournalDescription string                 `json:"journalDescription,omitempty"`
 }
 
 // ToTransactionResponse converts domain.Transaction to TransactionResponse DTO.
 func ToTransactionResponse(t *domain.Transaction) TransactionResponse {
 	return TransactionResponse{
-		TransactionID:   t.TransactionID,
-		JournalID:       t.JournalID,
-		AccountID:       t.AccountID,
-		Amount:          t.Amount, // Already positive in domain
-		TransactionType: t.TransactionType,
-		CurrencyCode:    t.CurrencyCode,
-		Notes:           t.Notes,
-		CreatedAt:       t.CreatedAt,
-		CreatedBy:       t.CreatedBy,
-		RunningBalance:  t.RunningBalance, // Added running balance
+		TransactionID:      t.TransactionID,
+		JournalID:          t.JournalID,
+		AccountID:          t.AccountID,
+		Amount:             t.Amount, // Already positive in domain
+		TransactionType:    t.TransactionType,
+		CurrencyCode:       t.CurrencyCode,
+		Notes:              t.Notes,
+		CreatedAt:          t.CreatedAt,
+		CreatedBy:          t.CreatedBy,
+		RunningBalance:     t.RunningBalance, // Added running balance
+		JournalDate:        t.JournalDate,
+		JournalDescription: t.JournalDescription,
 	}
 }
 

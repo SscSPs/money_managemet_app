@@ -63,7 +63,9 @@ func ToModelTransaction(d domain.Transaction) models.Transaction {
 			LastUpdatedAt: d.LastUpdatedAt,
 			LastUpdatedBy: d.LastUpdatedBy,
 		},
-		RunningBalance: d.RunningBalance,
+		RunningBalance:     d.RunningBalance,
+		JournalDate:        d.JournalDate,
+		JournalDescription: d.JournalDescription,
 	}
 }
 
@@ -83,7 +85,9 @@ func ToDomainTransaction(m models.Transaction) domain.Transaction {
 			LastUpdatedAt: m.LastUpdatedAt,
 			LastUpdatedBy: m.LastUpdatedBy,
 		},
-		RunningBalance: m.RunningBalance,
+		RunningBalance:     m.RunningBalance,
+		JournalDate:        m.JournalDate,
+		JournalDescription: m.JournalDescription,
 	}
 }
 

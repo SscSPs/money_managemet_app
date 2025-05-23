@@ -1,6 +1,10 @@
 package domain
 
-import "github.com/shopspring/decimal"
+import (
+	"time"
+
+	"github.com/shopspring/decimal"
+)
 
 // TransactionType indicates whether a transaction line is a Debit or a Credit.
 type TransactionType string
@@ -23,5 +27,7 @@ type Transaction struct {
 	// RunningBalance represents the balance of the AccountID *after* this transaction was applied.
 	// This needs to be calculated and stored by the repository during SaveJournal.
 	// Note: Database schema (transactions table) needs a corresponding 'running_balance' column.
-	RunningBalance decimal.Decimal `json:"runningBalance"`
+	RunningBalance     decimal.Decimal `json:"runningBalance"`
+	JournalDate        time.Time       `json:"journalDate"`
+	JournalDescription string          `json:"journalDescription"`
 }

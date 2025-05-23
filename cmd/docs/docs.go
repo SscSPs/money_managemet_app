@@ -3514,6 +3514,12 @@ const docTemplate = `{
                 "currencyCode": {
                     "type": "string"
                 },
+                "journalDate": {
+                    "type": "string"
+                },
+                "journalDescription": {
+                    "type": "string"
+                },
                 "journalID": {
                     "type": "string"
                 },
