@@ -15,10 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	googleIssuerURL = "https://accounts.google.com"
-)
-
 // GoogleOAuthHandler handles Google OAuth related requests.
 // It depends on the Google OAuth service, user service, and token service.
 // It also requires access to application configuration (cfg).
