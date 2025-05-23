@@ -534,12 +534,7 @@ func (suite *JournalServiceTestSuite) TestCreateJournal_Unbalanced() {
 			{AccountID: suite.incomeAccount.AccountID, Amount: decimal.NewFromInt(99), TransactionType: domain.Credit}, // Unbalanced
 		},
 	}
-	accountsMap := map[string]domain.Account{
-		suite.assetAccount.AccountID:  suite.assetAccount,
-		suite.incomeAccount.AccountID: suite.incomeAccount,
-	}
 	suite.mockWorkplaceSvc.On("AuthorizeUserAction", ctx, suite.userID, suite.workplaceID, domain.RoleMember).Return(nil).Once()
-	suite.mockAccountSvc.On("GetAccountByIDs", ctx, suite.workplaceID, mock.Anything, suite.userID).Return(accountsMap, nil).Once()
 
 	_, err := suite.service.CreateJournal(ctx, suite.workplaceID, req, suite.userID)
 

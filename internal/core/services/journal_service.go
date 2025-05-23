@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,7 +17,6 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/shopspring/decimal"
-	// We might need a UUID library later, e.g., "github.com/google/uuid"
 )
 
 var (
@@ -34,7 +34,6 @@ type journalService struct {
 	accountSvc   portssvc.AccountSvcFacade
 	journalRepo  portsrepo.JournalRepositoryFacade
 	workplaceSvc portssvc.WorkplaceSvcFacade // Updated to use WorkplaceSvcFacade
-	// userRepo portsrepo.UserRepository
 }
 
 // NewJournalService creates a new JournalService.
@@ -76,7 +75,7 @@ func (s *journalService) getSignedAmount(txn domain.Transaction, accountType dom
 }
 
 // validateJournalBalance checks if the transactions for a journal balance properly.
-func (s *journalService) validateJournalBalance(transactions []domain.Transaction, accountTypes map[string]domain.AccountType) error {
+func (s *journalService) validateJournalBalance(transactions []domain.Transaction) error {
 	if len(transactions) < 2 {
 		return ErrJournalMinEntries
 	}
@@ -202,6 +201,11 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 		accountIDs = append(accountIDs, txnReq.AccountID)
 	}
 
+	// Validate Balance (double-entry check)
+	if err := s.validateJournalBalance(domainTransactions); err != nil {
+		return nil, err
+	}
+
 	// --- Fetch Accounts and Validate Further ---
 	uniqueAccountIDs := uniqueStrings(accountIDs)
 	accountsMap, err := s.accountSvc.GetAccountByIDs(ctx, workplaceID, uniqueAccountIDs, creatorUserID)
@@ -228,11 +232,6 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 			return nil, fmt.Errorf("%w: account currency %s does not match journal currency %s for account %s", ErrCurrencyMismatch, acc.CurrencyCode, req.CurrencyCode, id)
 		}
 		accountTypes[id] = acc.AccountType
-	}
-
-	// Validate Balance (double-entry check)
-	if err = s.validateJournalBalance(domainTransactions, accountTypes); err != nil {
-		return nil, err
 	}
 
 	// --- Calculate Net Balance Changes for Accounts ---
@@ -550,71 +549,6 @@ func uniqueStrings(input []string) []string {
 	return result
 }
 
-// // CalculateAccountBalance calculates the current balance for a specific account.
-// // Note: This might be better placed in AccountService if it doesn't need journal specifics beyond transactions.
-// func (s *journalService) CalculateAccountBalance(ctx context.Context, workplaceID string, accountID string, userID string) (decimal.Decimal, error) {
-// 	logger := middleware.GetLoggerFromCtx(ctx)
-
-// 	// --- Authorization Check ---
-// 	// Since this is a read operation, we only need ReadOnly access
-// 	// Note: We'll rely on the account service's authorization check when calling GetAccountByID
-
-// 	// 1. Find the account to verify existence, activity, type, and workplace match
-// 	account, err := s.accountSvc.GetAccountByID(ctx, workplaceID, accountID, userID)
-// 	if err != nil {
-// 		if errors.Is(err, apperrors.ErrNotFound) {
-// 			return decimal.Zero, fmt.Errorf("%w: ID %s", ErrAccountNotFound, accountID)
-// 		}
-// 		return decimal.Zero, fmt.Errorf("failed to find account %s: %w", accountID, err)
-// 	}
-// 	if account.WorkplaceID != workplaceID {
-// 		logger.Warn("CalculateAccountBalance requested for account in wrong workplace", slog.String("account_id", accountID), slog.String("account_workplace", account.WorkplaceID), slog.String("requested_workplace", workplaceID))
-// 		return decimal.Zero, fmt.Errorf("account %s not found in workplace %s", accountID, workplaceID)
-// 	}
-// 	if !account.IsActive {
-// 		return decimal.Zero, fmt.Errorf("account %s is inactive", accountID)
-// 	}
-
-// 	// 2. Fetch all transactions for this account within the workplace using pagination
-// 	balance := decimal.Zero
-// 	var nextToken *string
-// 	const pageSize = 100 // Fetch more transactions per page for efficiency
-
-// 	// Paginate through all transactions
-// 	for {
-// 		transactions, newNextToken, err := s.journalRepo.ListTransactionsByAccountID(ctx, workplaceID, accountID, pageSize, nextToken)
-// 		if err != nil {
-// 			logger.Error("Failed to fetch transactions page for account balance", slog.String("error", err.Error()), slog.String("account_id", accountID), slog.String("workplace_id", workplaceID))
-// 			return decimal.Zero, fmt.Errorf("failed to fetch transactions for account %s in workplace %s: %w", accountID, workplaceID, err)
-// 		}
-
-// 		// Process this page of transactions
-// 		for _, txn := range transactions {
-// 			if txn.Amount.LessThanOrEqual(decimal.Zero) {
-// 				logger.Error("Invalid non-positive transaction amount found during balance calculation", slog.String("transaction_id", txn.TransactionID), slog.String("account_id", accountID))
-// 				return decimal.Zero, fmt.Errorf("invalid non-positive transaction amount found (ID: %s) for account %s", txn.TransactionID, accountID)
-// 			}
-
-// 			signedAmount, err := s.getSignedAmount(txn, account.AccountType)
-// 			if err != nil {
-// 				return decimal.Zero, fmt.Errorf("error calculating signed amount for transaction %s: %w", txn.TransactionID, err)
-// 			}
-// 			balance = balance.Add(signedAmount)
-// 		}
-
-// 		// If no more pages, break the loop
-// 		if newNextToken == nil || *newNextToken == "" {
-// 			break
-// 		}
-
-// 		// Continue with next page
-// 		nextToken = newNextToken
-// 	}
-
-// 	logger.Debug("Account balance calculated successfully", slog.String("account_id", accountID), slog.String("workplace_id", workplaceID), slog.String("balance", balance.String()))
-// 	return balance, nil
-// }
-
 // ReverseJournal creates a new journal entry that reverses a previously posted journal.
 func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string, journalID string, userID string) (*domain.Journal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
@@ -663,19 +597,29 @@ func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 
 	// 5. Create the reversing journal domain object
 	reversingJournal := domain.Journal{
-		JournalID:         newJournalID,
-		WorkplaceID:       workplaceID,
-		JournalDate:       now, // Use current time for reversal date
-		Description:       fmt.Sprintf("Reversal of Journal: %s", originalJournal.JournalID),
-		CurrencyCode:      originalJournal.CurrencyCode,
-		Status:            domain.Posted,
-		OriginalJournalID: &originalJournal.JournalID, // Direct link to the journal being reversed (regardless of whether it's an original or a reversal itself)
+		JournalID:    newJournalID,
+		WorkplaceID:  workplaceID,
+		JournalDate:  originalJournal.JournalDate,
+		CurrencyCode: originalJournal.CurrencyCode,
+		Status:       domain.Posted,
 		AuditFields: domain.AuditFields{
 			CreatedAt:     now,
 			CreatedBy:     userID,
 			LastUpdatedAt: now,
 			LastUpdatedBy: userID,
 		},
+	}
+
+	// Check if this is a reversal of a reversing journal
+	isReversingAReversal := originalJournal.OriginalJournalID != nil
+
+	// Only set OriginalJournalID if this is not a reversal of a reversing journal
+	if isReversingAReversal {
+		//remove the "Reversal of Journal: " prefix from the description
+		reversingJournal.Description = strings.TrimPrefix(originalJournal.Description, "Reversal of Journal: ")
+	} else {
+		reversingJournal.OriginalJournalID = &originalJournal.JournalID
+		reversingJournal.Description = fmt.Sprintf("Reversal of Journal: %s", originalJournal.Description)
 	}
 
 	// 6. Create reversed transaction domain objects
@@ -749,15 +693,18 @@ func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 	}
 
 	// 10. Update the original journal's status and link to the new reversing journal
-	// Keep the original journal's OriginalJournalID - preserving the reversal chain
-	if err := s.journalRepo.UpdateJournalStatusAndLinks(ctx, originalJournal.JournalID, domain.Reversed, &newJournalID, originalJournal.OriginalJournalID, userID, now); err != nil {
-		// Log this error, as the reversal DID succeed, but the linking failed.
-		// This is a state inconsistency that might need manual correction or a retry mechanism.
-		logger.Error("CRITICAL: Failed to update original journal status after successful reversal", "originalJournalID", originalJournal.JournalID, "reversingJournalID", newJournalID, "error", err)
-		// We might still return the reversing journal, but log the critical error.
-		// Or return a specific error indicating partial success.
-		// For now, let's return the created journal but log heavily.
-		// return nil, fmt.Errorf("reversal created but failed to update original journal status: %w", err)
+	// Only update status and links if this is not a reversal of a reversing journal
+	if !isReversingAReversal {
+		// Keep the original journal's OriginalJournalID - preserving the reversal chain
+		if err := s.journalRepo.UpdateJournalStatusAndLinks(ctx, originalJournal.JournalID, domain.Reversed, &newJournalID, originalJournal.OriginalJournalID, userID, now); err != nil {
+			// Log this error, as the reversal DID succeed, but the linking failed.
+			// This is a state inconsistency that might need manual correction or a retry mechanism.
+			logger.Error("CRITICAL: Failed to update original journal status after successful reversal", "originalJournalID", originalJournal.JournalID, "reversingJournalID", newJournalID, "error", err)
+			// We might still return the reversing journal, but log the critical error.
+			// Or return a specific error indicating partial success.
+			// For now, let's return the created journal but log heavily.
+			// return nil, fmt.Errorf("reversal created but failed to update original journal status: %w", err)
+		}
 	}
 
 	logger.Info("Journal reversed successfully", "reversingJournalID", newJournalID)

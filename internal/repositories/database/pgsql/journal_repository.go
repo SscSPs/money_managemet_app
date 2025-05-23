@@ -12,7 +12,6 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/models" // Assuming journal_id is UUID
-	"github.com/SscSPs/money_managemet_app/internal/utils/accounting"
 	"github.com/SscSPs/money_managemet_app/internal/utils/mapping"
 	"github.com/SscSPs/money_managemet_app/internal/utils/pagination"
 	"github.com/jackc/pgx/v5"
@@ -35,6 +34,32 @@ func newPgxJournalRepository(pool *pgxpool.Pool, accountRepo portsrepo.AccountRe
 
 // Ensure PgxJournalRepository implements portsrepo.JournalRepositoryWithTx
 var _ portsrepo.JournalRepositoryWithTx = (*PgxJournalRepository)(nil)
+
+// calculateSignedAmount applies the correct sign to a transaction amount based on account type and transaction type.
+// This is used in both services and repositories to ensure consistent accounting logic.
+func calculateSignedAmount(txn domain.Transaction, accountType domain.AccountType) (decimal.Decimal, error) {
+	signedAmount := txn.Amount
+	isDebit := txn.TransactionType == domain.Debit
+
+	// Determine sign based on accounting convention
+	// DEBIT to ASSET/EXPENSE -> Positive (+)
+	// CREDIT to ASSET/EXPENSE -> Negative (-)
+	// DEBIT to LIABILITY/EQUITY/REVENUE -> Negative (-)
+	// CREDIT to LIABILITY/EQUITY/REVENUE -> Positive (+)
+	switch accountType {
+	case domain.Asset, domain.Expense:
+		if !isDebit { // Credit to Asset/Expense
+			signedAmount = signedAmount.Neg()
+		}
+	case domain.Liability, domain.Equity, domain.Revenue:
+		if isDebit { // Debit to Liability/Equity/Revenue
+			signedAmount = signedAmount.Neg()
+		}
+	default:
+		return decimal.Zero, apperrors.NewAppError(500, "unknown account type '"+string(accountType)+"' encountered for account ID "+txn.AccountID, nil)
+	}
+	return signedAmount, nil
+}
 
 // SaveJournal saves a journal, updates account balances, and saves associated transactions within a DB transaction.
 func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.Journal, transactions []domain.Transaction, balanceChanges map[string]decimal.Decimal) error {
@@ -132,7 +157,7 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 			return apperrors.NewAppError(500, "internal error: locked account "+accountID+" not found during transaction processing", nil)
 		}
 
-		signedAmount, err := accounting.CalculateSignedAmount(txn, lockedAccount.AccountType)
+		signedAmount, err := calculateSignedAmount(txn, lockedAccount.AccountType)
 		if err != nil {
 			return apperrors.NewAppError(500, "failed to calculate signed amount for transaction "+txn.TransactionID, err)
 		}
