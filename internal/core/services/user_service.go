@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
@@ -383,7 +384,7 @@ func (s *userService) CreateOAuthUser(ctx context.Context, name, email, authProv
 
 	// Before creating, check if the email is already in use by a *different* account.
 	if email != "" {
-		userByEmail, emailErr := s.userRepo.FindUserByEmail(ctx, email)
+		userByEmail, emailErr := s.FindUserByEmail(ctx, email)
 		if emailErr == nil && userByEmail != nil {
 			// Email exists. If it's for a different provider or a local account, it's a conflict.
 			if userByEmail.AuthProvider != providerType || userByEmail.ProviderUserID != providerUserID {
@@ -412,63 +413,21 @@ func (s *userService) UpdateUserProviderDetails(ctx context.Context, userID stri
 	logger := middleware.GetLoggerFromCtx(ctx)
 	logger.Info("Attempting to update user provider details", "user_id", userID, "details_auth_provider", details.AuthProvider, "details_provider_user_id", details.ProviderUserID)
 
-	user, err := s.userRepo.FindUserByID(ctx, userID)
+	user, err := s.GetUserByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, apperrors.ErrNotFound) {
-			logger.Warn("User not found for UpdateUserProviderDetails", "user_id", userID)
-		} else {
-			logger.Error("Error finding user by ID for UpdateUserProviderDetails from repository", "user_id", userID, "error", err)
-		}
-		return nil, err // Return original error
+		return nil, err
 	}
 
-	updated := false
-
-	if details.AuthProvider != "" && user.AuthProvider != details.AuthProvider {
-		logger.Debug("Updating AuthProvider", "user_id", userID, "old_auth_provider", user.AuthProvider, "new_auth_provider", details.AuthProvider)
-		user.AuthProvider = details.AuthProvider
-		updated = true
-	}
-	if details.ProviderUserID != "" && user.ProviderUserID != details.ProviderUserID {
-		logger.Debug("Updating ProviderUserID", "user_id", userID, "old_provider_user_id", user.ProviderUserID, "new_provider_user_id", details.ProviderUserID)
-		user.ProviderUserID = details.ProviderUserID
-		updated = true
+	updated, err := s.updateEmail(ctx, details, user, logger)
+	if err != nil {
+		return nil, err
 	}
 
-	if details.Name != nil && user.Name != *details.Name {
-		logger.Debug("Updating Name", "user_id", userID, "old_name", user.Name, "new_name", *details.Name)
-		user.Name = *details.Name
-		updated = true
-	}
-
-	if details.Email != nil && user.Email != *details.Email {
-		newEmail := *details.Email
-		logger.Debug("Attempting to update Email", "user_id", userID, "old_email", user.Email, "new_email", newEmail)
-		// Check if the new email is already in use by another user
-		existingUserWithNewEmail, emailErr := s.userRepo.FindUserByEmail(ctx, newEmail)
-		if emailErr == nil && existingUserWithNewEmail != nil && existingUserWithNewEmail.UserID != userID {
-			logger.Warn("Email update conflict: email already in use by another account", "user_id", userID, "new_email", newEmail, "conflicting_user_id", existingUserWithNewEmail.UserID)
-			return nil, fmt.Errorf("%w: email '%s' is already in use by another account", apperrors.ErrConflict, newEmail)
-		} else if !errors.Is(emailErr, apperrors.ErrNotFound) {
-			// Handle unexpected errors from FindUserByEmail
-			logger.Error("Error checking email for conflicts during UpdateUserProviderDetails from repository", "user_id", userID, "new_email", newEmail, "error", emailErr)
-			return nil, fmt.Errorf("error checking email for conflicts: %w", emailErr)
-		}
-		user.Email = newEmail
-		updated = true
-		logger.Debug("Email updated", "user_id", userID, "new_email", newEmail)
-	}
-
-	if details.IsVerified != nil && user.IsVerified != *details.IsVerified {
-		logger.Debug("Updating IsVerified status", "user_id", userID, "old_is_verified", user.IsVerified, "new_is_verified", *details.IsVerified)
-		user.IsVerified = *details.IsVerified
-		updated = true
-	}
-	if details.ProfilePicURL != nil && user.ProfilePicURL != *details.ProfilePicURL {
-		logger.Debug("Updating ProfilePicURL", "user_id", userID)
-		user.ProfilePicURL = *details.ProfilePicURL
-		updated = true
-	}
+	updated = updated || s.updateAuthProvider(details, user, logger)
+	updated = updated || s.updateProviderUserID(details, user, logger)
+	updated = updated || s.updateName(details, user, logger)
+	updated = updated || s.updateVerified(details, user, logger)
+	updated = updated || s.updateProfilePic(details, user, logger)
 
 	if updated {
 		user.AuditFields.LastUpdatedAt = time.Now()
@@ -485,4 +444,75 @@ func (s *userService) UpdateUserProviderDetails(ctx context.Context, userID stri
 	}
 
 	return user, nil
+}
+
+func (s *userService) updateAuthProvider(details domain.UpdateUserProviderDetails, user *domain.User, logger *slog.Logger) bool {
+	if details.AuthProvider == "" || user.AuthProvider == details.AuthProvider {
+		return false
+	}
+	logger.Debug("Updating AuthProvider", "user_id", user.UserID, "old_auth_provider", user.AuthProvider, "new_auth_provider", details.AuthProvider)
+	user.AuthProvider = details.AuthProvider
+	return true
+
+}
+
+func (s *userService) updateProviderUserID(details domain.UpdateUserProviderDetails, user *domain.User, logger *slog.Logger) bool {
+	if details.ProviderUserID == "" || user.ProviderUserID == details.ProviderUserID {
+		return false
+	}
+	logger.Debug("Updating ProviderUserID", "user_id", user.UserID, "old_provider_user_id", user.ProviderUserID, "new_provider_user_id", details.ProviderUserID)
+	user.ProviderUserID = details.ProviderUserID
+	return true
+
+}
+
+func (s *userService) updateName(details domain.UpdateUserProviderDetails, user *domain.User, logger *slog.Logger) bool {
+	if details.Name == nil || user.Name == *details.Name {
+		return false
+	}
+	logger.Debug("Updating Name", "user_id", user.UserID, "old_name", user.Name, "new_name", *details.Name)
+	user.Name = *details.Name
+	return true
+
+}
+
+func (s *userService) updateVerified(details domain.UpdateUserProviderDetails, user *domain.User, logger *slog.Logger) bool {
+	if details.IsVerified == nil || user.IsVerified == *details.IsVerified {
+		return false
+	}
+	logger.Debug("Updating IsVerified status", "user_id", user.UserID, "old_is_verified", user.IsVerified, "new_is_verified", *details.IsVerified)
+	user.IsVerified = *details.IsVerified
+	return true
+
+}
+
+func (s *userService) updateProfilePic(details domain.UpdateUserProviderDetails, user *domain.User, logger *slog.Logger) bool {
+	if details.ProfilePicURL == nil || user.ProfilePicURL == *details.ProfilePicURL {
+		return false
+	}
+	logger.Debug("Updating ProfilePicURL", "user_id", user.UserID)
+	user.ProfilePicURL = *details.ProfilePicURL
+	return true
+
+}
+
+func (s *userService) updateEmail(ctx context.Context, details domain.UpdateUserProviderDetails, user *domain.User, logger *slog.Logger) (bool, error) {
+	if details.Email == nil || user.Email == *details.Email {
+		return false, nil
+	}
+	newEmail := *details.Email
+	logger.Debug("Attempting to update Email", "user_id", user.UserID, "old_email", user.Email, "new_email", newEmail)
+	// Check if the new email is already in use by another user
+	existingUserWithNewEmail, emailErr := s.userRepo.FindUserByEmail(ctx, newEmail)
+	if emailErr == nil && existingUserWithNewEmail != nil && existingUserWithNewEmail.UserID != user.UserID {
+		logger.Warn("Email update conflict: email already in use by another account", "user_id", user.UserID, "new_email", newEmail, "conflicting_user_id", existingUserWithNewEmail.UserID)
+		return false, fmt.Errorf("%w: email '%s' is already in use by another account", apperrors.ErrConflict, newEmail)
+	} else if !errors.Is(emailErr, apperrors.ErrNotFound) {
+		// Handle unexpected errors from FindUserByEmail
+		logger.Error("Error checking email for conflicts during UpdateUserProviderDetails from repository", "user_id", user.UserID, "new_email", newEmail, "error", emailErr)
+		return false, fmt.Errorf("error checking email for conflicts: %w", emailErr)
+	}
+	user.Email = newEmail
+	logger.Debug("Email updated", "user_id", user.UserID, "new_email", newEmail)
+	return true, nil
 }
