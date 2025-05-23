@@ -1,30 +1,21 @@
 package apperrors
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 )
 
 // Original sentinel errors for direct comparison (e.g., errors.Is())
 var (
-	ErrNotFound               = errors.New("resource not found")
-	ErrDuplicate              = errors.New("resource already exists")   // Or unique constraint violation
-	ErrForbidden              = errors.New("forbidden")                 // User does not have permission
-	ErrUnauthorized           = errors.New("unauthorized")              // User authentication failed or missing
-	ErrValidation             = errors.New("validation failed")         // Input data validation failed
-	ErrInternal               = errors.New("internal server error")     // Generic unexpected error
-	ErrConflict               = errors.New("operation conflict")        // e.g., trying to modify a resource in an invalid state
-	ErrBadRequest             = errors.New("bad request")               // Malformed request or invalid parameters
-	ErrNotImplemented         = errors.New("not implemented")           // Feature not yet implemented
-	ErrRefreshTokenExpired    = errors.New("refresh token has expired") // Specific for expired refresh tokens
-	ErrUserNotActive          = errors.New("user is not active")
-	ErrWorkplaceNotActive     = errors.New("workplace is not active")
-	ErrDefaultWorkplace       = errors.New("default workplace cannot be modified or deleted")
-	ErrPasswordTooShort       = errors.New("password is too short")
-	ErrInvalidCredentials     = errors.New("invalid credentials")
-	ErrUserAlreadyInWorkplace = errors.New("user is already a member of this workplace")
-	ErrUserNotInWorkplace     = errors.New("user is not a member of this workplace")
+	ErrNotFound            = NewNotFoundError("resource not found")
+	ErrDuplicate           = NewAppError(http.StatusConflict, "resource already exists", nil) // Or unique constraint violation
+	ErrForbidden           = NewForbiddenError("forbidden")                                   // User does not have permission
+	ErrUnauthorized        = NewUnauthorizedError("unauthorized")                             // User authentication failed or missing
+	ErrValidation          = NewValidationFailedError("validation failed")                    // Input data validation failed
+	ErrInternal            = NewInternalServerError("internal server error")                  // Generic unexpected error
+	ErrConflict            = NewConflictError("operation conflict")                           // e.g., trying to modify a resource in an invalid state
+	ErrBadRequest          = NewBadRequestError("bad request")                                // Malformed request or invalid parameters
+	ErrRefreshTokenExpired = NewUnauthorizedError("refresh token has expired")                // Specific for expired refresh tokens
 )
 
 // AppError is a custom error type that includes an HTTP status code and a user-friendly message.
