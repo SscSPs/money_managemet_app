@@ -3,7 +3,6 @@ package pgsql
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
@@ -56,7 +55,7 @@ func (r *PgxCurrencyRepository) SaveCurrency(ctx context.Context, currency domai
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to save currency %s: %w", modelCurr.CurrencyCode, err)
+		return apperrors.NewAppError(500, "failed to save currency "+modelCurr.CurrencyCode, err)
 	}
 	return nil
 }
@@ -82,9 +81,9 @@ func (r *PgxCurrencyRepository) FindCurrencyByCode(ctx context.Context, currency
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.ErrNotFound
+			return nil, apperrors.NewNotFoundError("currency not found")
 		}
-		return nil, fmt.Errorf("failed to find currency by code %s: %w", currencyCode, err)
+		return nil, apperrors.NewAppError(500, "failed to find currency by code "+currencyCode, err)
 	}
 
 	domainCurr := mapping.ToDomainCurrency(modelCurr)
@@ -100,7 +99,7 @@ func (r *PgxCurrencyRepository) ListCurrencies(ctx context.Context) ([]domain.Cu
 	`
 	rows, err := r.Pool.Query(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query currencies: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to query currencies", err)
 	}
 	defer rows.Close()
 
@@ -123,7 +122,7 @@ func (r *PgxCurrencyRepository) ListCurrencies(ctx context.Context) ([]domain.Cu
 		if errors.Is(err, pgx.ErrNoRows) {
 			return []domain.Currency{}, nil // Return empty domain slice
 		}
-		return nil, fmt.Errorf("failed to scan currencies: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to scan currencies", err)
 	}
 
 	return mapping.ToDomainCurrencySlice(modelCurrencies), nil

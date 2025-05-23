@@ -2,7 +2,8 @@ package pgsql
 
 import (
 	"context"
-	"fmt"
+
+	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,7 +18,7 @@ type BaseRepository struct {
 func (r *BaseRepository) Begin(ctx context.Context) (pgx.Tx, error) {
 	tx, err := r.Pool.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to begin transaction", err)
 	}
 	return tx, nil
 }
@@ -25,7 +26,7 @@ func (r *BaseRepository) Begin(ctx context.Context) (pgx.Tx, error) {
 // Commit commits a transaction
 func (r *BaseRepository) Commit(ctx context.Context, tx pgx.Tx) error {
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return apperrors.NewAppError(500, "failed to commit transaction", err)
 	}
 	return nil
 }
@@ -33,7 +34,7 @@ func (r *BaseRepository) Commit(ctx context.Context, tx pgx.Tx) error {
 // Rollback rolls back a transaction
 func (r *BaseRepository) Rollback(ctx context.Context, tx pgx.Tx) error {
 	if err := tx.Rollback(ctx); err != nil {
-		return fmt.Errorf("failed to rollback transaction: %w", err)
+		return apperrors.NewAppError(500, "failed to rollback transaction", err)
 	}
 	return nil
 }

@@ -33,15 +33,6 @@ func CalculateSignedAmount(txn domain.Transaction, accountType domain.AccountTyp
 	return signedAmount, nil
 }
 
-// CalculateJournalAmountSimple is a simplified version that just returns the first transaction amount
-// when account types aren't available.
-func CalculateJournalAmountSimple(transactions []domain.Transaction) decimal.Decimal {
-	if len(transactions) > 0 {
-		return transactions[0].Amount
-	}
-	return decimal.Zero
-}
-
 // ValidateJournalBalance checks if the transactions for a journal balance to zero.
 func ValidateJournalBalance(transactions []domain.Transaction, accountTypes map[string]domain.AccountType) error {
 	if len(transactions) < 2 {

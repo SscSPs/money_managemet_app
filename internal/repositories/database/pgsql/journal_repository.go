@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"sort"
 	"time"
+	"strconv"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
@@ -36,11 +36,6 @@ func newPgxJournalRepository(pool *pgxpool.Pool, accountRepo portsrepo.AccountRe
 // Ensure PgxJournalRepository implements portsrepo.JournalRepositoryWithTx
 var _ portsrepo.JournalRepositoryWithTx = (*PgxJournalRepository)(nil)
 
-// getSignedAmountInternal calculates the signed amount for a transaction based on account type.
-func getSignedAmountInternal(txn domain.Transaction, accountType domain.AccountType) (decimal.Decimal, error) {
-	return accounting.CalculateSignedAmount(txn, accountType)
-}
-
 // SaveJournal saves a journal, updates account balances, and saves associated transactions within a DB transaction.
 func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.Journal, transactions []domain.Transaction, balanceChanges map[string]decimal.Decimal) error {
 	// Use the injected account repository dependency
@@ -49,7 +44,7 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 	// Start a database transaction
 	tx, err := r.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return apperrors.NewAppError(500, "failed to begin transaction", err)
 	}
 	// Defer rollback in case of error
 	defer r.Rollback(ctx, tx) // Will be ignored if transaction is committed successfully
@@ -83,7 +78,7 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 		modelJournal.LastUpdatedBy,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert journal %s: %w", modelJournal.JournalID, err)
+		return apperrors.NewAppError(500, "failed to insert journal "+modelJournal.JournalID, err)
 	}
 
 	// 2. Lock accounts and get current balances
@@ -95,12 +90,12 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 	lockedAccounts, err := accountRepo.FindAccountsByIDsForUpdate(ctx, tx, accountIDs)
 	if err != nil {
 		// Error includes ErrNotFound if any account is missing
-		return fmt.Errorf("failed to lock accounts for update: %w", err)
+		return apperrors.NewAppError(500, "failed to lock accounts for update", err)
 	}
 
 	// 3. Update account balances using the transaction tx
 	if err := accountRepo.UpdateAccountBalancesInTx(ctx, tx, balanceChanges, userID, now); err != nil {
-		return fmt.Errorf("failed to update account balances: %w", err)
+		return apperrors.NewAppError(500, "failed to update account balances", err)
 	}
 
 	// 4. Prepare and Insert Transaction entries with calculated running balances
@@ -134,12 +129,12 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 		lockedAccount, ok := lockedAccounts[accountID]
 		if !ok {
 			// This should not happen due to the locking step finding all accounts
-			return fmt.Errorf("internal error: locked account %s not found during transaction processing", accountID)
+			return apperrors.NewAppError(500, "internal error: locked account "+accountID+" not found during transaction processing", nil)
 		}
 
-		signedAmount, err := getSignedAmountInternal(txn, lockedAccount.AccountType)
+		signedAmount, err := accounting.CalculateSignedAmount(txn, lockedAccount.AccountType)
 		if err != nil {
-			return fmt.Errorf("failed to calculate signed amount for transaction %s: %w", txn.TransactionID, err)
+			return apperrors.NewAppError(500, "failed to calculate signed amount for transaction "+txn.TransactionID, err)
 		}
 
 		// Calculate the running balance *after* this transaction
@@ -168,12 +163,12 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 	br := tx.SendBatch(ctx, batch)
 	err = br.Close() // Important: Close the batch results to check for errors in each command
 	if err != nil {
-		return fmt.Errorf("failed to execute transaction batch for journal %s: %w", modelJournal.JournalID, err)
+		return apperrors.NewAppError(500, "failed to execute transaction batch for journal "+modelJournal.JournalID, err)
 	}
 
 	// If all inserts/updates were successful, commit the transaction
 	if err := r.Commit(ctx, tx); err != nil {
-		return fmt.Errorf("failed to commit transaction for journal %s: %w", modelJournal.JournalID, err)
+		return apperrors.NewAppError(500, "failed to commit transaction for journal "+modelJournal.JournalID, err)
 	}
 
 	return nil
@@ -214,7 +209,7 @@ func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID st
 			return nil, apperrors.ErrNotFound
 		}
 		// Wrap other potential errors
-		return nil, fmt.Errorf("failed to find journal by ID %s: %w", journalID, err)
+		return nil, apperrors.NewAppError(500, "failed to find journal by ID "+journalID, err)
 	}
 
 	// Manually assign scanned nullable strings to model pointers before conversion
@@ -239,7 +234,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, 
 	`
 	rows, err := r.Pool.Query(ctx, query, journalID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query transactions for journal %s: %w", journalID, err)
+		return nil, apperrors.NewAppError(500, "failed to query transactions for journal "+journalID, err)
 	}
 	defer rows.Close()
 
@@ -261,13 +256,13 @@ func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, 
 			&t.RunningBalance, // Scan the running balance
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan transaction row for journal %s: %w", journalID, err)
+			return nil, apperrors.NewAppError(500, "failed to scan transaction row for journal "+journalID, err)
 		}
 		transactions = append(transactions, t)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating transaction rows for journal %s: %w", journalID, err)
+		return nil, apperrors.NewAppError(500, "error iterating transaction rows for journal "+journalID, err)
 	}
 
 	return mapping.ToDomainTransactionSlice(transactions), nil
@@ -304,7 +299,7 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 		lastJournalDate, lastCreatedAt, decodeErr := pagination.DecodeToken(*nextToken)
 		if decodeErr != nil {
 			// Consider logging the error but return a user-friendly error
-			return nil, nil, fmt.Errorf("invalid nextToken: %w", decodeErr) // Return specific error for bad token
+			return nil, nil, apperrors.NewAppError(400, "invalid nextToken", decodeErr) // Return specific error for bad token
 		}
 
 		// Add cursor condition to WHERE clause
@@ -313,20 +308,20 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 		args = append(args, lastJournalDate, lastCreatedAt)
 
 		// Construct the full query with cursor
-		query := fmt.Sprintf("%s %s %s LIMIT $%d;", baseQuery, cursorClause, orderByClause, len(args)+1)
+		query := baseQuery + " " + cursorClause + " " + orderByClause + " LIMIT $" + strconv.Itoa(len(args)+1) + ";"
 		args = append(args, fetchLimit)
 
 		rows, err = r.Pool.Query(ctx, query, args...)
 	} else {
 		// First page request (no token)
-		query := fmt.Sprintf("%s %s LIMIT $%d;", baseQuery, orderByClause, len(args)+1)
+		query := baseQuery + " " + orderByClause + " LIMIT $" + strconv.Itoa(len(args)+1) + ";"
 		args = append(args, fetchLimit)
 		rows, err = r.Pool.Query(ctx, query, args...)
 	}
 
 	// Error handling for query execution
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to query transactions for account %s in workplace %s: %w", accountID, workplaceID, err)
+		return nil, nil, apperrors.NewAppError(500, "failed to query transactions for account "+accountID+" in workplace "+workplaceID, err)
 	}
 	defer rows.Close()
 
@@ -355,7 +350,7 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 			&journalDate,
 		)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to scan transaction row for account %s: %w", accountID, err)
+			return nil, nil, apperrors.NewAppError(500, "failed to scan transaction row for account "+accountID, err)
 		}
 		transactions = append(transactions, struct {
 			transaction models.Transaction
@@ -365,7 +360,7 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 
 	// Check for errors during row iteration
 	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("error iterating transaction rows for account %s: %w", accountID, err)
+		return nil, nil, apperrors.NewAppError(500, "error iterating transaction rows for account "+accountID, err)
 	}
 
 	// Determine the next token
@@ -434,7 +429,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 		if decodeErr != nil {
 			// Consider logging the error but return a user-friendly error
 			// Or potentially treat as if no token was provided if lenient
-			return nil, nil, fmt.Errorf("invalid nextToken: %w", decodeErr) // Return specific error for bad token
+			return nil, nil, apperrors.NewAppError(400, "invalid nextToken", decodeErr) // Return specific error for bad token
 		}
 
 		// Add cursor condition to WHERE clause
@@ -443,14 +438,14 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 		args = append(args, lastDate, lastCreatedAt)
 
 		// Construct the full query with cursor
-		query := fmt.Sprintf("%s %s %s %s LIMIT $%d;", baseQuery, filterClause, cursorClause, orderByClause, len(args)+1)
+		query := baseQuery + " " + filterClause + " " + cursorClause + " " + orderByClause + " LIMIT $" + strconv.Itoa(len(args)+1) + ";"
 		args = append(args, fetchLimit)
 
 		rows, err = r.Pool.Query(ctx, query, args...)
 
 	} else {
 		// First page request (no token)
-		query := fmt.Sprintf("%s %s %s LIMIT $%d;", baseQuery, filterClause, orderByClause, len(args)+1)
+		query := baseQuery + " " + filterClause + " " + orderByClause + " LIMIT $" + strconv.Itoa(len(args)+1) + ";"
 		args = append(args, fetchLimit)
 		rows, err = r.Pool.Query(ctx, query, args...)
 	}
@@ -458,7 +453,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 	// Error handling for query execution
 	if err != nil {
 		// Check for specific DB errors if needed
-		return nil, nil, fmt.Errorf("failed to query journals for workplace %s: %w", workplaceID, err)
+		return nil, nil, apperrors.NewAppError(500, "failed to query journals for workplace "+workplaceID, err)
 	}
 	defer rows.Close()
 
@@ -486,7 +481,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 		)
 		if scanErr != nil {
 			// Log detailed error
-			return nil, nil, fmt.Errorf("failed to scan journal row for workplace %s: %w", workplaceID, scanErr)
+			return nil, nil, apperrors.NewAppError(500, "failed to scan journal row for workplace "+workplaceID, scanErr)
 		}
 
 		if originalID.Valid {
@@ -500,7 +495,7 @@ func (r *PgxJournalRepository) ListJournalsByWorkplace(ctx context.Context, work
 
 	// Check for errors during row iteration
 	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("error iterating journal rows for workplace %s: %w", workplaceID, err)
+		return nil, nil, apperrors.NewAppError(500, "error iterating journal rows for workplace "+workplaceID, err)
 	}
 
 	// Determine the next token
@@ -544,7 +539,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context,
 
 	rows, err := r.Pool.Query(ctx, query, journalIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query transactions for journal IDs: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to query transactions for journal IDs", err)
 	}
 	defer rows.Close()
 
@@ -568,7 +563,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context,
 			&modelTxn.LastUpdatedBy,
 			&runningBalancePtr, // Scan into pointer
 		); err != nil {
-			return nil, fmt.Errorf("failed to scan transaction row during batch fetch: %w", err)
+			return nil, apperrors.NewAppError(500, "failed to scan transaction row during batch fetch", err)
 		}
 		modelTxn.Amount = amount
 		if runningBalancePtr != nil {
@@ -582,7 +577,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context,
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating transaction rows during batch fetch: %w", err)
+		return nil, apperrors.NewAppError(500, "error iterating transaction rows during batch fetch", err)
 	}
 
 	// Ensure even journals with no transactions have an entry (empty slice)
@@ -619,12 +614,12 @@ func (r *PgxJournalRepository) UpdateJournalStatusAndLinks(ctx context.Context, 
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to update journal status/links for %s: %w", journalID, err)
+		return apperrors.NewAppError(500, "failed to update journal status/links for "+journalID, err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {
 		// Journal with the given ID was not found
-		return fmt.Errorf("%w: journal %s not found for update", apperrors.ErrNotFound, journalID)
+		return apperrors.NewNotFoundError("journal "+journalID+" not found for update")
 	}
 
 	return nil
@@ -654,12 +649,12 @@ func (r *PgxJournalRepository) UpdateJournal(ctx context.Context, journal domain
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to execute update journal %s: %w", modelJournal.JournalID, err)
+		return apperrors.NewAppError(500, "failed to execute update journal "+modelJournal.JournalID, err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {
 		// Journal with the given ID was not found
-		return fmt.Errorf("%w: journal %s not found for update", apperrors.ErrNotFound, modelJournal.JournalID)
+		return apperrors.NewNotFoundError("journal "+modelJournal.JournalID+" not found for update")
 	}
 
 	return nil

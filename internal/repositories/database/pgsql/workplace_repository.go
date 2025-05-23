@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
@@ -52,14 +51,14 @@ func (r *PgxWorkplaceRepository) SaveWorkplace(ctx context.Context, workplace do
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			if pgErr.Code == "23505" { // unique_violation
-				return fmt.Errorf("%w: workplace ID %s already exists", apperrors.ErrDuplicate, workplace.WorkplaceID)
+				return apperrors.NewConflictError("workplace ID "+workplace.WorkplaceID+" already exists")
 			}
 			// Handle foreign key violation for currency
 			if pgErr.Code == "23503" && pgErr.ConstraintName == "fk_workplace_default_currency" { // foreign_key_violation
-				return fmt.Errorf("%w: currency code does not exist", apperrors.ErrValidation)
+				return apperrors.NewValidationFailedError("currency code does not exist")
 			}
 		}
-		return fmt.Errorf("failed to save workplace %s: %w", workplace.WorkplaceID, err)
+		return apperrors.NewAppError(500, "failed to save workplace "+workplace.WorkplaceID, err)
 	}
 	return nil
 }
@@ -88,9 +87,9 @@ func (r *PgxWorkplaceRepository) FindWorkplaceByID(ctx context.Context, workplac
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.ErrNotFound
+			return nil, apperrors.NewNotFoundError("workplace not found")
 		}
-		return nil, fmt.Errorf("failed to find workplace by ID %s: %w", workplaceID, err)
+		return nil, apperrors.NewAppError(500, "failed to find workplace by ID "+workplaceID, err)
 	}
 
 	if defaultCurrencyCode.Valid {
@@ -115,7 +114,7 @@ func (r *PgxWorkplaceRepository) AddUserToWorkplace(ctx context.Context, members
 
 	if err != nil {
 		// Check for foreign key violation if needed (e.g., user_id or workplace_id doesn't exist)
-		return fmt.Errorf("failed to add/update user %s in workplace %s: %w", membership.UserID, membership.WorkplaceID, err)
+		return apperrors.NewAppError(500, "failed to add/update user "+membership.UserID+" in workplace "+membership.WorkplaceID, err)
 	}
 	return nil
 }
@@ -137,9 +136,9 @@ func (r *PgxWorkplaceRepository) FindUserWorkplaceRole(ctx context.Context, user
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Consider if ErrNotFound is appropriate or if absence means 'no access'
-			return nil, apperrors.ErrNotFound // User not found within this specific workplace
+			return nil, apperrors.NewNotFoundError("workplace not found") // User not found within this specific workplace
 		}
-		return nil, fmt.Errorf("failed to find user %s workplace role in %s: %w", userID, workplaceID, err)
+		return nil, apperrors.NewAppError(500, "failed to find user "+userID+" workplace role in "+workplaceID, err)
 	}
 	return &uw, nil
 }
@@ -188,7 +187,7 @@ func (r *PgxWorkplaceRepository) ListWorkplacesByUserID(ctx context.Context, use
 	// Execute the query
 	rows, err := r.Pool.Query(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query workplaces for user %s: %w", userID, err)
+		return nil, apperrors.NewAppError(500, "failed to query workplaces for user "+userID, err)
 	}
 	defer rows.Close()
 
@@ -208,7 +207,7 @@ func (r *PgxWorkplaceRepository) ListWorkplacesByUserID(ctx context.Context, use
 			&w.LastUpdatedBy,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan workplace row: %w", err)
+			return nil, apperrors.NewAppError(500, "failed to scan workplace row", err)
 		}
 		if defaultCurrencyCode.Valid {
 			w.DefaultCurrencyCode = &defaultCurrencyCode.String
@@ -217,7 +216,7 @@ func (r *PgxWorkplaceRepository) ListWorkplacesByUserID(ctx context.Context, use
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating workplace rows: %w", err)
+		return nil, apperrors.NewAppError(500, "error iterating workplace rows", err)
 	}
 
 	return workplaces, nil
@@ -232,13 +231,13 @@ func (r *PgxWorkplaceRepository) UpdateWorkplaceStatus(ctx context.Context, work
 	`
 	result, err := r.Pool.Exec(ctx, query, isActive, updatedByUserID, workplaceID)
 	if err != nil {
-		return fmt.Errorf("failed to update workplace status: %w", err)
+		return apperrors.NewAppError(500, "failed to update workplace status", err)
 	}
 
 	// Check if any rows were affected
 	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
-		return apperrors.ErrNotFound
+		return apperrors.NewNotFoundError("workplace not found")
 	}
 
 	return nil
@@ -277,7 +276,7 @@ func (r *PgxWorkplaceRepository) ListUsersByWorkplaceID(ctx context.Context, wor
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to query users for workplace %s: %w", workplaceID, err)
+		return nil, apperrors.NewAppError(500, "failed to query users for workplace "+workplaceID, err)
 	}
 	defer rows.Close()
 
@@ -292,13 +291,13 @@ func (r *PgxWorkplaceRepository) ListUsersByWorkplaceID(ctx context.Context, wor
 			&uw.JoinedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan user workplace row: %w", err)
+			return nil, apperrors.NewAppError(500, "failed to scan user workplace row", err)
 		}
 		userWorkplaces = append(userWorkplaces, uw)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating user workplace rows: %w", err)
+		return nil, apperrors.NewAppError(500, "error iterating user workplace rows", err)
 	}
 
 	return userWorkplaces, nil
@@ -320,13 +319,13 @@ func (r *PgxWorkplaceRepository) UpdateUserWorkplaceRole(ctx context.Context, us
 
 	result, err := r.Pool.Exec(ctx, query, userID, workplaceID, newRole)
 	if err != nil {
-		return fmt.Errorf("failed to update role for user %s in workplace %s: %w", userID, workplaceID, err)
+		return apperrors.NewAppError(500, "failed to update role for user "+userID+" in workplace "+workplaceID, err)
 	}
 
 	// Check if any rows were affected
 	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
-		return apperrors.ErrNotFound
+		return apperrors.NewNotFoundError("workplace not found")
 	}
 
 	return nil

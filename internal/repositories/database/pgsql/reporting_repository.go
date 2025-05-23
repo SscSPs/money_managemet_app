@@ -2,9 +2,9 @@ package pgsql
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -44,7 +44,7 @@ func (r *reportingRepository) GetTrialBalanceData(ctx context.Context, workplace
 
 	rows, err := r.Pool.Query(ctx, query, asOf, workplaceID)
 	if err != nil {
-		return nil, fmt.Errorf("error querying trial balance data: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to query trial balance data for workplace "+workplaceID, err)
 	}
 	defer rows.Close()
 
@@ -60,7 +60,7 @@ func (r *reportingRepository) GetTrialBalanceData(ctx context.Context, workplace
 			&row.Debit,
 			&row.Credit,
 		); err != nil {
-			return nil, fmt.Errorf("error scanning trial balance row: %w", err)
+			return nil, apperrors.NewAppError(500, "failed to scan trial balance row", err)
 		}
 
 		row.AccountType = domain.AccountType(accountType)
@@ -68,7 +68,7 @@ func (r *reportingRepository) GetTrialBalanceData(ctx context.Context, workplace
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating trial balance rows: %w", err)
+		return nil, apperrors.NewAppError(500, "error iterating trial balance rows", err)
 	}
 
 	if len(result) == 0 {
@@ -100,7 +100,7 @@ func (r *reportingRepository) GetProfitAndLossData(ctx context.Context, workplac
 
 	rows, err := r.Pool.Query(ctx, query, from, to, workplaceID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error querying profit and loss data: %w", err)
+		return nil, nil, apperrors.NewAppError(500, "error querying profit and loss data", err)
 	}
 	defer rows.Close()
 
@@ -112,7 +112,7 @@ func (r *reportingRepository) GetProfitAndLossData(ctx context.Context, workplac
 		var netAmount decimal.Decimal
 
 		if err := rows.Scan(&accountType, &accountID, &name, &netAmount); err != nil {
-			return nil, nil, fmt.Errorf("error scanning profit and loss row: %w", err)
+			return nil, nil, apperrors.NewAppError(500, "error scanning profit and loss row", err)
 		}
 
 		accountAmount := domain.AccountAmount{
@@ -134,7 +134,7 @@ func (r *reportingRepository) GetProfitAndLossData(ctx context.Context, workplac
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("error iterating profit and loss rows: %w", err)
+		return nil, nil, apperrors.NewAppError(500, "error iterating profit and loss rows", err)
 	}
 
 	// Return empty slices instead of nil
@@ -169,7 +169,7 @@ func (r *reportingRepository) GetBalanceSheetData(ctx context.Context, workplace
 
 	rows, err := r.Pool.Query(ctx, query, asOf, workplaceID)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error querying balance sheet data: %w", err)
+		return nil, nil, nil, apperrors.NewAppError(500, "error querying balance sheet data", err)
 	}
 	defer rows.Close()
 
@@ -182,7 +182,7 @@ func (r *reportingRepository) GetBalanceSheetData(ctx context.Context, workplace
 		var netAmount decimal.Decimal
 
 		if err := rows.Scan(&accountType, &accountID, &name, &netAmount); err != nil {
-			return nil, nil, nil, fmt.Errorf("error scanning balance sheet row: %w", err)
+			return nil, nil, nil, apperrors.NewAppError(500, "error scanning balance sheet row", err)
 		}
 
 		accountAmount := domain.AccountAmount{
@@ -209,7 +209,7 @@ func (r *reportingRepository) GetBalanceSheetData(ctx context.Context, workplace
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, nil, fmt.Errorf("error iterating balance sheet rows: %w", err)
+		return nil, nil, nil, apperrors.NewAppError(500, "error iterating balance sheet rows", err)
 	}
 
 	// Return empty slices instead of nil

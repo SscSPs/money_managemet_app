@@ -3,7 +3,6 @@ package pgsql
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
@@ -51,9 +50,9 @@ func (r *PgxExchangeRateRepository) SaveExchangeRate(ctx context.Context, rate d
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // 23505 is unique_violation
 			// Consider logging the specific constraint name if available (pgErr.ConstraintName)
-			return fmt.Errorf("%w: exchange rate for this pair and date already exists", apperrors.ErrDuplicate)
+			return apperrors.NewConflictError("exchange rate for this pair and date already exists")
 		}
-		return fmt.Errorf("failed to save exchange rate: %w", err)
+		return apperrors.NewAppError(500, "failed to save exchange rate", err)
 	}
 	return nil
 }
@@ -77,9 +76,9 @@ func (r *PgxExchangeRateRepository) FindExchangeRate(ctx context.Context, fromCu
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.ErrNotFound
+			return nil, apperrors.NewNotFoundError("exchange rate not found")
 		}
-		return nil, fmt.Errorf("failed to find exchange rate %s->%s: %w", fromCurrencyCode, toCurrencyCode, err)
+		return nil, apperrors.NewAppError(500, "failed to find exchange rate "+fromCurrencyCode+"->"+toCurrencyCode, err)
 	}
 	domainRate := mapping.ToDomainExchangeRate(modelRate)
 	return &domainRate, nil

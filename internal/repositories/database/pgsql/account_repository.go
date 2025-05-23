@@ -82,10 +82,10 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 		if errors.As(err, &pgErr) {
 			if pgErr.Code == "23505" { // Unique violation
 				// Treat unique violation as a validation error
-				return fmt.Errorf("%w: account with ID %s already exists", apperrors.ErrDuplicate, modelAcc.AccountID)
+				return apperrors.NewConflictError("account with ID "+modelAcc.AccountID+" already exists")
 			}
 		}
-		return fmt.Errorf("failed to save account %s: %w", modelAcc.AccountID, err)
+		return apperrors.NewAppError(500, "failed to save account "+modelAcc.AccountID, err)
 	}
 	return nil
 }
@@ -93,7 +93,7 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 // FindAccountByCFID retrieves an account by its CFID (Customer Facing ID) and workplace ID.
 func (r *PgxAccountRepository) FindAccountByCFID(ctx context.Context, cfid string, workplaceID string) (*domain.Account, error) {
 	if cfid == "" {
-		return nil, fmt.Errorf("CFID cannot be empty")
+		return nil, apperrors.NewBadRequestError("CFID cannot be empty")
 	}
 
 	query := `
@@ -129,9 +129,9 @@ func (r *PgxAccountRepository) FindAccountByCFID(ctx context.Context, cfid strin
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("%w: account with CFID %s not found in workplace %s", apperrors.ErrNotFound, cfid, workplaceID)
+			return nil, apperrors.NewNotFoundError("account with CFID "+cfid+" not found in workplace "+workplaceID)
 		}
-		return nil, fmt.Errorf("failed to query account by CFID: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to query account by CFID", err)
 	}
 
 	if parentID.Valid {
@@ -187,9 +187,9 @@ func (r *PgxAccountRepository) FindAccountByID(ctx context.Context, accountID st
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.ErrNotFound
+			return nil, apperrors.NewNotFoundError("account with ID "+accountID+" not found")
 		}
-		return nil, fmt.Errorf("failed to find account by ID %s: %w", accountID, err)
+		return nil, apperrors.NewAppError(500, "failed to find account by ID", err)
 	}
 
 	if parentID.Valid {
@@ -226,7 +226,7 @@ func (r *PgxAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs
 
 	rows, err := r.Pool.Query(ctx, query, accountIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query accounts by IDs: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to query accounts by IDs", err)
 	}
 	defer rows.Close()
 
@@ -254,7 +254,7 @@ func (r *PgxAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs
 			&balance,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan account row: %w", err)
+			return nil, apperrors.NewAppError(500, "failed to scan account row", err)
 		}
 
 		if parentID.Valid {
@@ -268,7 +268,7 @@ func (r *PgxAccountRepository) FindAccountsByIDs(ctx context.Context, accountIDs
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating account rows: %w", err)
+		return nil, apperrors.NewAppError(500, "error iterating account rows", err)
 	}
 
 	return accountsMap, nil
@@ -297,7 +297,7 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 
 	rows, err := r.Pool.Query(ctx, query, workplaceID, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query accounts for workplace %s: %w", workplaceID, err)
+		return nil, apperrors.NewAppError(500, "failed to query accounts for workplace", err)
 	}
 	defer rows.Close()
 
@@ -325,7 +325,7 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 			&balance,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan account row: %w", err)
+			return nil, apperrors.NewAppError(500, "failed to scan account row", err)
 		}
 
 		if parentID.Valid {
@@ -345,7 +345,7 @@ func (r *PgxAccountRepository) ListAccounts(ctx context.Context, workplaceID str
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating account rows: %w", err)
+		return nil, apperrors.NewAppError(500, "error iterating account rows", err)
 	}
 
 	return mapping.ToDomainAccountSlice(accounts), nil
@@ -389,11 +389,11 @@ func (r *PgxAccountRepository) UpdateAccount(ctx context.Context, account domain
 		modelAcc.LastUpdatedBy,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to update account %s: %w", modelAcc.AccountID, err)
+		return apperrors.NewAppError(500, "failed to update account", err)
 	}
 
 	if result.RowsAffected() == 0 {
-		return fmt.Errorf("%w: account %s not found", apperrors.ErrNotFound, modelAcc.AccountID)
+		return apperrors.NewNotFoundError("account not found")
 	}
 
 	return nil
@@ -411,7 +411,7 @@ func (r *PgxAccountRepository) DeactivateAccount(ctx context.Context, accountID 
 
 	result, err := r.Pool.Exec(ctx, query, now, userID, accountID)
 	if err != nil {
-		return fmt.Errorf("failed to deactivate account %s: %w", accountID, err)
+		return apperrors.NewAppError(500, "failed to deactivate account", err)
 	}
 
 	if result.RowsAffected() == 0 {
@@ -420,11 +420,11 @@ func (r *PgxAccountRepository) DeactivateAccount(ctx context.Context, accountID 
 		var exists bool
 		err := r.Pool.QueryRow(ctx, existsQuery, accountID).Scan(&exists)
 		if err != nil {
-			return fmt.Errorf("failed to check if account %s exists: %w", accountID, err)
+			return apperrors.NewAppError(500, "failed to check if account exists", err)
 		}
 
 		if !exists {
-			return fmt.Errorf("%w: account %s not found", apperrors.ErrNotFound, accountID)
+			return apperrors.NewNotFoundError("account not found")
 		}
 		// Account exists but is already inactive - considered successful
 		return nil // no error - idempotent operation
@@ -452,7 +452,7 @@ func (r *PgxAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, t
 	// Using the transaction provided by the caller
 	rows, err := tx.Query(ctx, query, accountIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query accounts by IDs for update: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to query accounts by IDs for update", err)
 	}
 	defer rows.Close()
 
@@ -480,7 +480,7 @@ func (r *PgxAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, t
 			&balance,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan account row: %w", err)
+			return nil, apperrors.NewAppError(500, "failed to scan account row", err)
 		}
 
 		if parentID.Valid {
@@ -501,7 +501,7 @@ func (r *PgxAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, t
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating account rows: %w", err)
+		return nil, apperrors.NewAppError(500, "error iterating account rows", err)
 	}
 
 	// Check if all requested accounts were found
@@ -513,7 +513,7 @@ func (r *PgxAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, t
 				missingIDs = append(missingIDs, id)
 			}
 		}
-		return nil, fmt.Errorf("%w: accounts not found: %v", apperrors.ErrNotFound, missingIDs)
+		return nil, apperrors.NewNotFoundError("accounts not found: "+fmt.Sprint(missingIDs))
 	}
 
 	return accountsMap, nil
@@ -535,7 +535,7 @@ func (r *PgxAccountRepository) UpdateAccountBalancesInTx(ctx context.Context, tx
 		RETURNING balance;
 	`)
 	if err != nil {
-		return fmt.Errorf("failed to prepare statement for balance updates: %w", err)
+		return apperrors.NewAppError(500, "failed to prepare statement for balance updates", err)
 	}
 
 	// Track any accounts that failed to update
@@ -561,7 +561,7 @@ func (r *PgxAccountRepository) UpdateAccountBalancesInTx(ctx context.Context, tx
 					"change", change.String())
 				continue
 			}
-			return fmt.Errorf("failed to update balance for account %s: %w", accountID, err)
+			return apperrors.NewAppError(500, "failed to update balance for account "+accountID, err)
 		}
 
 		// Log the successful update
@@ -573,7 +573,7 @@ func (r *PgxAccountRepository) UpdateAccountBalancesInTx(ctx context.Context, tx
 
 	// If any accounts failed to update, return an error
 	if len(failedAccounts) > 0 {
-		return fmt.Errorf("%w: one or more accounts not found or inactive: %v", apperrors.ErrNotFound, failedAccounts)
+		return apperrors.NewNotFoundError("one or more accounts not found or inactive: "+fmt.Sprint(failedAccounts))
 	}
 
 	return nil

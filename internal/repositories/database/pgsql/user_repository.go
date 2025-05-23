@@ -3,7 +3,6 @@ package pgsql
 import (
 	"context"
 	"errors" // Import errors
-	"fmt"    // For error wrapping
 	"time"   // Added for MarkUserDeleted
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors" // Import apperrors
@@ -40,7 +39,7 @@ func (r *PgxUserRepository) GetUserByUsername(ctx context.Context, username stri
 	)
 	if err != nil {
 		if err.Error() == "no rows in result set" {
-			return nil, apperrors.ErrNotFound
+			return nil, apperrors.NewNotFoundError("user not found")
 		}
 		return nil, err
 	}
@@ -60,9 +59,9 @@ func (r *PgxUserRepository) FindUserByUsername(ctx context.Context, username str
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) { // Use errors.Is for pgx.ErrNoRows
-			return nil, apperrors.ErrNotFound
+			return nil, apperrors.NewNotFoundError("user not found")
 		}
-		return nil, fmt.Errorf("failed to scan user by username: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to scan user by username", err)
 	}
 	domainUser := mapping.ToDomainUser(user)
 	return &domainUser, nil
@@ -81,9 +80,9 @@ func (r *PgxUserRepository) FindUserByEmail(ctx context.Context, email string) (
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.ErrNotFound
+			return nil, apperrors.NewNotFoundError("user not found")
 		}
-		return nil, fmt.Errorf("failed to scan user by email: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to scan user by email", err)
 	}
 	domainUser := mapping.ToDomainUser(user)
 	return &domainUser, nil
@@ -102,9 +101,9 @@ func (r *PgxUserRepository) FindUserByProviderDetails(ctx context.Context, authP
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.ErrNotFound
+			return nil, apperrors.NewNotFoundError("user not found")
 		}
-		return nil, fmt.Errorf("failed to scan user by provider details: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to scan user by provider details", err)
 	}
 	domainUser := mapping.ToDomainUser(user)
 	return &domainUser, nil
@@ -149,7 +148,7 @@ func (r *PgxUserRepository) SaveUser(ctx context.Context, user domain.User) erro
 	if err != nil {
 		// Check for unique constraint violation on email if necessary here, though the query might handle it
 		// e.g., if strings.Contains(err.Error(), "unique constraint") && strings.Contains(err.Error(), "users_email_key") { ... }
-		return fmt.Errorf("failed to save user: %w", err)
+		return apperrors.NewAppError(500, "failed to save user", err)
 	}
 	return nil
 }
@@ -172,9 +171,9 @@ func (r *PgxUserRepository) FindUserByID(ctx context.Context, userID string) (*d
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) { // Use errors.Is for pgx.ErrNoRows
-			return nil, apperrors.ErrNotFound
+			return nil, apperrors.NewNotFoundError("user not found")
 		}
-		return nil, fmt.Errorf("failed to scan user by ID: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to scan user by ID", err)
 	}
 
 	domainUser := mapping.ToDomainUser(modelUser)
@@ -200,7 +199,7 @@ func (r *PgxUserRepository) FindUsers(ctx context.Context, limit int, offset int
     `
 	rows, err := r.Pool.Query(ctx, query, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query users: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to query users", err)
 	}
 	defer rows.Close()
 
@@ -211,7 +210,7 @@ func (r *PgxUserRepository) FindUsers(ctx context.Context, limit int, offset int
 		if errors.Is(err, pgx.ErrNoRows) { // It's possible to get no rows, which is not an error for a list.
 			return []domain.User{}, nil
 		}
-		return nil, fmt.Errorf("failed to collect user rows: %w", err)
+		return nil, apperrors.NewAppError(500, "failed to collect user rows", err)
 	}
 
 	return mapping.ToDomainUserSlice(modelUsers), nil
@@ -235,10 +234,10 @@ func (r *PgxUserRepository) UpdateUser(ctx context.Context, user domain.User) er
 		modelUser.UserID,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to execute update user query: %w", err)
+		return apperrors.NewAppError(500, "failed to execute update user query", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return fmt.Errorf("user not found or already deleted: %w", apperrors.ErrNotFound) // Use app error
+		return apperrors.NewNotFoundError("user not found or already deleted") // Use app error
 	}
 	return nil
 }
@@ -251,11 +250,11 @@ func (r *PgxUserRepository) MarkUserDeleted(ctx context.Context, userID string, 
     `
 	cmdTag, err := r.Pool.Exec(ctx, query, deletedAt, deletedBy, userID)
 	if err != nil {
-		return fmt.Errorf("failed to mark user as deleted: %w", err)
+		return apperrors.NewAppError(500, "failed to mark user as deleted", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
 		// User might not exist or was already deleted
-		return fmt.Errorf("user not found or already deleted: %w", apperrors.ErrNotFound)
+		return apperrors.NewNotFoundError("user not found or already deleted")
 	}
 	return nil
 }
@@ -269,10 +268,10 @@ func (r *PgxUserRepository) UpdateRefreshToken(ctx context.Context, userID strin
 	`
 	cmdTag, err := r.Pool.Exec(ctx, query, refreshTokenHash, refreshTokenExpiryTime, now, userID, userID)
 	if err != nil {
-		return fmt.Errorf("failed to update refresh token for user %s: %w", userID, err)
+		return apperrors.NewAppError(500, "failed to update refresh token for user "+userID, err)
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return fmt.Errorf("user not found or already deleted when updating refresh token for user %s: %w", userID, apperrors.ErrNotFound)
+		return apperrors.NewNotFoundError("user not found or already deleted when updating refresh token for user "+userID)
 	}
 	return nil
 }
@@ -285,7 +284,7 @@ func (r *PgxUserRepository) ClearRefreshToken(ctx context.Context, userID string
 	`
 	cmdTag, err := r.Pool.Exec(ctx, query, userID)
 	if err != nil {
-		return fmt.Errorf("failed to clear refresh token for user %s: %w", userID, err)
+		return apperrors.NewAppError(500, "failed to clear refresh token for user "+userID, err)
 	}
 	if cmdTag.RowsAffected() == 0 {
 		// This could mean the user was not found, or no update was needed.
@@ -308,7 +307,7 @@ func (r *PgxUserRepository) UserExists(ctx context.Context, userID string) (bool
 	var exists bool
 	err := r.Pool.QueryRow(ctx, query, userID).Scan(&exists)
 	if err != nil {
-		return false, fmt.Errorf("failed to check if user exists: %w", err)
+		return false, apperrors.NewAppError(500, "failed to check if user exists", err)
 	}
 	return exists, nil
 }
