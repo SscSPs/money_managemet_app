@@ -9,11 +9,11 @@ import (
 // Now includes username and password hash for authentication.
 // Note: UserID type might be string (UUID) or int depending on final design.
 type User struct {
-	UserID         string         `json:"userID"`
+	UserID         string         `json:"userID" db:"user_id"`
 	Username       string         `json:"username" db:"username"`
 	Email          sql.NullString `json:"email" db:"email"` // Added Email field
 	PasswordHash   sql.NullString `json:"-" db:"password_hash"`
-	Name           string         `json:"name"`
+	Name           string         `json:"name" db:"name"`
 	AuthProvider   sql.NullString `json:"authProvider,omitempty" db:"auth_provider"`
 	ProviderUserID sql.NullString `json:"-" db:"provider_user_id"`
 	AuditFields

@@ -218,7 +218,7 @@ func (s *workplaceService) DeactivateWorkplace(ctx context.Context, workplaceID 
 	}
 
 	// Update the workplace status to inactive
-	if err := s.workplaceRepo.UpdateWorkplaceStatus(ctx, workplaceID, false, requestingUserID); err != nil {
+	if err := s.workplaceRepo.UpdateWorkplaceStatus(ctx, workplace, false, requestingUserID); err != nil {
 		s.LogError(ctx, err, "Failed to deactivate workplace",
 			slog.String("workplace_id", workplaceID),
 			slog.String("requesting_user_id", requestingUserID))
@@ -254,7 +254,7 @@ func (s *workplaceService) ActivateWorkplace(ctx context.Context, workplaceID st
 	}
 
 	// Update the workplace status to active
-	if err := s.workplaceRepo.UpdateWorkplaceStatus(ctx, workplaceID, true, requestingUserID); err != nil {
+	if err := s.workplaceRepo.UpdateWorkplaceStatus(ctx, workplace, true, requestingUserID); err != nil {
 		s.LogError(ctx, err, "Failed to activate workplace",
 			slog.String("workplace_id", workplaceID),
 			slog.String("requesting_user_id", requestingUserID))

@@ -2,7 +2,6 @@ package pgsql
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
@@ -27,13 +26,39 @@ func newPgxWorkplaceRepository(pool *pgxpool.Pool) portsrepo.WorkplaceRepository
 // Ensure PgxWorkplaceRepository implements portsrepo.WorkplaceRepositoryWithTx
 var _ portsrepo.WorkplaceRepositoryWithTx = (*PgxWorkplaceRepository)(nil)
 
+var FULL_WORKPLACE_SELECT_QUERY = `
+SELECT
+	w.workplace_id, w.name, w.description, w.default_currency_code, w.is_active,
+	w.created_at, w.created_by, w.last_updated_at, w.last_updated_by, w.version
+FROM workplaces w
+`
+
+// getUsers private func to get user from the select query filters
+func (r *PgxWorkplaceRepository) getWorkplaces(ctx context.Context, filterQuery string, args ...any) ([]domain.Workplace, error) {
+	query := FULL_WORKPLACE_SELECT_QUERY + filterQuery
+	rows, err := r.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "failed to query workplaces", err)
+	}
+	defer rows.Close()
+	domainWorkplaces, err := pgx.CollectRows(rows, pgx.RowToStructByName[domain.Workplace])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) { // It's possible to get no rows, which is not an error for a list.
+			return []domain.Workplace{}, nil
+		}
+		return nil, apperrors.NewAppError(500, "failed to collect workplace rows", err)
+	}
+
+	return domainWorkplaces, nil
+}
+
 func (r *PgxWorkplaceRepository) SaveWorkplace(ctx context.Context, workplace domain.Workplace) error {
 	query := `
 		INSERT INTO workplaces (
 			workplace_id, name, description, default_currency_code, is_active,
-			created_at, created_by, last_updated_at, last_updated_by
+			created_at, created_by, last_updated_at, last_updated_by, version
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 	`
 	_, err := r.Pool.Exec(ctx, query,
 		workplace.WorkplaceID,
@@ -45,13 +70,14 @@ func (r *PgxWorkplaceRepository) SaveWorkplace(ctx context.Context, workplace do
 		workplace.CreatedBy,
 		workplace.LastUpdatedAt,
 		workplace.LastUpdatedBy,
+		1,
 	)
 
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			if pgErr.Code == "23505" { // unique_violation
-				return apperrors.NewConflictError("workplace ID "+workplace.WorkplaceID+" already exists")
+				return apperrors.NewConflictError("workplace ID " + workplace.WorkplaceID + " already exists")
 			}
 			// Handle foreign key violation for currency
 			if pgErr.Code == "23503" && pgErr.ConstraintName == "fk_workplace_default_currency" { // foreign_key_violation
@@ -64,39 +90,15 @@ func (r *PgxWorkplaceRepository) SaveWorkplace(ctx context.Context, workplace do
 }
 
 func (r *PgxWorkplaceRepository) FindWorkplaceByID(ctx context.Context, workplaceID string) (*domain.Workplace, error) {
-	query := `
-		SELECT workplace_id, name, description, default_currency_code, is_active,
-		       created_at, created_by, last_updated_at, last_updated_by
-		FROM workplaces
-		WHERE workplace_id = $1;
-	`
-	var w domain.Workplace
-	var defaultCurrencyCode sql.NullString
-
-	err := r.Pool.QueryRow(ctx, query, workplaceID).Scan(
-		&w.WorkplaceID,
-		&w.Name,
-		&w.Description,
-		&defaultCurrencyCode,
-		&w.IsActive,
-		&w.CreatedAt,
-		&w.CreatedBy,
-		&w.LastUpdatedAt,
-		&w.LastUpdatedBy,
-	)
-
+	query := `WHERE w.workplace_id = $1`
+	workplaces, err := r.getWorkplaces(ctx, query, workplaceID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.NewNotFoundError("workplace not found")
-		}
-		return nil, apperrors.NewAppError(500, "failed to find workplace by ID "+workplaceID, err)
+		return nil, err
 	}
-
-	if defaultCurrencyCode.Valid {
-		w.DefaultCurrencyCode = &defaultCurrencyCode.String
+	if len(workplaces) == 0 {
+		return nil, apperrors.ErrNotFound
 	}
-
-	return &w, nil
+	return &workplaces[0], nil
 }
 
 func (r *PgxWorkplaceRepository) AddUserToWorkplace(ctx context.Context, membership domain.UserWorkplace) error {
@@ -145,19 +147,13 @@ func (r *PgxWorkplaceRepository) FindUserWorkplaceRole(ctx context.Context, user
 
 func (r *PgxWorkplaceRepository) ListWorkplacesByUserID(ctx context.Context, userID string, includeDisabled bool, role *domain.UserWorkplaceRole) ([]domain.Workplace, error) {
 	// Base query component
-	baseQuery := `
-		SELECT w.workplace_id, w.name, w.description, w.default_currency_code, w.is_active,
-			   w.created_at, w.created_by, w.last_updated_at, w.last_updated_by
-		FROM workplaces w
-		JOIN user_workplaces uw ON w.workplace_id = uw.workplace_id
-		WHERE uw.user_id = $1
-	`
+	baseQuery := `JOIN user_workplaces uw ON w.workplace_id = uw.workplace_id WHERE uw.user_id = $1`
 
 	// Logic for workplace status and role filtering:
 	// - For active workplaces: include all that the user is a member of (any role)
 	// - For inactive workplaces: only include those where the user is an admin
 	var whereClause string
-	var args []interface{}
+	var args []any
 	args = append(args, userID)
 
 	if !includeDisabled {
@@ -184,60 +180,29 @@ func (r *PgxWorkplaceRepository) ListWorkplacesByUserID(ctx context.Context, use
 	// Complete the query
 	query := baseQuery + whereClause + " ORDER BY w.name;"
 
-	// Execute the query
-	rows, err := r.Pool.Query(ctx, query, args...)
+	workplaces, err := r.getWorkplaces(ctx, query, args...)
 	if err != nil {
-		return nil, apperrors.NewAppError(500, "failed to query workplaces for user "+userID, err)
+		return nil, err
 	}
-	defer rows.Close()
-
-	var workplaces []domain.Workplace
-	for rows.Next() {
-		var w domain.Workplace
-		var defaultCurrencyCode sql.NullString
-		err := rows.Scan(
-			&w.WorkplaceID,
-			&w.Name,
-			&w.Description,
-			&defaultCurrencyCode,
-			&w.IsActive,
-			&w.CreatedAt,
-			&w.CreatedBy,
-			&w.LastUpdatedAt,
-			&w.LastUpdatedBy,
-		)
-		if err != nil {
-			return nil, apperrors.NewAppError(500, "failed to scan workplace row", err)
-		}
-		if defaultCurrencyCode.Valid {
-			w.DefaultCurrencyCode = &defaultCurrencyCode.String
-		}
-		workplaces = append(workplaces, w)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, apperrors.NewAppError(500, "error iterating workplace rows", err)
-	}
-
 	return workplaces, nil
 }
 
 // UpdateWorkplaceStatus updates the is_active status of a workplace
-func (r *PgxWorkplaceRepository) UpdateWorkplaceStatus(ctx context.Context, workplaceID string, isActive bool, updatedByUserID string) error {
+func (r *PgxWorkplaceRepository) UpdateWorkplaceStatus(ctx context.Context, workplace *domain.Workplace, isActive bool, updatedByUserID string) error {
 	query := `
 		UPDATE workplaces
-		SET is_active = $1, last_updated_at = NOW(), last_updated_by = $2
-		WHERE workplace_id = $3;
+		SET is_active = $1, last_updated_at = NOW(), last_updated_by = $2, version = version + 1
+		WHERE workplace_id = $3 AND version = $4;
 	`
-	result, err := r.Pool.Exec(ctx, query, isActive, updatedByUserID, workplaceID)
+	result, err := r.Pool.Exec(ctx, query, isActive, updatedByUserID, workplace.WorkplaceID, workplace.Version)
 	if err != nil {
-		return apperrors.NewAppError(500, "failed to update workplace status", err)
+		return apperrors.NewAppError(500, "failed to update workplace status "+workplace.WorkplaceID, err)
 	}
 
 	// Check if any rows were affected
 	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
-		return apperrors.NewNotFoundError("workplace not found")
+		return apperrors.NewNotFoundError("optimistic locking failed: workplace " + workplace.WorkplaceID)
 	}
 
 	return nil

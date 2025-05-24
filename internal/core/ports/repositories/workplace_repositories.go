@@ -28,7 +28,7 @@ type WorkplaceWriter interface {
 	SaveWorkplace(ctx context.Context, workplace domain.Workplace) error
 
 	// UpdateWorkplaceStatus changes the is_active status of a workplace.
-	UpdateWorkplaceStatus(ctx context.Context, workplaceID string, isActive bool, updatedByUserID string) error
+	UpdateWorkplaceStatus(ctx context.Context, workplace *domain.Workplace, isActive bool, updatedByUserID string) error
 }
 
 // WorkplaceMembershipManager defines operations for managing workplace memberships
