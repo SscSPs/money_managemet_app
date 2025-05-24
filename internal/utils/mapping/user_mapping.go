@@ -23,6 +23,7 @@ func ToModelUser(d domain.User) models.User {
 			CreatedBy:     d.CreatedBy,
 			LastUpdatedAt: d.LastUpdatedAt,
 			LastUpdatedBy: d.LastUpdatedBy,
+			Version:       d.Version,
 		},
 		DeletedAt: d.DeletedAt,
 	}
@@ -59,6 +60,7 @@ func ToDomainUser(m models.User) domain.User {
 			CreatedBy:     m.CreatedBy,
 			LastUpdatedAt: m.LastUpdatedAt,
 			LastUpdatedBy: m.LastUpdatedBy,
+			Version:       m.Version,
 		},
 		DeletedAt: m.DeletedAt,
 	}

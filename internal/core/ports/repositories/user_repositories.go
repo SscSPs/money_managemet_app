@@ -28,22 +28,22 @@ type UserReader interface {
 // UserWriter defines write operations for user data
 type UserWriter interface {
 	// SaveUser persists a new user.
-	SaveUser(ctx context.Context, user domain.User) error
+	SaveUser(ctx context.Context, user *domain.User) error
 
 	// UpdateUser updates an existing user's details.
-	UpdateUser(ctx context.Context, user domain.User) error
+	UpdateUser(ctx context.Context, user *domain.User) error
 
 	// UpdateRefreshToken updates the refresh token details for a user.
-	UpdateRefreshToken(ctx context.Context, userID string, refreshTokenHash string, refreshTokenExpiryTime time.Time) error
+	UpdateRefreshToken(ctx context.Context, existingUser *domain.User, refreshTokenHash string, refreshTokenExpiryTime time.Time) error
 
 	// ClearRefreshToken clears the refresh token for a user.
-	ClearRefreshToken(ctx context.Context, userID string) error
+	ClearRefreshToken(ctx context.Context, existingUser *domain.User) error
 }
 
 // UserLifecycleManager defines operations for managing user lifecycle
 type UserLifecycleManager interface {
 	// MarkUserDeleted marks a user as deleted (soft delete).
-	MarkUserDeleted(ctx context.Context, userID string, deletedAt time.Time, deletedBy string) error
+	MarkUserDeleted(ctx context.Context, user *domain.User, deletedBy string) error
 }
 
 // UserRepositoryFacade combines all user-related repository interfaces

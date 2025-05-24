@@ -24,112 +24,80 @@ func newPgxUserRepository(db *pgxpool.Pool) portsrepo.UserRepositoryWithTx {
 	}
 }
 
-// Ensure PgxUserRepository implements portsrepo.UserRepositoryWithTx
-var _ portsrepo.UserRepositoryWithTx = (*PgxUserRepository)(nil)
+var FULL_USERS_SELECT_QUERY = `
+SELECT 
+	user_id, username, email, password_hash,
+	name, auth_provider, provider_user_id,
+	created_at, created_by, last_updated_at,
+	last_updated_by, deleted_at, refresh_token_hash,
+	refresh_token_expiry_time, version 
+FROM users
+`
 
-// GetUserByUsername fetches a user by username
-func (r *PgxUserRepository) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
-	query := `SELECT user_id, username, password_hash, name, created_at, created_by, last_updated_at, last_updated_by, deleted_at, refresh_token_hash, refresh_token_expiry_time FROM users WHERE username = $1 AND deleted_at IS NULL LIMIT 1`
-	row := r.Pool.QueryRow(ctx, query, username)
-	var user models.User
-	err := row.Scan(
-		&user.UserID, &user.Username, &user.PasswordHash, &user.Name,
-		&user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy,
-		&user.DeletedAt, &user.RefreshTokenHash, &user.RefreshTokenExpiryTime,
-	)
+// getUsers private func to get user from the select query filters
+func (r *PgxUserRepository) getUsers(ctx context.Context, filterQuery string, args ...any) ([]domain.User, error) {
+	query := FULL_USERS_SELECT_QUERY + filterQuery
+	rows, err := r.Pool.Query(ctx, query, args...)
 	if err != nil {
-		if err.Error() == "no rows in result set" {
-			return nil, apperrors.NewNotFoundError("user not found")
-		}
-		return nil, err
+		return nil, apperrors.NewAppError(500, "failed to query users", err)
 	}
-	return &user, nil
+	defer rows.Close()
+	modelUsers, err := pgx.CollectRows(rows, pgx.RowToStructByName[models.User])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) { // It's possible to get no rows, which is not an error for a list.
+			return []domain.User{}, nil
+		}
+		return nil, apperrors.NewAppError(500, "failed to collect user rows", err)
+	}
+
+	return mapping.ToDomainUserSlice(modelUsers), nil
 }
 
 // FindUserByUsername fetches a user by username and maps to domain.User
 func (r *PgxUserRepository) FindUserByUsername(ctx context.Context, username string) (*domain.User, error) {
-	query := `SELECT user_id, username, email, password_hash, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, deleted_at, refresh_token_hash, refresh_token_expiry_time FROM users WHERE username = $1 AND deleted_at IS NULL LIMIT 1`
-	row := r.Pool.QueryRow(ctx, query, username)
-	var user models.User
-	err := row.Scan(
-		&user.UserID, &user.Username, &user.Email, &user.PasswordHash, &user.Name,
-		&user.AuthProvider, &user.ProviderUserID,
-		&user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy,
-		&user.DeletedAt, &user.RefreshTokenHash, &user.RefreshTokenExpiryTime,
-	)
+	query := ` WHERE username = $1 AND deleted_at IS NULL LIMIT 1`
+	users, err := r.getUsers(ctx, query, username)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) { // Use errors.Is for pgx.ErrNoRows
-			return nil, apperrors.NewNotFoundError("user not found")
-		}
-		return nil, apperrors.NewAppError(500, "failed to scan user by username", err)
+		return nil, err
 	}
-	domainUser := mapping.ToDomainUser(user)
-	return &domainUser, nil
+	if len(users) == 0 {
+		return nil, apperrors.ErrNotFound
+	}
+	return &users[0], nil
 }
 
 // FindUserByEmail fetches a user by email and maps to domain.User
 func (r *PgxUserRepository) FindUserByEmail(ctx context.Context, email string) (*domain.User, error) {
-	query := `SELECT user_id, username, email, password_hash, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, deleted_at, refresh_token_hash, refresh_token_expiry_time FROM users WHERE email = $1 AND deleted_at IS NULL LIMIT 1`
-	row := r.Pool.QueryRow(ctx, query, email)
-	var user models.User
-	err := row.Scan(
-		&user.UserID, &user.Username, &user.Email, &user.PasswordHash, &user.Name,
-		&user.AuthProvider, &user.ProviderUserID,
-		&user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy,
-		&user.DeletedAt, &user.RefreshTokenHash, &user.RefreshTokenExpiryTime,
-	)
+	query := ` WHERE email = $1 AND deleted_at IS NULL LIMIT 1`
+	users, err := r.getUsers(ctx, query, email)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.NewNotFoundError("user not found")
-		}
-		return nil, apperrors.NewAppError(500, "failed to scan user by email", err)
+		return nil, err
 	}
-	domainUser := mapping.ToDomainUser(user)
-	return &domainUser, nil
+	if len(users) == 0 {
+		return nil, apperrors.ErrNotFound
+	}
+	return &users[0], nil
 }
 
 // FindUserByProvider fetches a user by auth provider and provider user ID, then maps to domain.User
 func (r *PgxUserRepository) FindUserByProviderDetails(ctx context.Context, authProvider string, providerUserID string) (*domain.User, error) {
-	query := `SELECT user_id, username, email, password_hash, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, deleted_at, refresh_token_hash, refresh_token_expiry_time FROM users WHERE auth_provider = $1 AND provider_user_id = $2 AND deleted_at IS NULL LIMIT 1`
-	row := r.Pool.QueryRow(ctx, query, authProvider, providerUserID)
-	var user models.User
-	err := row.Scan(
-		&user.UserID, &user.Username, &user.Email, &user.PasswordHash, &user.Name,
-		&user.AuthProvider, &user.ProviderUserID,
-		&user.CreatedAt, &user.CreatedBy, &user.LastUpdatedAt, &user.LastUpdatedBy,
-		&user.DeletedAt, &user.RefreshTokenHash, &user.RefreshTokenExpiryTime,
-	)
+	query := ` WHERE auth_provider = $1 AND provider_user_id = $2 AND deleted_at IS NULL LIMIT 1`
+	users, err := r.getUsers(ctx, query, authProvider, providerUserID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.NewNotFoundError("user not found")
-		}
-		return nil, apperrors.NewAppError(500, "failed to scan user by provider details", err)
+		return nil, err
 	}
-	domainUser := mapping.ToDomainUser(user)
-	return &domainUser, nil
+	if len(users) == 0 {
+		return nil, apperrors.ErrNotFound
+	}
+	return &users[0], nil
 }
 
-func (r *PgxUserRepository) SaveUser(ctx context.Context, user domain.User) error {
-	modelUser := mapping.ToModelUser(user)
+func (r *PgxUserRepository) SaveUser(ctx context.Context, user *domain.User) error {
+	modelUser := mapping.ToModelUser(*user)
 	query := `
-        INSERT INTO users (user_id, username, email, password_hash, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, refresh_token_hash, refresh_token_expiry_time)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-        ON CONFLICT (user_id) DO UPDATE SET
-            username = EXCLUDED.username,
-            email = EXCLUDED.email,
-            password_hash = EXCLUDED.password_hash,
-            name = EXCLUDED.name,
-            auth_provider = EXCLUDED.auth_provider,
-            provider_user_id = EXCLUDED.provider_user_id,
-            last_updated_at = EXCLUDED.last_updated_at,
-            last_updated_by = EXCLUDED.last_updated_by,
-            refresh_token_hash = EXCLUDED.refresh_token_hash,
-            refresh_token_expiry_time = EXCLUDED.refresh_token_expiry_time
-        WHERE users.deleted_at IS NULL; -- Ensure we don't update a soft-deleted user
+        INSERT INTO users (user_id, username, email, password_hash, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, refresh_token_hash, refresh_token_expiry_time, version)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 1);
     `
-	// Note: For ON CONFLICT (email) DO NOTHING or DO UPDATE, we need to handle potential races and unique constraint violations more carefully.
-	// If email needs to be unique and updatable, separate logic or error handling for unique violation might be needed.
-
 	_, err := r.Pool.Exec(ctx, query,
 		modelUser.UserID,
 		modelUser.Username,
@@ -154,30 +122,15 @@ func (r *PgxUserRepository) SaveUser(ctx context.Context, user domain.User) erro
 }
 
 func (r *PgxUserRepository) FindUserByID(ctx context.Context, userID string) (*domain.User, error) {
-	query := `
-        SELECT user_id, username, email, password_hash, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, deleted_at, refresh_token_hash, refresh_token_expiry_time
-        FROM users
-        WHERE user_id = $1 AND deleted_at IS NULL
-        LIMIT 1;
-    `
-	row := r.Pool.QueryRow(ctx, query, userID)
-	var modelUser models.User
-	err := row.Scan(
-		&modelUser.UserID, &modelUser.Username, &modelUser.Email, &modelUser.PasswordHash, &modelUser.Name,
-		&modelUser.AuthProvider, &modelUser.ProviderUserID,
-		&modelUser.CreatedAt, &modelUser.CreatedBy, &modelUser.LastUpdatedAt, &modelUser.LastUpdatedBy,
-		&modelUser.DeletedAt, &modelUser.RefreshTokenHash, &modelUser.RefreshTokenExpiryTime,
-	)
-
+	query := ` WHERE user_id = $1 AND deleted_at IS NULL LIMIT 1`
+	users, err := r.getUsers(ctx, query, userID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) { // Use errors.Is for pgx.ErrNoRows
-			return nil, apperrors.NewNotFoundError("user not found")
-		}
-		return nil, apperrors.NewAppError(500, "failed to scan user by ID", err)
+		return nil, err
 	}
-
-	domainUser := mapping.ToDomainUser(modelUser)
-	return &domainUser, nil
+	if len(users) == 0 {
+		return nil, apperrors.ErrNotFound
+	}
+	return &users[0], nil
 }
 
 func (r *PgxUserRepository) FindUsers(ctx context.Context, limit int, offset int) ([]domain.User, error) {
@@ -190,38 +143,21 @@ func (r *PgxUserRepository) FindUsers(ctx context.Context, limit int, offset int
 		offset = 0
 	}
 
-	query := `
-        SELECT user_id, username, email, name, auth_provider, provider_user_id, created_at, created_by, last_updated_at, last_updated_by, deleted_at
-        FROM users
-        WHERE deleted_at IS NULL
-        ORDER BY created_at DESC -- Or name, or user_id
-        LIMIT $1 OFFSET $2;
-    `
-	rows, err := r.Pool.Query(ctx, query, limit, offset)
+	query := ` WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+	users, err := r.getUsers(ctx, query, limit, offset)
 	if err != nil {
 		return nil, apperrors.NewAppError(500, "failed to query users", err)
 	}
-	defer rows.Close()
 
-	// pgx.CollectRows will scan into the fields of models.User based on their names or order.
-	// Ensure the SELECT statement matches the fields expected by pgx.RowToStructByName or the scan order.
-	modelUsers, err := pgx.CollectRows(rows, pgx.RowToStructByName[models.User])
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) { // It's possible to get no rows, which is not an error for a list.
-			return []domain.User{}, nil
-		}
-		return nil, apperrors.NewAppError(500, "failed to collect user rows", err)
-	}
-
-	return mapping.ToDomainUserSlice(modelUsers), nil
+	return users, nil
 }
 
-func (r *PgxUserRepository) UpdateUser(ctx context.Context, user domain.User) error {
-	modelUser := mapping.ToModelUser(user)
+func (r *PgxUserRepository) UpdateUser(ctx context.Context, existingUser *domain.User) error {
+	modelUser := mapping.ToModelUser(*existingUser)
 	query := `
         UPDATE users
-        SET name = $1, email = $2, username = $3, auth_provider = $4, provider_user_id = $5, last_updated_at = $6, last_updated_by = $7
-        WHERE user_id = $8 AND deleted_at IS NULL;
+        SET name = $1, email = $2, username = $3, auth_provider = $4, provider_user_id = $5, last_updated_at = $6, last_updated_by = $7, version = version + 1
+        WHERE user_id = $8 AND version = $9;
     `
 	cmdTag, err := r.Pool.Exec(ctx, query,
 		modelUser.Name,
@@ -232,82 +168,62 @@ func (r *PgxUserRepository) UpdateUser(ctx context.Context, user domain.User) er
 		modelUser.LastUpdatedAt,
 		modelUser.LastUpdatedBy,
 		modelUser.UserID,
+		modelUser.Version,
 	)
 	if err != nil {
 		return apperrors.NewAppError(500, "failed to execute update user query", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return apperrors.NewNotFoundError("user not found or already deleted") // Use app error
+		return apperrors.NewAppError(409, "optimistic lock failed for user "+existingUser.UserID, nil)
 	}
 	return nil
 }
 
-func (r *PgxUserRepository) MarkUserDeleted(ctx context.Context, userID string, deletedAt time.Time, deletedBy string) error {
+func (r *PgxUserRepository) MarkUserDeleted(ctx context.Context, existingUser *domain.User, deletedBy string) error {
 	query := `
         UPDATE users
-        SET deleted_at = $1, last_updated_at = $1, last_updated_by = $2
-        WHERE user_id = $3 AND deleted_at IS NULL;
+        SET deleted_at = $1, last_updated_at = $1, last_updated_by = $2, version = version + 1
+        WHERE user_id = $3 AND version = $4;
     `
-	cmdTag, err := r.Pool.Exec(ctx, query, deletedAt, deletedBy, userID)
+	cmdTag, err := r.Pool.Exec(ctx, query, time.Now(), deletedBy, existingUser.UserID, existingUser.Version)
 	if err != nil {
 		return apperrors.NewAppError(500, "failed to mark user as deleted", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
-		// User might not exist or was already deleted
-		return apperrors.NewNotFoundError("user not found or already deleted")
+		return apperrors.NewAppError(409, "optimistic lock failed for user "+existingUser.UserID, nil)
 	}
 	return nil
 }
 
-func (r *PgxUserRepository) UpdateRefreshToken(ctx context.Context, userID string, refreshTokenHash string, refreshTokenExpiryTime time.Time) error {
+func (r *PgxUserRepository) UpdateRefreshToken(ctx context.Context, existingUser *domain.User, refreshTokenHash string, refreshTokenExpiryTime time.Time) error {
 	now := time.Now()
 	query := `
 		UPDATE users 
-		SET refresh_token_hash = $1, refresh_token_expiry_time = $2, last_updated_at = $3, last_updated_by = $4 
-		WHERE user_id = $5 AND deleted_at IS NULL;
+		SET refresh_token_hash = $1, refresh_token_expiry_time = $2, last_updated_at = $3, last_updated_by = $4, version = version + 1
+		WHERE user_id = $5 AND version = $6;
 	`
-	cmdTag, err := r.Pool.Exec(ctx, query, refreshTokenHash, refreshTokenExpiryTime, now, userID, userID)
+	cmdTag, err := r.Pool.Exec(ctx, query, refreshTokenHash, refreshTokenExpiryTime, now, existingUser.UserID, existingUser.UserID, existingUser.Version)
 	if err != nil {
-		return apperrors.NewAppError(500, "failed to update refresh token for user "+userID, err)
+		return apperrors.NewAppError(500, "failed to update refresh token for user "+existingUser.UserID, err)
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return apperrors.NewNotFoundError("user not found or already deleted when updating refresh token for user "+userID)
+		return apperrors.NewAppError(409, "optimistic lock failed for user "+existingUser.UserID, nil)
 	}
 	return nil
 }
 
-func (r *PgxUserRepository) ClearRefreshToken(ctx context.Context, userID string) error {
+func (r *PgxUserRepository) ClearRefreshToken(ctx context.Context, existingUser *domain.User) error {
 	query := `
 		UPDATE users
-		SET refresh_token_hash = NULL, refresh_token_expiry_time = NULL
-		WHERE user_id = $1;
+		SET refresh_token_hash = NULL, refresh_token_expiry_time = NULL, version = version + 1
+		WHERE user_id = $1 AND version = $2;
 	`
-	cmdTag, err := r.Pool.Exec(ctx, query, userID)
+	cmdTag, err := r.Pool.Exec(ctx, query, existingUser.UserID, existingUser.Version)
 	if err != nil {
-		return apperrors.NewAppError(500, "failed to clear refresh token for user "+userID, err)
+		return apperrors.NewAppError(500, "failed to clear refresh token for user "+existingUser.UserID, err)
 	}
 	if cmdTag.RowsAffected() == 0 {
-		// This could mean the user was not found, or no update was needed.
-		// Depending on strictness, this could be an apperrors.ErrNotFound or just logged.
-		// For now, we'll consider it not an error if the user simply didn't exist or had no token.
-		// If an active user is expected, this might warrant an error.
-		// log.Printf("ClearRefreshToken: no rows affected for user %s", userID) // Optional logging
+		return apperrors.NewAppError(409, "optimistic lock failed for user "+existingUser.UserID, nil)
 	}
 	return nil
-}
-
-func (r *PgxUserRepository) UserExists(ctx context.Context, userID string) (bool, error) {
-	query := `
-		SELECT EXISTS(
-			SELECT 1
-			FROM users
-			WHERE user_id = $1 AND deleted_at IS NULL
-		);
-	`
-	var exists bool
-	err := r.Pool.QueryRow(ctx, query, userID).Scan(&exists)
-	if err != nil {
-		return false, apperrors.NewAppError(500, "failed to check if user exists", err)
-	}
-	return exists, nil
 }

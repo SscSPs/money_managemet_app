@@ -106,7 +106,7 @@ func (s *userService) CreateUser(ctx context.Context, req dto.CreateUserRequest)
 
 	// Save the new user to the repository
 	logger.Info("Attempting to save new user", "username", user.Username, "user_id", user.UserID)
-	err = s.userRepo.SaveUser(ctx, *user)
+	err = s.userRepo.SaveUser(ctx, user)
 	if err != nil {
 		logger.Error("Failed to save new user to repository", "username", user.Username, "error", err)
 		return nil, fmt.Errorf("failed to save user: %w", err)
@@ -191,7 +191,7 @@ func (s *userService) UpdateUser(ctx context.Context, userID string, req dto.Upd
 	existingUser.LastUpdatedAt = time.Now()
 	existingUser.LastUpdatedBy = updaterUserID
 
-	err = s.userRepo.UpdateUser(ctx, *existingUser)
+	err = s.userRepo.UpdateUser(ctx, existingUser)
 	if err != nil {
 		logger.Error("Failed to update user in repository", "user_id", existingUser.UserID, "error", err)
 		return nil, fmt.Errorf("error updating user: %w", err)
@@ -203,11 +203,10 @@ func (s *userService) UpdateUser(ctx context.Context, userID string, req dto.Upd
 
 func (s *userService) DeleteUser(ctx context.Context, userID string, deleterUserID string) error {
 	logger := middleware.GetLoggerFromCtx(ctx)
-	now := time.Now()
 	logger.Info("Attempting to delete user", "user_id_to_delete", userID, "deleter_user_id", deleterUserID)
 
 	// First, check if the user exists to provide a clearer error if not.
-	_, err := s.userRepo.FindUserByID(ctx, userID)
+	existingUser, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNotFound) {
 			logger.Warn("User to delete not found", "user_id", userID)
@@ -220,7 +219,7 @@ func (s *userService) DeleteUser(ctx context.Context, userID string, deleterUser
 	// Proceed with marking the user as deleted
 	// The MarkUserDeleted method in the repo should handle setting DeletedAt, etc.
 	// Assuming the repository method handles the actual deletion marking.
-	err = s.userRepo.MarkUserDeleted(ctx, userID, now, deleterUserID)
+	err = s.userRepo.MarkUserDeleted(ctx, existingUser, deleterUserID)
 	if err != nil {
 		logger.Error("Failed to delete user from repository", "user_id", userID, "error", err)
 		return fmt.Errorf("error deleting user: %w", err)
@@ -269,7 +268,7 @@ func (s *userService) UpdateRefreshToken(ctx context.Context, userID string, ref
 	logger := middleware.GetLoggerFromCtx(ctx)
 	logger.Info("Attempting to update refresh token", "user_id", userID)
 
-	_, err := s.userRepo.FindUserByID(ctx, userID)
+	existingUser, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNotFound) {
 			logger.Warn("User not found for refresh token update", "user_id", userID)
@@ -279,7 +278,7 @@ func (s *userService) UpdateRefreshToken(ctx context.Context, userID string, ref
 		return err // Return original error (ErrNotFound or other)
 	}
 
-	err = s.userRepo.UpdateRefreshToken(ctx, userID, refreshTokenHash, refreshTokenExpiry)
+	err = s.userRepo.UpdateRefreshToken(ctx, existingUser, refreshTokenHash, refreshTokenExpiry)
 	if err != nil {
 		logger.Error("Failed to update user with refresh token in repository", "user_id", userID, "error", err)
 		return fmt.Errorf("%w: failed to update user with refresh token: %v", apperrors.ErrInternal, err)
@@ -297,7 +296,17 @@ func (s *userService) ClearRefreshToken(ctx context.Context, userID string) erro
 		return fmt.Errorf("%w: userID cannot be empty", apperrors.ErrBadRequest)
 	}
 
-	err := s.userRepo.ClearRefreshToken(ctx, userID)
+	existingUser, err := s.userRepo.FindUserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("User not found for refresh token update", "user_id", userID)
+		} else {
+			logger.Error("Error finding user for refresh token update from repository", "user_id", userID, "error", err)
+		}
+		return err // Return original error (ErrNotFound or other)
+	}
+
+	err = s.userRepo.ClearRefreshToken(ctx, existingUser)
 	if err != nil {
 		logger.Error("Failed to clear refresh token in repository", "user_id", userID, "error", err)
 		// Depending on repo implementation, an error here might mean user not found or DB error.
@@ -398,7 +407,7 @@ func (s *userService) CreateOAuthUser(ctx context.Context, name, email, authProv
 		}
 	}
 
-	err = s.userRepo.SaveUser(ctx, *user)
+	err = s.userRepo.SaveUser(ctx, user)
 	if err != nil {
 		logger.Error("Error saving new OAuth user to repository", "email", email, "auth_provider", authProviderStr, "provider_user_id", providerUserID, "error", err)
 		return nil, fmt.Errorf("error saving OAuth user: %w", err)
@@ -433,7 +442,7 @@ func (s *userService) UpdateUserProviderDetails(ctx context.Context, userID stri
 		user.AuditFields.LastUpdatedAt = time.Now()
 		user.AuditFields.LastUpdatedBy = userID // Or a system ID, or specific updater if available
 		logger.Info("Applying updates to user provider details in repository", "user_id", userID)
-		err = s.userRepo.UpdateUser(ctx, *user)
+		err = s.userRepo.UpdateUser(ctx, user)
 		if err != nil {
 			logger.Error("Error updating user provider details in repository", "user_id", userID, "error", err)
 			return nil, fmt.Errorf("error updating user: %w", err)

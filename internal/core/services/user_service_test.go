@@ -25,28 +25,25 @@ type MockUserRepository struct {
 	UpdateUserFn                func(ctx context.Context, user domain.User) error
 	CreateUserFn                func(ctx context.Context, user domain.User) error
 	FindUserByUsernameFn        func(ctx context.Context, username string) (*domain.User, error)
-	UpdateRefreshTokenFn        func(ctx context.Context, userID string, refreshTokenHash string, refreshTokenExpiryTime time.Time) error
-	ClearRefreshTokenFn         func(ctx context.Context, userID string) error
-	DeleteUserFn                func(ctx context.Context, userID string) error
+	UpdateRefreshTokenFn        func(ctx context.Context, user *domain.User, refreshTokenHash string, refreshTokenExpiryTime time.Time) error
+	ClearRefreshTokenFn         func(ctx context.Context, user *domain.User) error
+	DeleteUserFn                func(ctx context.Context, user *domain.User) error
 	GetUserByUsernameFn         func(ctx context.Context, username string) (*domain.User, error)
 	FindUserByEmailFn           func(ctx context.Context, email string) (*domain.User, error)
 	FindUserByProviderDetailsFn func(ctx context.Context, authProvider string, providerUserID string) (*domain.User, error)
-	MarkUserDeletedFn           func(ctx context.Context, userID string, deletedAt time.Time, deleterUserID string) error
+	MarkUserDeletedFn           func(ctx context.Context, user *domain.User, deleterUserID string) error
 	BeginFn                     func(ctx context.Context) (pgx.Tx, error)
 	CommitFn                    func(ctx context.Context, tx pgx.Tx) error
 	RollbackFn                  func(ctx context.Context, tx pgx.Tx) error
 }
 
-func (m *MockUserRepository) SaveUser(ctx context.Context, user domain.User) error {
-	if m.CreateUserFn != nil {
-		return m.CreateUserFn(ctx, user)
-	}
+func (m *MockUserRepository) SaveUser(ctx context.Context, user *domain.User) error {
 	args := m.Called(ctx, user)
 	return args.Error(0)
 }
 
 // CreateUser is an alias for SaveUser to maintain backward compatibility
-func (m *MockUserRepository) CreateUser(ctx context.Context, user domain.User) error {
+func (m *MockUserRepository) CreateUser(ctx context.Context, user *domain.User) error {
 	return m.SaveUser(ctx, user)
 }
 
@@ -74,26 +71,17 @@ func (m *MockUserRepository) FindUsers(ctx context.Context, limit, offset int) (
 	return users, args.Error(1)
 }
 
-func (m *MockUserRepository) UpdateUser(ctx context.Context, user domain.User) error {
-	if m.UpdateUserFn != nil {
-		return m.UpdateUserFn(ctx, user)
-	}
+func (m *MockUserRepository) UpdateUser(ctx context.Context, user *domain.User) error {
 	args := m.Called(ctx, user)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) MarkUserDeleted(ctx context.Context, userID string, deletedAt time.Time, deleterUserID string) error {
-	if m.MarkUserDeletedFn != nil {
-		return m.MarkUserDeletedFn(ctx, userID, deletedAt, deleterUserID)
-	}
-	args := m.Called(ctx, userID, deletedAt, deleterUserID)
+func (m *MockUserRepository) MarkUserDeleted(ctx context.Context, user *domain.User, deleterUserID string) error {
+	args := m.Called(ctx, user, deleterUserID)
 	return args.Error(0)
 }
 
 func (m *MockUserRepository) FindUserByUsername(ctx context.Context, username string) (*domain.User, error) {
-	if m.FindUserByUsernameFn != nil {
-		return m.FindUserByUsernameFn(ctx, username)
-	}
 	args := m.Called(ctx, username)
 	var user *domain.User
 	if args.Get(0) != nil {
@@ -102,34 +90,22 @@ func (m *MockUserRepository) FindUserByUsername(ctx context.Context, username st
 	return user, args.Error(1)
 }
 
-func (m *MockUserRepository) UpdateRefreshToken(ctx context.Context, userID string, refreshTokenHash string, refreshTokenExpiryTime time.Time) error {
-	if m.UpdateRefreshTokenFn != nil {
-		return m.UpdateRefreshTokenFn(ctx, userID, refreshTokenHash, refreshTokenExpiryTime)
-	}
-	args := m.Called(ctx, userID, refreshTokenHash, refreshTokenExpiryTime)
+func (m *MockUserRepository) UpdateRefreshToken(ctx context.Context, user *domain.User, refreshTokenHash string, refreshTokenExpiryTime time.Time) error {
+	args := m.Called(ctx, user, refreshTokenHash, refreshTokenExpiryTime)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) ClearRefreshToken(ctx context.Context, userID string) error {
-	if m.ClearRefreshTokenFn != nil {
-		return m.ClearRefreshTokenFn(ctx, userID)
-	}
-	args := m.Called(ctx, userID)
+func (m *MockUserRepository) ClearRefreshToken(ctx context.Context, user *domain.User) error {
+	args := m.Called(ctx, user)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) DeleteUser(ctx context.Context, userID string) error {
-	if m.DeleteUserFn != nil {
-		return m.DeleteUserFn(ctx, userID)
-	}
-	args := m.Called(ctx, userID)
+func (m *MockUserRepository) DeleteUser(ctx context.Context, user *domain.User) error {
+	args := m.Called(ctx, user)
 	return args.Error(0)
 }
 
 func (m *MockUserRepository) GetUserByUsername(ctx context.Context, username string) (*domain.User, error) {
-	if m.GetUserByUsernameFn != nil {
-		return m.GetUserByUsernameFn(ctx, username)
-	}
 	args := m.Called(ctx, username)
 	var user *domain.User
 	if args.Get(0) != nil {
@@ -221,7 +197,7 @@ func (suite *UserServiceTestSuite) TestCreateUser_Success() {
 	suite.mockUserRepo.On("FindUserByUsername", ctx, username).Return(nil, apperrors.ErrNotFound).Once()
 	// Mock: SaveUser (called internally by service's CreateUser) should succeed
 	// It receives a domain.User after the service maps the DTO and hashes password
-	suite.mockUserRepo.On("SaveUser", ctx, mock.MatchedBy(func(user domain.User) bool {
+	suite.mockUserRepo.On("SaveUser", ctx, mock.MatchedBy(func(user *domain.User) bool {
 		return user.Username == username &&
 			user.Name == name &&
 			user.PasswordHash != nil &&
@@ -265,7 +241,7 @@ func (suite *UserServiceTestSuite) TestCreateUser_SaveError() {
 	// Mock: FindUserByUsername should not find the user
 	suite.mockUserRepo.On("FindUserByUsername", ctx, username).Return(nil, apperrors.ErrNotFound).Once()
 	// Mock: SaveUser (called internally by service's CreateUser) should fail
-	suite.mockUserRepo.On("SaveUser", ctx, mock.AnythingOfType("domain.User")).Return(expectedErr).Once()
+	suite.mockUserRepo.On("SaveUser", ctx, mock.AnythingOfType("*domain.User")).Return(expectedErr).Once()
 
 	createdUser, err := suite.service.CreateUser(ctx, createUserReq)
 
@@ -388,8 +364,8 @@ func (suite *UserServiceTestSuite) TestUpdateUser_Success() {
 	originalTimestamp := originalUser.LastUpdatedAt
 
 	suite.mockUserRepo.On("FindUserByID", ctx, userID).Return(originalUser, nil).Once()
-	suite.mockUserRepo.On("UpdateUser", ctx, mock.AnythingOfType("domain.User")).Return(nil).Once().Run(func(args mock.Arguments) {
-		userArg := args.Get(1).(domain.User)
+	suite.mockUserRepo.On("UpdateUser", ctx, mock.AnythingOfType("*domain.User")).Return(nil).Once().Run(func(args mock.Arguments) {
+		userArg := args.Get(1).(*domain.User)
 		suite.T().Logf("DEBUG: Comparing times in mock:")
 		suite.T().Logf("  originalTimestamp: %v", originalTimestamp)
 		suite.T().Logf("  userArg.LastUpdatedAt: %v", userArg.LastUpdatedAt)
@@ -460,7 +436,7 @@ func (suite *UserServiceTestSuite) TestUpdateUser_UpdateError() {
 	expectedErr := assert.AnError
 
 	suite.mockUserRepo.On("FindUserByID", ctx, userID).Return(originalUser, nil).Once()
-	suite.mockUserRepo.On("UpdateUser", ctx, mock.AnythingOfType("domain.User")).Return(expectedErr).Once()
+	suite.mockUserRepo.On("UpdateUser", ctx, mock.AnythingOfType("*domain.User")).Return(expectedErr).Once()
 
 	user, err := suite.service.UpdateUser(ctx, userID, req, updaterUserID)
 
@@ -481,7 +457,7 @@ func (suite *UserServiceTestSuite) TestDeleteUser_Success() {
 	}
 
 	suite.mockUserRepo.On("FindUserByID", ctx, userID).Return(existingUser, nil).Once()
-	suite.mockUserRepo.On("MarkUserDeleted", ctx, userID, mock.AnythingOfType("time.Time"), deleterUserID).Return(nil).Once()
+	suite.mockUserRepo.On("MarkUserDeleted", ctx, existingUser, deleterUserID).Return(nil).Once()
 
 	err := suite.service.DeleteUser(ctx, userID, deleterUserID)
 

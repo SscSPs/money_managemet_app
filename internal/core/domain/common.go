@@ -9,4 +9,5 @@ type AuditFields struct {
 	CreatedBy     string    `json:"createdBy"` // UserID Reference
 	LastUpdatedAt time.Time `json:"lastUpdatedAt"`
 	LastUpdatedBy string    `json:"lastUpdatedBy"` // UserID Reference
+	Version       int       `json:"version"`
 }
