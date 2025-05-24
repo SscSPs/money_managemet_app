@@ -12,12 +12,7 @@ func ToModelCurrency(d domain.Currency) models.Currency {
 		Symbol:       d.Symbol,
 		Name:         d.Name,
 		Precision:    d.Precision,
-		AuditFields: models.AuditFields{
-			CreatedAt:     d.CreatedAt,
-			CreatedBy:     d.CreatedBy,
-			LastUpdatedAt: d.LastUpdatedAt,
-			LastUpdatedBy: d.LastUpdatedBy,
-		},
+		AuditFields:  ToModelAuditFields(d.AuditFields),
 	}
 }
 
@@ -28,12 +23,7 @@ func ToDomainCurrency(m models.Currency) domain.Currency {
 		Symbol:       m.Symbol,
 		Name:         m.Name,
 		Precision:    m.Precision,
-		AuditFields: domain.AuditFields{
-			CreatedAt:     m.CreatedAt,
-			CreatedBy:     m.CreatedBy,
-			LastUpdatedAt: m.LastUpdatedAt,
-			LastUpdatedBy: m.LastUpdatedBy,
-		},
+		AuditFields:  ToDomainAuditFields(m.AuditFields),
 	}
 }
 

@@ -17,13 +17,8 @@ func ToModelAccount(d domain.Account) models.Account {
 		ParentAccountID: d.ParentAccountID,
 		Description:     d.Description,
 		IsActive:        d.IsActive,
-		AuditFields: models.AuditFields{
-			CreatedAt:     d.CreatedAt,
-			CreatedBy:     d.CreatedBy,
-			LastUpdatedAt: d.LastUpdatedAt,
-			LastUpdatedBy: d.LastUpdatedBy,
-		},
-		Balance: d.Balance,
+		AuditFields:     ToModelAuditFields(d.AuditFields),
+		Balance:         d.Balance,
 	}
 }
 
@@ -39,13 +34,8 @@ func ToDomainAccount(m models.Account) domain.Account {
 		ParentAccountID: m.ParentAccountID,
 		Description:     m.Description,
 		IsActive:        m.IsActive,
-		AuditFields: domain.AuditFields{
-			CreatedAt:     m.CreatedAt,
-			CreatedBy:     m.CreatedBy,
-			LastUpdatedAt: m.LastUpdatedAt,
-			LastUpdatedBy: m.LastUpdatedBy,
-		},
-		Balance: m.Balance,
+		AuditFields:     ToDomainAuditFields(m.AuditFields),
+		Balance:         m.Balance,
 	}
 }
 

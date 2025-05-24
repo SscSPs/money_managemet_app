@@ -13,12 +13,7 @@ func ToModelExchangeRate(d domain.ExchangeRate) models.ExchangeRate {
 		ToCurrencyCode:   d.ToCurrencyCode,
 		Rate:             d.Rate,
 		DateEffective:    d.DateEffective,
-		AuditFields: models.AuditFields{
-			CreatedAt:     d.CreatedAt,
-			CreatedBy:     d.CreatedBy,
-			LastUpdatedAt: d.LastUpdatedAt,
-			LastUpdatedBy: d.LastUpdatedBy,
-		},
+		AuditFields:      ToModelAuditFields(d.AuditFields),
 	}
 }
 
@@ -30,11 +25,6 @@ func ToDomainExchangeRate(m models.ExchangeRate) domain.ExchangeRate {
 		ToCurrencyCode:   m.ToCurrencyCode,
 		Rate:             m.Rate,
 		DateEffective:    m.DateEffective,
-		AuditFields: domain.AuditFields{
-			CreatedAt:     m.CreatedAt,
-			CreatedBy:     m.CreatedBy,
-			LastUpdatedAt: m.LastUpdatedAt,
-			LastUpdatedBy: m.LastUpdatedBy,
-		},
+		AuditFields:      ToDomainAuditFields(m.AuditFields),
 	}
 }

@@ -17,12 +17,7 @@ func ToModelJournal(d domain.Journal) models.Journal {
 		OriginalJournalID:  d.OriginalJournalID,
 		ReversingJournalID: d.ReversingJournalID,
 		Amount:             d.Amount,
-		AuditFields: models.AuditFields{
-			CreatedAt:     d.CreatedAt,
-			CreatedBy:     d.CreatedBy,
-			LastUpdatedAt: d.LastUpdatedAt,
-			LastUpdatedBy: d.LastUpdatedBy,
-		},
+		AuditFields:        ToModelAuditFields(d.AuditFields),
 	}
 }
 
@@ -38,31 +33,21 @@ func ToDomainJournal(m models.Journal) domain.Journal {
 		OriginalJournalID:  m.OriginalJournalID,
 		ReversingJournalID: m.ReversingJournalID,
 		Amount:             m.Amount,
-		AuditFields: domain.AuditFields{
-			CreatedAt:     m.CreatedAt,
-			CreatedBy:     m.CreatedBy,
-			LastUpdatedAt: m.LastUpdatedAt,
-			LastUpdatedBy: m.LastUpdatedBy,
-		},
+		AuditFields:        ToDomainAuditFields(m.AuditFields),
 	}
 }
 
 // ToModelTransaction converts a domain Transaction to a model Transaction
 func ToModelTransaction(d domain.Transaction) models.Transaction {
 	return models.Transaction{
-		TransactionID:   d.TransactionID,
-		JournalID:       d.JournalID,
-		AccountID:       d.AccountID,
-		Amount:          d.Amount,
-		TransactionType: models.TransactionType(d.TransactionType),
-		CurrencyCode:    d.CurrencyCode,
-		Notes:           d.Notes,
-		AuditFields: models.AuditFields{
-			CreatedAt:     d.CreatedAt,
-			CreatedBy:     d.CreatedBy,
-			LastUpdatedAt: d.LastUpdatedAt,
-			LastUpdatedBy: d.LastUpdatedBy,
-		},
+		TransactionID:      d.TransactionID,
+		JournalID:          d.JournalID,
+		AccountID:          d.AccountID,
+		Amount:             d.Amount,
+		TransactionType:    models.TransactionType(d.TransactionType),
+		CurrencyCode:       d.CurrencyCode,
+		Notes:              d.Notes,
+		AuditFields:        ToModelAuditFields(d.AuditFields),
 		RunningBalance:     d.RunningBalance,
 		JournalDate:        d.JournalDate,
 		JournalDescription: d.JournalDescription,
@@ -72,19 +57,14 @@ func ToModelTransaction(d domain.Transaction) models.Transaction {
 // ToDomainTransaction converts a model Transaction to a domain Transaction
 func ToDomainTransaction(m models.Transaction) domain.Transaction {
 	return domain.Transaction{
-		TransactionID:   m.TransactionID,
-		JournalID:       m.JournalID,
-		AccountID:       m.AccountID,
-		Amount:          m.Amount,
-		TransactionType: domain.TransactionType(m.TransactionType),
-		CurrencyCode:    m.CurrencyCode,
-		Notes:           m.Notes,
-		AuditFields: domain.AuditFields{
-			CreatedAt:     m.CreatedAt,
-			CreatedBy:     m.CreatedBy,
-			LastUpdatedAt: m.LastUpdatedAt,
-			LastUpdatedBy: m.LastUpdatedBy,
-		},
+		TransactionID:      m.TransactionID,
+		JournalID:          m.JournalID,
+		AccountID:          m.AccountID,
+		Amount:             m.Amount,
+		TransactionType:    domain.TransactionType(m.TransactionType),
+		CurrencyCode:       m.CurrencyCode,
+		Notes:              m.Notes,
+		AuditFields:        ToDomainAuditFields(m.AuditFields),
 		RunningBalance:     m.RunningBalance,
 		JournalDate:        m.JournalDate,
 		JournalDescription: m.JournalDescription,

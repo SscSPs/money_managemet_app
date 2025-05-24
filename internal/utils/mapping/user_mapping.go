@@ -18,14 +18,8 @@ func ToModelUser(d domain.User) models.User {
 		AuthProvider:     sql.NullString{String: string(d.AuthProvider), Valid: string(d.AuthProvider) != ""}, // AuthProvider is valid if not an empty string
 		ProviderUserID:   sql.NullString{String: d.ProviderUserID, Valid: d.ProviderUserID != ""},             // ProviderUserID is valid if not an empty string
 		RefreshTokenHash: sql.NullString{String: d.RefreshTokenHash, Valid: d.RefreshTokenHash != ""},         // RefreshTokenHash is valid if not an empty string
-		AuditFields: models.AuditFields{
-			CreatedAt:     d.CreatedAt,
-			CreatedBy:     d.CreatedBy,
-			LastUpdatedAt: d.LastUpdatedAt,
-			LastUpdatedBy: d.LastUpdatedBy,
-			Version:       d.Version,
-		},
-		DeletedAt: d.DeletedAt,
+		AuditFields:      ToModelAuditFields(d.AuditFields),
+		DeletedAt:        d.DeletedAt,
 	}
 
 	if d.PasswordHash != nil {
@@ -55,14 +49,8 @@ func ToDomainUser(m models.User) domain.User {
 		ProviderUserID:         m.ProviderUserID.String,
 		RefreshTokenHash:       m.RefreshTokenHash.String,
 		RefreshTokenExpiryTime: &m.RefreshTokenExpiryTime.Time,
-		AuditFields: domain.AuditFields{
-			CreatedAt:     m.CreatedAt,
-			CreatedBy:     m.CreatedBy,
-			LastUpdatedAt: m.LastUpdatedAt,
-			LastUpdatedBy: m.LastUpdatedBy,
-			Version:       m.Version,
-		},
-		DeletedAt: m.DeletedAt,
+		AuditFields:            ToDomainAuditFields(m.AuditFields),
+		DeletedAt:              m.DeletedAt,
 	}
 
 	return domainUser
