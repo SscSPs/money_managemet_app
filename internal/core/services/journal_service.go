@@ -112,7 +112,7 @@ func (s *journalService) validateJournalBalance(transactions []domain.Transactio
 // calculateJournalAmount computes the true economic value of a journal.
 // For a balanced journal with equal debit and credit sides,
 // we need to pick one side that represents the actual money movement.
-func (s *journalService) calculateJournalAmount(transactions []domain.Transaction, accountTypes map[string]domain.AccountType) decimal.Decimal {
+func (s *journalService) calculateJournalAmount(transactions []domain.Transaction) decimal.Decimal {
 	if len(transactions) == 0 {
 		return decimal.Zero
 	}
@@ -121,15 +121,6 @@ func (s *journalService) calculateJournalAmount(transactions []domain.Transactio
 	// This sum represents the total economic value of the journal.
 	totalDebits := decimal.Zero
 	for _, txn := range transactions {
-		// Ensure the account exists in the provided accountTypes map.
-		// This retains a safety check from the original logic, though the accountType itself isn't used in the simplified sum.
-		_, exists := accountTypes[txn.AccountID]
-		if !exists {
-			// If a logger was available and this scenario is unexpected, it could be logged.
-			// e.g., s.logger.Warnf("Transaction for unknown account ID %s skipped in amount calculation", txn.AccountID)
-			continue
-		}
-
 		if txn.TransactionType == domain.Debit {
 			totalDebits = totalDebits.Add(txn.Amount)
 		}
@@ -268,7 +259,7 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 	}
 
 	// Calculate the total amount of the journal using account types information
-	totalAmount := s.calculateJournalAmount(domainTransactions, accountTypes)
+	totalAmount := s.calculateJournalAmount(domainTransactions)
 	domainJournal.Amount = totalAmount
 
 	// Pass balance changes to the repository method
@@ -549,14 +540,13 @@ func uniqueStrings(input []string) []string {
 	return result
 }
 
-// ReverseJournal creates a new journal entry that reverses a previously posted journal.
-func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string, journalID string, userID string) (*domain.Journal, error) {
+func (s *journalService) validateReverseJournalActionAndGetOriginalJournal(ctx context.Context, journalID string, userID string, workplaceID string) (*domain.Journal, []domain.Transaction, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
 	// 1. Authorize user action (e.g., require member role)
 	if err := s.workplaceSvc.AuthorizeUserAction(ctx, userID, workplaceID, domain.RoleMember); err != nil {
 		logger.Warn("Authorization failed for ReverseJournal", "error", err)
-		return nil, err // Error already contains appropriate type (e.g., ErrForbidden)
+		return nil, nil, err // Error already contains appropriate type (e.g., ErrForbidden)
 	}
 
 	// 2. Fetch the original journal
@@ -564,32 +554,38 @@ func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 	if err != nil {
 		if errors.Is(err, apperrors.ErrNotFound) {
 			logger.Warn("Original journal not found for reversal")
-			return nil, apperrors.ErrNotFound
+			return nil, nil, apperrors.ErrNotFound
 		}
 		logger.Error("Failed to fetch original journal for reversal", "error", err)
-		return nil, fmt.Errorf("failed to retrieve original journal: %w", err)
+		return nil, nil, fmt.Errorf("failed to retrieve original journal: %w", err)
 	}
 
 	// 3. Validate the original journal
 	if originalJournal.WorkplaceID != workplaceID {
 		logger.Warn("Attempted to reverse journal from wrong workplace")
-		return nil, apperrors.ErrNotFound // Treat as not found in this context
+		return nil, nil, apperrors.ErrNotFound // Treat as not found in this context
 	}
 	if originalJournal.Status != domain.Posted {
 		logger.Warn("Attempted to reverse non-posted journal", "status", originalJournal.Status)
-		return nil, fmt.Errorf("%w: journal status is %s, expected POSTED", apperrors.ErrConflict, originalJournal.Status)
+		return nil, nil, fmt.Errorf("%w: journal status is %s, expected POSTED", apperrors.ErrConflict, originalJournal.Status)
 	}
 
 	// 4. Fetch original transactions
 	originalTransactions, err := s.journalRepo.FindTransactionsByJournalID(ctx, journalID)
 	if err != nil {
 		logger.Error("Failed to fetch original transactions for reversal", "error", err)
-		return nil, fmt.Errorf("failed to retrieve original transactions: %w", err)
+		return nil, nil, fmt.Errorf("failed to retrieve original transactions: %w", err)
 	}
-	if len(originalTransactions) < 2 {
-		// This should ideally not happen for a POSTED journal, but check anyway
-		logger.Error("Original posted journal has less than 2 transactions", "transaction_count", len(originalTransactions))
-		return nil, fmt.Errorf("internal consistency error: original journal %s has insufficient transactions", journalID)
+	return originalJournal, originalTransactions, nil
+}
+
+// ReverseJournal creates a new journal entry that reverses a previously posted journal.
+func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string, journalID string, userID string) (*domain.Journal, error) {
+	logger := middleware.GetLoggerFromCtx(ctx)
+
+	originalJournal, originalTransactions, err := s.validateReverseJournalActionAndGetOriginalJournal(ctx, journalID, userID, workplaceID)
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now()
@@ -624,9 +620,9 @@ func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 
 	// 6. Create reversed transaction domain objects
 	reversingTransactions := make([]domain.Transaction, len(originalTransactions))
-	accountIDs := make(map[string]struct{})
+	accIDList := make([]string, 0)
 	for i, origTx := range originalTransactions {
-		accountIDs[origTx.AccountID] = struct{}{}
+		accIDList = append(accIDList, origTx.AccountID)
 		newTxType := domain.Credit // Flip type
 		if origTx.TransactionType == domain.Credit {
 			newTxType = domain.Debit
@@ -651,10 +647,6 @@ func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 	}
 
 	// 7. Fetch accounts involved to calculate balance changes
-	accIDList := make([]string, 0, len(accountIDs))
-	for id := range accountIDs {
-		accIDList = append(accIDList, id)
-	}
 	accountsMap, err := s.accountSvc.GetAccountByIDs(ctx, workplaceID, accIDList, userID)
 	if err != nil {
 		logger.Error("Failed to fetch accounts for reversal balance calculation", "error", err)
@@ -662,12 +654,7 @@ func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string,
 	}
 
 	// Calculate the total amount of the reversal journal using account types
-	accountTypes := make(map[string]domain.AccountType)
-	for id, acc := range accountsMap {
-		accountTypes[id] = acc.AccountType
-	}
-	totalAmount := s.calculateJournalAmount(reversingTransactions, accountTypes)
-	reversingJournal.Amount = totalAmount
+	reversingJournal.Amount = originalJournal.Amount
 
 	// 8. Calculate balance changes for the reversing journal
 	balanceChanges := make(map[string]decimal.Decimal)
