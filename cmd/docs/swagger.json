@@ -1782,6 +1782,20 @@
                         "description": "Offset for pagination",
                         "name": "offset",
                         "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Whether to include reversed and reversing journals",
+                        "name": "includeReversals",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Whether to include transactions in the response",
+                        "name": "includeTxn",
+                        "in": "query"
                     }
                 ],
                 "responses": {

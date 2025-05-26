@@ -345,19 +345,38 @@ func (j *journalService) ListJournals(ctx context.Context, workplaceID string, u
 	}
 
 	// Fetch journals from repository using token
-	// Note: Assuming params dto.ListJournalsParams is updated to include NextToken
 	journals, nextToken, err := j.journalRepo.ListJournalsByWorkplace(ctx, workplaceID, params.Limit, params.NextToken, params.IncludeReversals)
 	if err != nil {
 		logger.Error("Failed to list journals from repository", "error", err)
-		// Don't wrap; return specific error if needed, otherwise the original error
-		return nil, err
+		return nil, fmt.Errorf("failed to retrieve journals: %w", err)
 	}
 
 	// Convert domain journals to DTO responses
 	journalResponses := make([]dto.JournalResponse, len(journals))
+
+	// If transactions are requested, fetch them in a batch for all journals
+	var transactionsMap map[string][]domain.Transaction
+	if params.IncludeTransactions && len(journals) > 0 {
+		journalIDs := make([]string, len(journals))
+		for i, journal := range journals {
+			journalIDs[i] = journal.JournalID
+		}
+		transactionsMap, err = j.journalRepo.FindTransactionsByJournalIDs(ctx, journalIDs)
+		if err != nil {
+			logger.Warn("Failed to fetch transactions for journals", "error", err)
+			// Continue without transactions rather than failing the whole request
+		}
+	}
+
 	for i, journal := range journals {
-		// Ensure transactions are nil/empty for list view unless specifically requested later
-		journal.Transactions = nil
+		// Set transactions if they were requested and available
+		if transactionsMap != nil {
+			if txs, exists := transactionsMap[journal.JournalID]; exists {
+				journal.Transactions = txs
+			}
+		} else {
+			journal.Transactions = nil
+		}
 		journalResponses[i] = dto.ToJournalResponse(&journal)
 	}
 
@@ -367,7 +386,7 @@ func (j *journalService) ListJournals(ctx context.Context, workplaceID string, u
 		NextToken: nextToken,
 	}
 
-	logger.Info("Journals listed successfully", "count", len(journals))
+	logger.Info("Journals listed successfully", "count", len(journals), "includeTxn", params.IncludeTransactions)
 	return resp, nil
 }
 

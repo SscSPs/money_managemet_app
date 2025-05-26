@@ -173,6 +173,8 @@ func (h *journalHandler) getJournal(c *gin.Context) {
 // @Param   workplace_id path string true "Workplace ID"
 // @Param   limit query int false "Limit number of results" default(20)
 // @Param   offset query int false "Offset for pagination" default(0)
+// @Param   includeReversals query boolean false "Whether to include reversed and reversing journals" default(false)
+// @Param   includeTxn query boolean false "Whether to include transactions in the response" default(false)
 // @Success 200 {object} dto.ListJournalsResponse
 // @Failure 400 {object} map[string]string "Missing Workplace ID"
 // @Failure 401 {object} map[string]string "Unauthorized"

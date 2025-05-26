@@ -1749,6 +1749,16 @@ paths:
         in: query
         name: offset
         type: integer
+      - default: false
+        description: Whether to include reversed and reversing journals
+        in: query
+        name: includeReversals
+        type: boolean
+      - default: false
+        description: Whether to include transactions in the response
+        in: query
+        name: includeTxn
+        type: boolean
       produces:
       - application/json
       responses:
