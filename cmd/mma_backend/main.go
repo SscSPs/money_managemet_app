@@ -41,7 +41,9 @@ import (
 // @security BearerAuth
 func main() {
 	// Initialize structured logger
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		AddSource: true,
+	}))
 	slog.SetDefault(logger) // Optional: Set as default logger
 
 	cfg, err := config.LoadConfig()
@@ -113,18 +115,26 @@ func setupGinEngine(logger *slog.Logger, cfg *config.Config) *gin.Engine {
 	}
 	r := gin.New()
 
-	// Global middleware (logging, recovery)
+	// Global middleware (logging, recovery, CORS, etc.)
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowAllOrigins = true // Allow all origins (for development)
 	// You might want to restrict origins in production:
-	// corsConfig.AllowOrigins = []string{\"http://localhost:3000\", \"https://your-frontend.com\"}
+	// corsConfig.AllowOrigins = []string{"http://localhost:3000", "https://your-frontend.com"}
 	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"}
-	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"} // Add Authorization
-	// AllowCredentials can be needed if your frontend sends cookies or auth headers
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
 	corsConfig.AllowCredentials = true
 
-	r.Use(cors.New(corsConfig)) // Use CORS middleware
-	r.Use(middleware.StructuredLoggingMiddleware(logger), gin.Recovery())
+	// Apply middleware in the correct order
+	r.Use(
+		// Recovery middleware first to catch any panics
+		gin.Recovery(),
+
+		// CORS middleware
+		cors.New(corsConfig),
+
+		// Structured logging
+		middleware.StructuredLoggingMiddleware(logger),
+	)
 
 	err := r.SetTrustedProxies(nil) // Set trusted proxies (nil means trust nothing, adjust as needed)
 	if err != nil {
