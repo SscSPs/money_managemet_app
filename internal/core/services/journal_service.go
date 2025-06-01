@@ -173,6 +173,13 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 		if txnReq.Amount.LessThanOrEqual(decimal.Zero) {
 			return nil, fmt.Errorf("%w: transaction amount must be positive for account %s", apperrors.ErrValidation, txnReq.AccountID)
 		}
+
+		// Set transaction date to the provided date or default to journal date
+		transactionDate := req.Date
+		if txnReq.TransactionDate != nil {
+			transactionDate = *txnReq.TransactionDate
+		}
+
 		domainTransactions[i] = domain.Transaction{
 			TransactionID:   uuid.NewString(),
 			JournalID:       journalID, // Link to the new journal
@@ -181,6 +188,7 @@ func (s *journalService) CreateJournal(ctx context.Context, workplaceID string, 
 			TransactionType: txnReq.TransactionType,
 			CurrencyCode:    req.CurrencyCode, // Use journal's currency
 			Notes:           txnReq.Notes,
+			TransactionDate: transactionDate, // Set the transaction date
 			AuditFields: domain.AuditFields{
 				CreatedAt:     now,
 				CreatedBy:     creatorUserID,
@@ -319,6 +327,12 @@ func (s *journalService) GetJournalByID(ctx context.Context, workplaceID string,
 	}
 
 	// Populate the transactions field
+	//add the journal specific details in the transactions
+	for i := range transactions {
+		transactions[i].JournalID = journalID
+		transactions[i].JournalDate = journal.JournalDate
+		transactions[i].JournalDescription = journal.Description
+	}
 	journal.Transactions = transactions
 
 	logger.Debug("Journal and transactions retrieved successfully", slog.String("journal_id", journalID), slog.String("workplace_id", workplaceID), slog.Int("transaction_count", len(transactions)))

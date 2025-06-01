@@ -22,6 +22,7 @@ type CreateTransactionRequest struct {
 	AccountID       string                 `json:"accountID" binding:"required,uuid"`
 	Amount          decimal.Decimal        `json:"amount" binding:"required,decimal_gtz"` // Use custom validator
 	TransactionType domain.TransactionType `json:"transactionType" binding:"required,oneof=DEBIT CREDIT"`
+	TransactionDate *time.Time             `json:"transactionDate,omitempty"` // Optional, defaults to journal date if not provided
 	Notes           string                 `json:"notes"`
 	// CurrencyCode is inherited from the Journal
 }
@@ -97,6 +98,7 @@ type TransactionResponse struct {
 	TransactionType    domain.TransactionType `json:"transactionType"`
 	CurrencyCode       string                 `json:"currencyCode"`
 	Notes              string                 `json:"notes"`
+	TransactionDate    time.Time              `json:"transactionDate"` // Date of the actual transaction
 	CreatedAt          time.Time              `json:"createdAt"`
 	CreatedBy          string                 `json:"createdBy"`
 	RunningBalance     decimal.Decimal        `json:"runningBalance,omitempty"` // Added running balance
@@ -114,6 +116,7 @@ func ToTransactionResponse(t *domain.Transaction) TransactionResponse {
 		TransactionType:    t.TransactionType,
 		CurrencyCode:       t.CurrencyCode,
 		Notes:              t.Notes,
+		TransactionDate:    t.TransactionDate,
 		CreatedAt:          t.CreatedAt,
 		CreatedBy:          t.CreatedBy,
 		RunningBalance:     t.RunningBalance, // Added running balance

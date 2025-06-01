@@ -3209,6 +3209,10 @@ const docTemplate = `{
                 "notes": {
                     "type": "string"
                 },
+                "transactionDate": {
+                    "description": "Optional, defaults to journal date if not provided",
+                    "type": "string"
+                },
                 "transactionType": {
                     "enum": [
                         "DEBIT",
@@ -3543,6 +3547,10 @@ const docTemplate = `{
                 "runningBalance": {
                     "description": "Added running balance",
                     "type": "number"
+                },
+                "transactionDate": {
+                    "description": "Date of the actual transaction",
+                    "type": "string"
                 },
                 "transactionID": {
                     "type": "string"

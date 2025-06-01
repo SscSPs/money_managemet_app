@@ -126,8 +126,12 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 	// 4. Prepare and Insert Transaction entries with calculated running balances
 	batch := &pgx.Batch{}
 	txnQuery := `
-		INSERT INTO transactions (transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by, running_balance)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+		INSERT INTO transactions (
+			transaction_id, journal_id, account_id, amount, transaction_type, 
+			currency_code, notes, transaction_date, created_at, created_by, 
+			last_updated_at, last_updated_by, running_balance
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
 	`
 	// Keep track of running balance calculation per account within this journal context
 	currentRunningBalances := make(map[string]decimal.Decimal)
@@ -176,6 +180,7 @@ func (r *PgxJournalRepository) SaveJournal(ctx context.Context, journal domain.J
 			modelTxn.TransactionType,
 			modelTxn.CurrencyCode,
 			modelTxn.Notes,
+			modelTxn.TransactionDate, // Include transaction date
 			modelTxn.CreatedAt,
 			modelTxn.CreatedBy,
 			modelTxn.LastUpdatedAt,
@@ -252,10 +257,13 @@ func (r *PgxJournalRepository) FindJournalByID(ctx context.Context, journalID st
 // FindTransactionsByJournalID retrieves all transactions associated with a specific journal.
 func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, journalID string) ([]domain.Transaction, error) {
 	query := `
-		SELECT transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by, running_balance
+		SELECT 
+			transaction_id, journal_id, account_id, amount, transaction_type, 
+			currency_code, notes, transaction_date, created_at, created_by, 
+			last_updated_at, last_updated_by, running_balance
 		FROM transactions
 		WHERE journal_id = $1
-		ORDER BY created_at; -- Or potentially transaction_id for deterministic order
+		ORDER BY transaction_date, created_at; -- Order by transaction date then creation time
 	`
 	rows, err := r.Pool.Query(ctx, query, journalID)
 	if err != nil {
@@ -274,6 +282,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalID(ctx context.Context, 
 			&t.TransactionType,
 			&t.CurrencyCode,
 			&t.Notes,
+			&t.TransactionDate, // Scan the transaction date
 			&t.CreatedAt,
 			&t.CreatedBy,
 			&t.LastUpdatedAt,
@@ -305,15 +314,18 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 
 	// Base query
 	baseQuery := `
-		SELECT t.transaction_id, t.journal_id, t.account_id, t.amount, t.transaction_type, t.currency_code, t.notes, 
-		       t.created_at, t.created_by, t.last_updated_at, t.last_updated_by, t.running_balance, j.journal_date, j.description
+		SELECT 
+			t.transaction_id, t.journal_id, t.account_id, t.amount, t.transaction_type, 
+			t.currency_code, t.notes, t.transaction_date, t.created_at, t.created_by, 
+			t.last_updated_at, t.last_updated_by, t.running_balance, 
+			j.journal_date, j.description
 		FROM transactions t
 		JOIN journals j ON t.journal_id = j.journal_id
 		WHERE t.account_id = $1 AND j.workplace_id = $2 AND j.status = 'POSTED' AND j.original_journal_id IS NULL
 	`
 	// Ordering is crucial and must be stable
-	// We use journal_date DESC, and created_at DESC as a tie-breaker.
-	orderByClause := `ORDER BY j.journal_date DESC, t.created_at DESC`
+	// We use transaction_date DESC, and created_at DESC as a tie-breaker.
+	orderByClause := `ORDER BY t.transaction_date DESC, t.created_at DESC`
 
 	var rows pgx.Rows
 	var err error
@@ -329,7 +341,7 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 
 		// Add cursor condition to WHERE clause
 		// Tuple comparison is concise and efficient in Postgres
-		cursorClause := `AND (j.journal_date, t.created_at) < ($3, $4)`
+		cursorClause := `AND (t.transaction_date, t.created_at) < ($3, $4)`
 		args = append(args, lastJournalDate, lastCreatedAt)
 
 		// Construct the full query with cursor
@@ -365,6 +377,7 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 			&t.TransactionType,
 			&t.CurrencyCode,
 			&t.Notes,
+			&t.TransactionDate, // Scan the transaction date
 			&t.CreatedAt,
 			&t.CreatedBy,
 			&t.LastUpdatedAt,
@@ -395,7 +408,7 @@ func (r *PgxJournalRepository) ListTransactionsByAccountID(ctx context.Context, 
 		lastTxn := transactions[limit-1] // The *actual* last item of the *current* page
 		// The token points to the *last item included* in this response page.
 		// The next query will start *after* this item.
-		token := pagination.EncodeToken(lastTxn.transaction.JournalDate, lastTxn.transaction.CreatedAt)
+		token := pagination.EncodeToken(lastTxn.transaction.TransactionDate, lastTxn.transaction.CreatedAt)
 		nextTokenVal = &token
 
 		// Extract just the transactions for the result (without the extra one)
@@ -555,10 +568,13 @@ func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context,
 	}
 
 	query := `
-		SELECT transaction_id, journal_id, account_id, amount, transaction_type, currency_code, notes, created_at, created_by, last_updated_at, last_updated_by, running_balance
+		SELECT 
+			transaction_id, journal_id, account_id, amount, transaction_type, 
+			currency_code, notes, transaction_date, created_at, created_by, 
+			last_updated_at, last_updated_by, running_balance
 		FROM transactions
 		WHERE journal_id = ANY($1)
-		ORDER BY journal_id, created_at; -- Order by journal_id for grouping, then by time
+		ORDER BY journal_id, transaction_date, created_at; -- Order by journal_id for grouping, then by transaction date and time
 	`
 
 	rows, err := r.Pool.Query(ctx, query, journalIDs)
@@ -581,6 +597,7 @@ func (r *PgxJournalRepository) FindTransactionsByJournalIDs(ctx context.Context,
 			&modelTxn.TransactionType,
 			&modelTxn.CurrencyCode,
 			&modelTxn.Notes,
+			&modelTxn.TransactionDate, // Scan the transaction date
 			&modelTxn.CreatedAt,
 			&modelTxn.CreatedBy,
 			&modelTxn.LastUpdatedAt,

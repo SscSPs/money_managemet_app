@@ -222,6 +222,9 @@ definitions:
         type: number
       notes:
         type: string
+      transactionDate:
+        description: Optional, defaults to journal date if not provided
+        type: string
       transactionType:
         allOf:
         - $ref: '#/definitions/domain.TransactionType'
@@ -444,6 +447,9 @@ definitions:
       runningBalance:
         description: Added running balance
         type: number
+      transactionDate:
+        description: Date of the actual transaction
+        type: string
       transactionID:
         type: string
       transactionType:
