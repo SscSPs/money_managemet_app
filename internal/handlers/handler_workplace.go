@@ -9,25 +9,34 @@ import (
 	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
+	"github.com/SscSPs/money_managemet_app/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
 // workplaceHandler handles HTTP requests related to workplaces.
 type workplaceHandler struct {
 	workplaceService portssvc.WorkplaceSvcFacade
+	posthogClient    *utils.PosthogClientWrapper
 }
 
 // newWorkplaceHandler creates a new workplaceHandler.
-func newWorkplaceHandler(ws portssvc.WorkplaceSvcFacade) *workplaceHandler {
+func newWorkplaceHandler(ws portssvc.WorkplaceSvcFacade, posthogClient *utils.PosthogClientWrapper) *workplaceHandler {
 	return &workplaceHandler{
 		workplaceService: ws,
+		posthogClient:    posthogClient,
 	}
 }
 
 // registerWorkplaceRoutes registers routes related to workplaces and their members.
 // It now also registers JOURNAL and ACCOUNT routes nested under a specific workplace.
-func registerWorkplaceRoutes(rg *gin.RouterGroup, workplaceService portssvc.WorkplaceSvcFacade, journalService portssvc.JournalSvcFacade, accountService portssvc.AccountSvcFacade, reportingService portssvc.ReportingService) {
-	h := newWorkplaceHandler(workplaceService)
+func registerWorkplaceRoutes(rg *gin.RouterGroup,
+	workplaceService portssvc.WorkplaceSvcFacade,
+	journalService portssvc.JournalSvcFacade,
+	accountService portssvc.AccountSvcFacade,
+	reportingService portssvc.ReportingService,
+	posthogClient *utils.PosthogClientWrapper,
+) {
+	h := newWorkplaceHandler(workplaceService, posthogClient)
 
 	// Routes for managing workplaces themselves (e.g., creating, listing user's workplaces)
 	workplacesTopLevel := rg.Group("/workplaces")
@@ -109,6 +118,10 @@ func (h *workplaceHandler) createWorkplace(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create workplace"})
 		return
 	}
+	h.posthogClient.Enqueue(creatorUserID, "workplace_created", map[string]any{
+		"workplace_id":   newWorkplace.WorkplaceID,
+		"workplace_name": newWorkplace.Name,
+	})
 
 	logger.Info("Workplace created successfully", slog.String("workplace_id", newWorkplace.WorkplaceID))
 	c.JSON(http.StatusCreated, dto.ToWorkplaceResponse(newWorkplace))
@@ -151,7 +164,9 @@ func (h *workplaceHandler) listUserWorkplaces(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list workplaces"})
 		return
 	}
-
+	h.posthogClient.Enqueue(userID, "workplaces_listed", map[string]any{
+		"count": len(workplaces),
+	})
 	logger.Info("Workplaces listed successfully", slog.Int("count", len(workplaces)))
 	c.JSON(http.StatusOK, dto.ToListWorkplacesResponse(workplaces))
 }
@@ -207,7 +222,11 @@ func (h *workplaceHandler) addUserToWorkplace(c *gin.Context) {
 		}
 		return
 	}
-
+	h.posthogClient.Enqueue(addingUserID, "user_added_to_workplace", map[string]any{
+		"workplace_id":   workplaceID,
+		"target_user_id": req.UserID,
+		"role":           string(req.Role),
+	})
 	logger.Info("User added to workplace successfully")
 	c.Status(http.StatusNoContent)
 }
@@ -265,6 +284,9 @@ func (h *workplaceHandler) deactivateWorkplace(c *gin.Context) {
 		return
 	}
 
+	h.posthogClient.Enqueue(userID, "workplace_deactivated", map[string]any{
+		"workplace_id": workplaceID,
+	})
 	logger.Info("Workplace deactivated successfully")
 	c.Status(http.StatusNoContent)
 }
@@ -312,6 +334,9 @@ func (h *workplaceHandler) activateWorkplace(c *gin.Context) {
 		return
 	}
 
+	h.posthogClient.Enqueue(userID, "workplace_activated", map[string]any{
+		"workplace_id": workplaceID,
+	})
 	logger.Info("Workplace activated successfully")
 	c.Status(http.StatusNoContent)
 }
@@ -358,6 +383,10 @@ func (h *workplaceHandler) listWorkplaceUsers(c *gin.Context) {
 		return
 	}
 
+	h.posthogClient.Enqueue(userID, "workplace_users_listed", map[string]any{
+		"workplace_id": workplaceID,
+		"count":        len(users),
+	})
 	logger.Info("Workplace users listed successfully", slog.Int("count", len(users)))
 	c.JSON(http.StatusOK, dto.ToListWorkplaceUsersResponse(users))
 }
@@ -416,6 +445,10 @@ func (h *workplaceHandler) removeUserFromWorkplace(c *gin.Context) {
 		return
 	}
 
+	h.posthogClient.Enqueue(requestingUserID, "user_removed_from_workplace", map[string]any{
+		"workplace_id":   workplaceID,
+		"target_user_id": targetUserID,
+	})
 	logger.Info("User removed from workplace successfully")
 	c.Status(http.StatusNoContent)
 }
@@ -485,6 +518,11 @@ func (h *workplaceHandler) updateUserWorkplaceRole(c *gin.Context) {
 		return
 	}
 
+	h.posthogClient.Enqueue(requestingUserID, "user_role_updated", map[string]any{
+		"workplace_id":   workplaceID,
+		"target_user_id": targetUserID,
+		"new_role":       string(req.Role),
+	})
 	logger.Info("User role updated successfully")
 	c.Status(http.StatusNoContent)
 }

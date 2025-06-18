@@ -13,6 +13,7 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/platform/config"
 	"github.com/SscSPs/money_managemet_app/internal/platform/database"
 	"github.com/SscSPs/money_managemet_app/internal/repositories/database/pgsql"
+	"github.com/SscSPs/money_managemet_app/internal/utils"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -88,8 +89,17 @@ func main() {
 		logger.Warn("Could not get validator engine to register custom validators")
 	}
 
+	// Initialize Posthog
+	posthogClient := utils.InitializePosthogClient(cfg.PosthogAPIKey)
+	defer posthogClient.Close()
+	if posthogClient.IsInitialized() {
+		logger.Info("Posthog initialized.")
+	} else {
+		logger.Warn("Posthog not initialized.")
+	}
+
 	// Pass the service container to route registration
-	handlers.RegisterRoutes(r, cfg, serviceContainer)
+	handlers.RegisterRoutes(r, cfg, serviceContainer, posthogClient)
 
 	logger.Info("Server starting", slog.String("port", cfg.Port))
 	if err := r.Run("0.0.0.0:" + cfg.Port); err != nil {

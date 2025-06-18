@@ -5,6 +5,7 @@ import (
 	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/SscSPs/money_managemet_app/internal/platform/config"
+	"github.com/SscSPs/money_managemet_app/internal/utils"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -15,6 +16,7 @@ func RegisterRoutes(
 	r *gin.Engine,
 	cfg *config.Config,
 	services *portssvc.ServiceContainer,
+	posthogClient *utils.PosthogClientWrapper,
 ) {
 
 	// Add health check route
@@ -26,7 +28,7 @@ func RegisterRoutes(
 	registerAuthRoutes(r, cfg, services)
 
 	// Setup API v1 routes with Auth Middleware, passing service interfaces
-	setupAPIV1Routes(r, cfg, services)
+	setupAPIV1Routes(r, cfg, services, posthogClient)
 
 	// Swagger routes (typically public or conditionally available)
 	setupSwaggerRoutes(r, cfg)
@@ -37,6 +39,7 @@ func setupAPIV1Routes(
 	r *gin.Engine,
 	cfg *config.Config,
 	service *portssvc.ServiceContainer,
+	posthogClient *utils.PosthogClientWrapper,
 ) {
 	// Apply AuthMiddleware to the entire v1 group
 	v1 := r.Group("/api/v1", middleware.AuthMiddleware(cfg.JWTSecret))
@@ -45,7 +48,7 @@ func setupAPIV1Routes(
 	registerUserRoutes(v1, service.User)
 	registerCurrencyRoutes(v1, service.Currency)
 	registerExchangeRateRoutes(v1, service.ExchangeRate)
-	registerWorkplaceRoutes(v1, service.Workplace, service.Journal, service.Account, service.Reporting)
+	registerWorkplaceRoutes(v1, service.Workplace, service.Journal, service.Account, service.Reporting, posthogClient)
 }
 
 // setupSwaggerRoutes configures the swagger documentation routes

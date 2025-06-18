@@ -26,6 +26,7 @@ type Config struct {
 	GoogleClientID     string `mapstructure:"GOOGLE_CLIENT_ID"`
 	GoogleClientSecret string `mapstructure:"GOOGLE_CLIENT_SECRET"`
 	GoogleRedirectURL  string `mapstructure:"GOOGLE_REDIRECT_URL"`
+	PosthogAPIKey      string `mapstructure:"POSTHOG_API_KEY"`
 }
 
 // LoadConfig loads configuration from environment variables and .env file if present.
@@ -46,6 +47,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("GOOGLE_CLIENT_ID", "")
 	viper.SetDefault("GOOGLE_CLIENT_SECRET", "")
 	viper.SetDefault("GOOGLE_REDIRECT_URL", "")
+	viper.SetDefault("POSTHOG_API_KEY", "")
 
 	// Read .env file if it exists
 	// This allows overriding defaults with .env file values, which can then be overridden by actual environment variables.
@@ -146,6 +148,7 @@ func LoadConfig() (*Config, error) {
 	cfg.RefreshTokenExpiryDuration = refreshTokenExpiryDuration
 	cfg.RefreshTokenCookieName = refreshTokenCookieName
 	cfg.RefreshTokenSecret = refreshTokenSecret
+	cfg.PosthogAPIKey = viper.GetString("POSTHOG_API_KEY")
 
 	return cfg, nil
 }
