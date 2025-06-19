@@ -90,10 +90,10 @@ func main() {
 	}
 
 	// Initialize Posthog
-	posthogClient := utils.InitializePosthogClient(cfg.PosthogAPIKey)
-	defer posthogClient.Close()
+	posthogClient := utils.InitializePosthogClient(cfg.PosthogAPIKey, logger)
 	if posthogClient.IsInitialized() {
 		logger.Info("Posthog initialized.")
+		defer posthogClient.Close()
 	} else {
 		logger.Warn("Posthog not initialized.")
 	}

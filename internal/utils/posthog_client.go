@@ -1,17 +1,23 @@
 // posthog_client.go provides a wrapper around the posthog.Client to make it easier to use and handle when its not initialized.
 package utils
 
-import "github.com/posthog/posthog-go"
+import (
+	"log/slog"
+
+	"github.com/posthog/posthog-go"
+)
 
 // userHandler handles HTTP requests related to users.
 type PosthogClientWrapper struct {
 	posthogClient posthog.Client
 }
 
-func InitializePosthogClient(apiKey string) *PosthogClientWrapper {
+func InitializePosthogClient(apiKey string, logger *slog.Logger) *PosthogClientWrapper {
 	if apiKey == "" {
-		return nil
+		logger.Warn("Posthog API key is empty, not initializing posthog client.")
+		return &PosthogClientWrapper{}
 	}
+	logger.Info("Initializing posthog client, api key: ", slog.String("api_key", apiKey))
 	wrapper := PosthogClientWrapper{}
 	wrapper.posthogClient, _ = posthog.NewWithConfig(apiKey, posthog.Config{Endpoint: "https://eu.i.posthog.com"})
 	return &wrapper
