@@ -10,4 +10,5 @@ type RepositoryProvider struct {
 	JournalRepo      JournalRepositoryWithTx
 	WorkplaceRepo    WorkplaceRepositoryWithTx
 	ReportingRepo    ReportingRepository
+	APITokenRepo     APITokenRepositoryWithTx
 }

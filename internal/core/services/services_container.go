@@ -42,6 +42,9 @@ func NewServiceContainer(cfg *config.Config, repos portsrepo.RepositoryProvider)
 	// Initialize GoogleOAuthHandlerSvcFacade
 	container.GoogleOAuthHandler = NewGoogleOAuthHandlerService(cfg)
 
+	// Initialize API Token Service
+	container.APITokenSvc = NewAPITokenService(repos.APITokenRepo, container.User)
+
 	return container
 }
 

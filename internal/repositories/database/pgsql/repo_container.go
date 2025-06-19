@@ -13,6 +13,7 @@ func NewRepositoryProvider(dbPool *pgxpool.Pool) portsrepo.RepositoryProvider {
 	journalRepo := newPgxJournalRepository(dbPool, accountRepo)
 	workplaceRepo := newPgxWorkplaceRepository(dbPool)
 	reportingRepo := newReportingRepository(dbPool)
+	apiTokenRepo := newPgxAPITokenRepository(dbPool)
 
 	return portsrepo.RepositoryProvider{
 		AccountRepo:      accountRepo,
@@ -22,5 +23,6 @@ func NewRepositoryProvider(dbPool *pgxpool.Pool) portsrepo.RepositoryProvider {
 		JournalRepo:      journalRepo,
 		WorkplaceRepo:    workplaceRepo,
 		ReportingRepo:    reportingRepo,
+		APITokenRepo:     apiTokenRepo,
 	}
 }

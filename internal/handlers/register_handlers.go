@@ -41,8 +41,11 @@ func setupAPIV1Routes(
 	service *portssvc.ServiceContainer,
 	posthogClient *utils.PosthogClientWrapper,
 ) {
-	// Apply AuthMiddleware to the entire v1 group
-	v1 := r.Group("/api/v1", middleware.AuthMiddleware(cfg.JWTSecret))
+	// Create API v1 group with both JWT and API token authentication
+	v1 := r.Group("/api/v1", middleware.APITokenAuth(service.APITokenSvc), middleware.AuthMiddleware(cfg.JWTSecret))
+
+	// Register API token routes (protected by both JWT and API token auth)
+	RegisterAPITokenRoutes(v1, service.APITokenSvc)
 
 	// Delegate route registration to specific handlers, passing required services
 	registerUserRoutes(v1, service.User)

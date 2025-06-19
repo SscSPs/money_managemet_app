@@ -9,6 +9,196 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
+        "/api/v1/tokens": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lists all API tokens for the authenticated user. Only returns token metadata, not the actual token values.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tokens"
+                ],
+                "summary": "List all API tokens",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "description": "A list of API tokens",
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handlers.APITokenResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new API token for the authenticated user. The token will be shown only once upon creation.\nThe token can be used for API authentication by including it in the Authorization header as: `Authorization: Bearer \u003ctoken\u003e`",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tokens"
+                ],
+                "summary": "Create a new API token",
+                "parameters": [
+                    {
+                        "description": "Token creation details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateAPITokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateAPITokenResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Revokes all API tokens for the authenticated user. This will immediately invalidate all tokens.\nA new token will need to be generated for API access after this operation.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tokens"
+                ],
+                "summary": "Revoke all API tokens",
+                "responses": {
+                    "204": {
+                        "description": "All tokens revoked successfully"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/tokens/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Revokes a specific API token by ID. The token will be immediately invalidated.\nOnly the token owner can revoke their own tokens.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tokens"
+                ],
+                "summary": "Revoke an API token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Token ID (UUID format)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Token revoked successfully"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Authenticates a user and returns a JWT token.",
@@ -580,6 +770,42 @@
                         }
                     }
                 }
+            }
+        },
+        "/tokens": {
+            "get": {
+                "description": "Registers all the API token related routes",
+                "tags": [
+                    "tokens"
+                ],
+                "summary": "Register API token routes",
+                "responses": {}
+            },
+            "post": {
+                "description": "Registers all the API token related routes",
+                "tags": [
+                    "tokens"
+                ],
+                "summary": "Register API token routes",
+                "responses": {}
+            },
+            "delete": {
+                "description": "Registers all the API token related routes",
+                "tags": [
+                    "tokens"
+                ],
+                "summary": "Register API token routes",
+                "responses": {}
+            }
+        },
+        "/tokens/{id}": {
+            "delete": {
+                "description": "Registers all the API token related routes",
+                "tags": [
+                    "tokens"
+                ],
+                "summary": "Register API token routes",
+                "responses": {}
             }
         },
         "/users": {
@@ -3745,6 +3971,88 @@
                 },
                 "workplaceID": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.APIErrorResponse": {
+            "description": "Generic error response containing a message describing the error This is used for all error responses in the API",
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Message contains the error message",
+                    "type": "string",
+                    "example": "An error occurred"
+                }
+            }
+        },
+        "handlers.APITokenResponse": {
+            "description": "API token details returned in API responses",
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "description": "CreatedAt is the timestamp when the token was created",
+                    "type": "string",
+                    "example": "2023-01-01T12:00:00Z"
+                },
+                "expiresAt": {
+                    "description": "ExpiresAt is the timestamp when the token will expire (optional)",
+                    "type": "string",
+                    "example": "2024-01-01T12:00:00Z"
+                },
+                "id": {
+                    "description": "ID is the unique identifier of the token",
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                },
+                "lastUsedAt": {
+                    "description": "LastUsedAt is the timestamp when the token was last used (optional)",
+                    "type": "string",
+                    "example": "2023-01-01T12:00:00Z"
+                },
+                "name": {
+                    "description": "Name is the user-defined name for the token",
+                    "type": "string",
+                    "example": "My API Token"
+                }
+            }
+        },
+        "handlers.CreateAPITokenRequest": {
+            "description": "Request body for creating a new API token",
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "expiresIn": {
+                    "description": "ExpiresIn is the duration in seconds after which the token will expire (optional)",
+                    "type": "integer",
+                    "example": 2592000
+                },
+                "name": {
+                    "description": "Name is a user-defined name for the token (3-100 characters)",
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 3,
+                    "example": "My API Token"
+                }
+            }
+        },
+        "handlers.CreateAPITokenResponse": {
+            "description": "Response returned when a new API token is created",
+            "type": "object",
+            "properties": {
+                "details": {
+                    "description": "Details contains the token metadata",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/handlers.APITokenResponse"
+                        }
+                    ]
+                },
+                "token": {
+                    "description": "Token is the actual API token (only shown once at creation)",
+                    "type": "string",
+                    "example": "mma_abc123..."
                 }
             }
         },
