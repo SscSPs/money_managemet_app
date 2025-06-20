@@ -18,6 +18,10 @@ func RegisterRoutes(
 	services *portssvc.ServiceContainer,
 	posthogClient *utils.PosthogClientWrapper,
 ) {
+	// Apply PostHog middleware if client is initialized
+	if posthogClient != nil && posthogClient.IsInitialized() {
+		r.Use(middleware.PosthogMiddleware(posthogClient))
+	}
 
 	// Add health check route
 	r.GET("/health", func(c *gin.Context) {
@@ -28,7 +32,7 @@ func RegisterRoutes(
 	registerAuthRoutes(r, cfg, services)
 
 	// Setup API v1 routes with Auth Middleware, passing service interfaces
-	setupAPIV1Routes(r, cfg, services, posthogClient)
+	setupAPIV1Routes(r, cfg, services)
 
 	// Swagger routes (typically public or conditionally available)
 	setupSwaggerRoutes(r, cfg)
@@ -39,7 +43,6 @@ func setupAPIV1Routes(
 	r *gin.Engine,
 	cfg *config.Config,
 	service *portssvc.ServiceContainer,
-	posthogClient *utils.PosthogClientWrapper,
 ) {
 	// Create API v1 group with both JWT and API token authentication
 	v1 := r.Group("/api/v1", middleware.APITokenAuth(service.APITokenSvc), middleware.AuthMiddleware(cfg.JWTSecret))
@@ -51,7 +54,7 @@ func setupAPIV1Routes(
 	registerUserRoutes(v1, service.User)
 	registerCurrencyRoutes(v1, service.Currency)
 	registerExchangeRateRoutes(v1, service.ExchangeRate)
-	registerWorkplaceRoutes(v1, service.Workplace, service.Journal, service.Account, service.Reporting, posthogClient)
+	registerWorkplaceRoutes(v1, service.Workplace, service.Journal, service.Account, service.Reporting)
 }
 
 // setupSwaggerRoutes configures the swagger documentation routes
