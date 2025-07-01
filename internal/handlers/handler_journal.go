@@ -45,7 +45,7 @@ func registerJournalRoutes(rg *gin.RouterGroup, journalService portssvc.JournalS
 		journals.GET("/:id", h.getJournal)
 		journals.GET("", h.listJournals)
 		journals.PUT("/:id", h.updateJournal)
-		journals.DELETE("/:id", h.deleteJournal)
+		
 		journals.POST("/:id/reverse", h.reverseJournal)
 	}
 }
@@ -294,63 +294,7 @@ func (h *journalHandler) updateJournal(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.ToJournalResponse(updatedJournal))
 }
 
-// deleteJournal godoc
-// @Summary Deactivate a journal entry in workplace
-// @Description Marks a journal entry as inactive within a specified workplace.
-// @Tags journals
-// @Produce  json
-// @Param   workplace_id path string true "Workplace ID"
-// @Param   id path string true "Journal ID to deactivate"
-// @Success 204 "No Content"
-// @Failure 400 {object} map[string]string "Missing Workplace or Journal ID"
-// @Failure 401 {object} map[string]string "Unauthorized"
-// @Failure 403 {object} map[string]string "Forbidden (User cannot deactivate)"
-// @Failure 404 {object} map[string]string "Journal not found in this workplace"
-// @Failure 409 {object} map[string]string "Conflict (e.g., already inactive)"
-// @Failure 500 {object} map[string]string "Failed to deactivate journal"
-// @Security BearerAuth
-// @Router /workplaces/{workplace_id}/journals/{id} [delete]
-func (h *journalHandler) deleteJournal(c *gin.Context) {
-	logger := middleware.GetLoggerFromCtx(c.Request.Context())
-	workplaceID := c.Param("workplace_id") // Get from path
-	journalID := c.Param("id")
-	if workplaceID == "" || journalID == "" {
-		logger.Error("Workplace ID or Journal ID missing from path for deleteJournal")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Workplace and Journal ID required in path"})
-		return
-	}
 
-	loggedInUserID, ok := middleware.GetUserIDFromContext(c)
-	if !ok {
-		logger.Error("Logged-in user ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	logger = logger.With(slog.String("target_journal_id", journalID), slog.String("workplace_id", workplaceID), slog.String("deleter_user_id", loggedInUserID))
-	logger.Info("Received request to delete journal")
-
-	err := h.journalService.DeactivateJournal(c.Request.Context(), workplaceID, journalID, loggedInUserID)
-	if err != nil {
-		if errors.Is(err, apperrors.ErrNotFound) {
-			logger.Warn("Journal not found for delete (or in wrong workplace)")
-			c.JSON(http.StatusNotFound, gin.H{"error": "Journal not found"})
-		} else if errors.Is(err, apperrors.ErrForbidden) {
-			logger.Warn("User forbidden to deactivate journal", slog.String("user_id", loggedInUserID), slog.String("journal_id", journalID))
-			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
-		} else if errors.Is(err, apperrors.ErrValidation) {
-			logger.Warn("Validation error deactivating journal (already inactive?)", slog.String("error", err.Error()))
-			c.JSON(http.StatusConflict, gin.H{"error": "Journal already inactive or cannot be deactivated"})
-		} else {
-			logger.Error("Failed to deactivate journal in service", slog.String("error", err.Error()))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to deactivate journal"})
-		}
-		return
-	}
-
-	logger.Info("Journal deleted successfully")
-	c.Status(http.StatusNoContent)
-}
 
 // reverseJournal godoc
 // @Summary Reverse a journal entry in workplace

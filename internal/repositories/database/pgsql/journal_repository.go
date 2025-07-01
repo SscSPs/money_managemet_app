@@ -667,36 +667,65 @@ func (r *PgxJournalRepository) UpdateJournalStatusAndLinks(ctx context.Context, 
 }
 
 // UpdateJournal updates non-transaction details of a journal entry.
+// If transactions in the journal have their own dates, those will be used instead of the journal date.
 func (r *PgxJournalRepository) UpdateJournal(ctx context.Context, journal domain.Journal) error {
+	tx, err := r.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer r.Rollback(ctx, tx)
+
 	modelJournal := mapping.ToModelJournal(journal)
 
-	query := `
+	// Update the journal entry
+	journalQuery := `
 		UPDATE journals
 		SET journal_date = $2,
 		    description = $3,
 		    last_updated_at = $4,
 		    last_updated_by = $5
-		WHERE journal_id = $1;
-	`
-	// Note: Status, CurrencyCode, OriginalJournalID, ReversingJournalID are not updated here.
-	// Status updates should go through UpdateJournalStatusAndLinks or similar specific methods.
+		WHERE journal_id = $1
+		RETURNING journal_id;`
 
-	cmdTag, err := r.Pool.Exec(ctx, query,
+	var journalID string
+	err = tx.QueryRow(ctx, journalQuery,
 		modelJournal.JournalID,
 		modelJournal.JournalDate,
 		modelJournal.Description,
 		modelJournal.LastUpdatedAt,
 		modelJournal.LastUpdatedBy,
-	)
+	).Scan(&journalID)
 
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return apperrors.NewNotFoundError("journal " + modelJournal.JournalID + " not found for update")
+		}
 		return apperrors.NewAppError(500, "failed to execute update journal "+modelJournal.JournalID, err)
 	}
 
-	if cmdTag.RowsAffected() == 0 {
-		// Journal with the given ID was not found
-		return apperrors.NewNotFoundError("journal " + modelJournal.JournalID + " not found for update")
+	// Update each transaction with the appropriate date
+	for _, txn := range journal.Transactions {
+		txnDate := txn.TransactionDate
+		// If transaction doesn't have its own date, use the journal date
+		if txnDate.IsZero() {
+			txnDate = modelJournal.JournalDate
+		}
+
+		_, err = tx.Exec(ctx,
+			`UPDATE transactions 
+			SET transaction_date = $2,
+			    last_updated_at = $3,
+			    last_updated_by = $4
+			WHERE transaction_id = $1`,
+			txn.TransactionID,
+			txnDate,
+			modelJournal.LastUpdatedAt,
+			modelJournal.LastUpdatedBy,
+		)
+		if err != nil {
+			return apperrors.NewAppError(500, "failed to update transaction "+txn.TransactionID, err)
+		}
 	}
 
-	return nil
+	return r.Commit(ctx, tx)
 }

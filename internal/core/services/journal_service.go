@@ -475,54 +475,7 @@ func (s *journalService) UpdateJournal(ctx context.Context, workplaceID string, 
 	return journal, nil
 }
 
-// DeactivateJournal marks a journal as inactive (conceptually; might involve changing status).
-// Implements portssvc.JournalSvcFacade
-func (s *journalService) DeactivateJournal(ctx context.Context, workplaceID string, journalID string, requestingUserID string) error {
-	logger := middleware.GetLoggerFromCtx(ctx)
 
-	// --- Authorization Check --- (Requires WorkplaceService injection)
-	if s.workplaceSvc != nil {
-		// Typically requires Admin role for deactivation/reversal
-		if err := s.workplaceSvc.AuthorizeUserAction(ctx, requestingUserID, workplaceID, domain.RoleAdmin); err != nil {
-			logger.Warn("Authorization failed for DeactivateJournal", slog.String("user_id", requestingUserID), slog.String("workplace_id", workplaceID), slog.String("journal_id", journalID), slog.String("error", err.Error()))
-			return err
-		}
-	} else {
-		logger.Warn("WorkplaceService not available for authorization check in DeactivateJournal")
-	}
-
-	// Fetch journal
-	journal, err := s.journalRepo.FindJournalByID(ctx, journalID)
-	if err != nil {
-		if errors.Is(err, apperrors.ErrNotFound) {
-			logger.Warn("Journal not found for deactivation", slog.String("journal_id", journalID), slog.String("workplace_id", workplaceID))
-		} else {
-			logger.Error("Failed to find journal for deactivation", slog.String("error", err.Error()), slog.String("journal_id", journalID))
-		}
-		return err // Propagate NotFound or other find errors
-	}
-
-	// Verify workplace ID match
-	if journal.WorkplaceID != workplaceID {
-		logger.Warn("Attempt to deactivate journal from wrong workplace", slog.String("journal_id", journalID), slog.String("journal_workplace", journal.WorkplaceID), slog.String("requested_workplace", workplaceID))
-		return apperrors.ErrNotFound
-	}
-
-	// Check if already inactive/reversed (prevents repeated action)
-	if journal.Status == domain.Reversed { // Assuming Reversed is the 'inactive' state
-		logger.Warn("Attempt to deactivate already reversed journal", slog.String("journal_id", journalID))
-		return fmt.Errorf("%w: journal %s is already reversed", apperrors.ErrValidation, journalID)
-	}
-
-	// TODO: Add check: Can only deactivate journals with status 'Posted'?
-
-	// TODO: Add and call s.journalRepo.UpdateJournalStatus(ctx, journalID, domain.Reversed, requestingUserID, time.Now())
-	// err = s.journalRepo.UpdateJournalStatus(ctx, journalID, domain.Reversed, requestingUserID, time.Now())
-	// if err != nil { ... }
-
-	logger.Warn("DeactivateJournal service method not fully implemented - repo call missing")
-	return fmt.Errorf("DeactivateJournal repository call not implemented") // Placeholder Error
-}
 
 // ListTransactionsByAccount retrieves transactions for a specific account within a workplace.
 func (j *journalService) ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, userID string, params dto.ListTransactionsParams) (*dto.ListTransactionsResponse, error) {
@@ -603,7 +556,13 @@ func (s *journalService) validateReverseJournalActionAndGetOriginalJournal(ctx c
 		return nil, nil, fmt.Errorf("%w: journal status is %s, expected POSTED", apperrors.ErrConflict, originalJournal.Status)
 	}
 
-	// 4. Fetch original transactions
+	// 4. Prevent reversing a reversal
+	if originalJournal.OriginalJournalID != nil {
+		logger.Warn("Attempted to reverse a journal that is already a reversal", "journalID", journalID)
+		return nil, nil, fmt.Errorf("%w: cannot reverse a journal that is already a reversal", apperrors.ErrConflict)
+	}
+
+	// 5. Fetch original transactions
 	originalTransactions, err := s.journalRepo.FindTransactionsByJournalID(ctx, journalID)
 	if err != nil {
 		logger.Error("Failed to fetch original transactions for reversal", "error", err)
@@ -613,122 +572,129 @@ func (s *journalService) validateReverseJournalActionAndGetOriginalJournal(ctx c
 }
 
 // ReverseJournal creates a new journal entry that reverses a previously posted journal.
+// WithTransaction executes the given function within a database transaction.
+// It begins a transaction, executes the function, and then commits or rolls back.
+func (s *journalService) WithTransaction(ctx context.Context, fn func(txRepo portsrepo.JournalRepositoryWithTx) (interface{}, error)) (interface{}, error) {
+	// Check if the repository supports transactions.
+	txRepo, ok := s.journalRepo.(portsrepo.JournalRepositoryWithTx)
+	if !ok {
+		return nil, errors.New("repository does not support transactions")
+	}
+
+	// Execute the function with the repository that now has transaction capabilities.
+	return fn(txRepo)
+}
+
+// ReverseJournal creates a new journal entry that reverses a previously posted journal.
 func (s *journalService) ReverseJournal(ctx context.Context, workplaceID string, journalID string, userID string) (*domain.Journal, error) {
 	logger := middleware.GetLoggerFromCtx(ctx)
 
-	originalJournal, originalTransactions, err := s.validateReverseJournalActionAndGetOriginalJournal(ctx, journalID, userID, workplaceID)
-	if err != nil {
-		return nil, err
-	}
+	// Execute the entire reversal process within a single transaction.
+	result, err := s.WithTransaction(ctx, func(txRepo portsrepo.JournalRepositoryWithTx) (interface{}, error) {
+		// The 'txRepo' is now the interface that can handle transactions.
+		// All repository calls within this function will be part of the same transaction.
 
-	now := time.Now()
-	newJournalID := uuid.NewString()
-
-	// 5. Create the reversing journal domain object
-	reversingJournal := domain.Journal{
-		JournalID:    newJournalID,
-		WorkplaceID:  workplaceID,
-		JournalDate:  originalJournal.JournalDate,
-		CurrencyCode: originalJournal.CurrencyCode,
-		Status:       domain.Posted,
-		AuditFields: domain.AuditFields{
-			CreatedAt:     now,
-			CreatedBy:     userID,
-			LastUpdatedAt: now,
-			LastUpdatedBy: userID,
-		},
-	}
-
-	// Check if this is a reversal of a reversing journal
-	isReversingAReversal := originalJournal.OriginalJournalID != nil
-
-	// Only set OriginalJournalID if this is not a reversal of a reversing journal
-	if isReversingAReversal {
-		//remove the "Reversal of Journal: " prefix from the description
-		reversingJournal.Description = strings.TrimPrefix(originalJournal.Description, "Reversal of Journal: ")
-	} else {
-		reversingJournal.OriginalJournalID = &originalJournal.JournalID
-		reversingJournal.Description = fmt.Sprintf("Reversal of Journal: %s", originalJournal.Description)
-	}
-
-	// 6. Create reversed transaction domain objects
-	reversingTransactions := make([]domain.Transaction, len(originalTransactions))
-	accIDList := make([]string, 0)
-	for i, origTx := range originalTransactions {
-		accIDList = append(accIDList, origTx.AccountID)
-		newTxType := domain.Credit // Flip type
-		if origTx.TransactionType == domain.Credit {
-			newTxType = domain.Debit
+		originalJournal, originalTransactions, err := s.validateReverseJournalActionAndGetOriginalJournal(ctx, journalID, userID, workplaceID)
+		if err != nil {
+			return nil, err
 		}
 
-		reversingTransactions[i] = domain.Transaction{
-			TransactionID:   uuid.NewString(),
-			JournalID:       newJournalID,
-			AccountID:       origTx.AccountID,
-			Amount:          origTx.Amount, // Amount stays positive
-			TransactionType: newTxType,
-			CurrencyCode:    origTx.CurrencyCode,
-			Notes:           origTx.Notes, // Copy original notes
+		now := time.Now()
+		newJournalID := uuid.NewString()
+
+		// Create the reversing journal domain object.
+		reversingJournal := domain.Journal{
+			JournalID:    newJournalID,
+			WorkplaceID:  workplaceID,
+			JournalDate:  originalJournal.JournalDate,
+			CurrencyCode: originalJournal.CurrencyCode,
+			Status:       domain.Posted,
 			AuditFields: domain.AuditFields{
 				CreatedAt:     now,
 				CreatedBy:     userID,
 				LastUpdatedAt: now,
 				LastUpdatedBy: userID,
 			},
-			// RunningBalance will be calculated by SaveJournal repo method
 		}
-	}
 
-	// 7. Fetch accounts involved to calculate balance changes
-	accountsMap, err := s.accountSvc.GetAccountByIDs(ctx, workplaceID, accIDList, userID)
-	if err != nil {
-		logger.Error("Failed to fetch accounts for reversal balance calculation", "error", err)
-		return nil, fmt.Errorf("failed to get account details for reversal: %w", err)
-	}
-
-	// Calculate the total amount of the reversal journal using account types
-	reversingJournal.Amount = originalJournal.Amount
-
-	// 8. Calculate balance changes for the reversing journal
-	balanceChanges := make(map[string]decimal.Decimal)
-	for _, revTx := range reversingTransactions {
-		acc, ok := accountsMap[revTx.AccountID]
-		if !ok {
-			// Should not happen if GetAccountByIDs worked
-			logger.Error("Account missing from map during reversal balance calculation", "accountID", revTx.AccountID)
-			return nil, fmt.Errorf("internal error: account %s not found during balance calculation", revTx.AccountID)
+		isReversingAReversal := originalJournal.OriginalJournalID != nil
+		if isReversingAReversal {
+			reversingJournal.Description = strings.TrimPrefix(originalJournal.Description, "Reversal of Journal: ")
+		} else {
+			reversingJournal.OriginalJournalID = &originalJournal.JournalID
+			reversingJournal.Description = fmt.Sprintf("Reversal of Journal: %s", originalJournal.Description)
 		}
-		signedAmount, err := s.getSignedAmount(revTx, acc.AccountType) // Use existing helper
+
+		// Create reversed transaction domain objects.
+		reversingTransactions := make([]domain.Transaction, len(originalTransactions))
+		accIDList := make([]string, 0)
+		for i, origTx := range originalTransactions {
+			accIDList = append(accIDList, origTx.AccountID)
+			newTxType := domain.Credit
+			if origTx.TransactionType == domain.Credit {
+				newTxType = domain.Debit
+			}
+			reversingTransactions[i] = domain.Transaction{
+				TransactionID:   uuid.NewString(),
+				JournalID:       newJournalID,
+				AccountID:       origTx.AccountID,
+				Amount:          origTx.Amount,
+				TransactionType: newTxType,
+				CurrencyCode:    origTx.CurrencyCode,
+				Notes:           origTx.Notes,
+				AuditFields: domain.AuditFields{
+					CreatedAt:     now,
+					CreatedBy:     userID,
+					LastUpdatedAt: now,
+					LastUpdatedBy: userID,
+				},
+			}
+		}
+
+		accountsMap, err := s.accountSvc.GetAccountByIDs(ctx, workplaceID, accIDList, userID)
 		if err != nil {
-			logger.Error("Failed to calculate signed amount for reversal transaction", "transactionID", revTx.TransactionID, "error", err)
-			return nil, fmt.Errorf("failed to calculate signed amount for reversal: %w", err)
+			logger.Error("Failed to fetch accounts for reversal balance calculation", "error", err)
+			return nil, fmt.Errorf("failed to get account details for reversal: %w", err)
 		}
-		balanceChanges[revTx.AccountID] = balanceChanges[revTx.AccountID].Add(signedAmount)
-	}
 
-	// 9. Save the reversing journal and its transactions atomically
-	if err := s.journalRepo.SaveJournal(ctx, reversingJournal, reversingTransactions, balanceChanges); err != nil {
-		logger.Error("Failed to save reversing journal entry", "error", err)
-		return nil, fmt.Errorf("failed to save reversing journal: %w", err)
-	}
+		reversingJournal.Amount = originalJournal.Amount
 
-	// 10. Update the original journal's status and link to the new reversing journal
-	// Only update status and links if this is not a reversal of a reversing journal
-	if !isReversingAReversal {
-		// Keep the original journal's OriginalJournalID - preserving the reversal chain
-		if err := s.journalRepo.UpdateJournalStatusAndLinks(ctx, originalJournal.JournalID, domain.Reversed, &newJournalID, originalJournal.OriginalJournalID, userID, now); err != nil {
-			// Log this error, as the reversal DID succeed, but the linking failed.
-			// This is a state inconsistency that might need manual correction or a retry mechanism.
-			logger.Error("CRITICAL: Failed to update original journal status after successful reversal", "originalJournalID", originalJournal.JournalID, "reversingJournalID", newJournalID, "error", err)
-			// We might still return the reversing journal, but log the critical error.
-			// Or return a specific error indicating partial success.
-			// For now, let's return the created journal but log heavily.
-			// return nil, fmt.Errorf("reversal created but failed to update original journal status: %w", err)
+		balanceChanges := make(map[string]decimal.Decimal)
+		for _, revTx := range reversingTransactions {
+			acc, ok := accountsMap[revTx.AccountID]
+			if !ok {
+				logger.Error("Account missing from map during reversal balance calculation", "accountID", revTx.AccountID)
+				return nil, fmt.Errorf("internal error: account %s not found during balance calculation", revTx.AccountID)
+			}
+			signedAmount, err := s.getSignedAmount(revTx, acc.AccountType)
+			if err != nil {
+				logger.Error("Failed to calculate signed amount for reversal transaction", "transactionID", revTx.TransactionID, "error", err)
+				return nil, fmt.Errorf("failed to calculate signed amount for reversal: %w", err)
+			}
+			balanceChanges[revTx.AccountID] = balanceChanges[revTx.AccountID].Add(signedAmount)
 		}
+
+		// Save the reversing journal and update the original journal's status atomically.
+		if err := txRepo.SaveJournal(ctx, reversingJournal, reversingTransactions, balanceChanges); err != nil {
+			logger.Error("Failed to save reversing journal entry", "error", err)
+			return nil, fmt.Errorf("failed to save reversing journal: %w", err)
+		}
+
+		if !isReversingAReversal {
+			if err := txRepo.UpdateJournalStatusAndLinks(ctx, originalJournal.JournalID, domain.Reversed, &newJournalID, originalJournal.OriginalJournalID, userID, now); err != nil {
+				logger.Error("Failed to update original journal status after successful reversal", "originalJournalID", originalJournal.JournalID, "reversingJournalID", newJournalID, "error", err)
+				return nil, fmt.Errorf("failed to update original journal status: %w", err)
+			}
+		}
+
+		logger.Info("Journal reversed successfully", "reversingJournalID", newJournalID)
+		reversingJournal.Transactions = nil
+		return &reversingJournal, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	logger.Info("Journal reversed successfully", "reversingJournalID", newJournalID)
-	// Return the newly created reversing journal (without transactions populated)
-	reversingJournal.Transactions = nil // Ensure transactions aren't returned by default
-	return &reversingJournal, nil
+	return result.(*domain.Journal), nil
 }

@@ -24,8 +24,7 @@ type JournalWriterSvc interface {
 	// UpdateJournal updates journal details (excluding transactions).
 	UpdateJournal(ctx context.Context, workplaceID string, journalID string, req dto.UpdateJournalRequest, requestingUserID string) (*domain.Journal, error)
 
-	// DeactivateJournal marks a journal as inactive.
-	DeactivateJournal(ctx context.Context, workplaceID string, journalID string, requestingUserID string) error
+	
 
 	// ReverseJournal creates a reversal journal for an existing journal.
 	ReverseJournal(ctx context.Context, workplaceID string, journalID string, userID string) (*domain.Journal, error)
