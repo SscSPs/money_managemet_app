@@ -35,55 +35,7 @@ func registerUserRoutes(rg *gin.RouterGroup, userService portssvc.UserSvcFacade)
 		users.GET("/:id", h.getUser)       // Own or admin
 		users.PUT("/:id", h.updateUser)    // Own or admin
 		users.DELETE("/:id", h.deleteUser) // Admin only
-		users.POST("", h.createUser)       // Admin only
 	}
-}
-
-// createUser godoc
-// @Summary Create a new user
-// @Description Creates a new user (typically an admin action)
-// @Tags users
-// @Accept  json
-// @Produce  json
-// @Param   user body dto.CreateUserRequest true "User details"
-// @Success 201 {object} dto.UserResponse
-// @Failure 400 {object} map[string]string "Invalid input"
-// @Failure 401 {object} map[string]string "Unauthorized"
-// @Failure 500 {object} map[string]string "Failed to create user"
-// @Security BearerAuth
-// @Router /users [post]
-func (h *userHandler) createUser(c *gin.Context) {
-	logger := middleware.GetLoggerFromCtx(c.Request.Context())
-	var req dto.CreateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Error("Failed to bind JSON for create user request", slog.String("error", err.Error()))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format: " + err.Error()})
-		return
-	}
-
-	// Get creator UserID from context
-	creatorUserID, ok := middleware.GetUserIDFromContext(c)
-	if !ok {
-		logger.Error("Creator user ID not found in context")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	// TODO: Add authorization check - is the creator an admin?
-
-	logger = logger.With(slog.String("creator_user_id", creatorUserID))
-	logger.Info("Received request to create user", slog.String("user_name", req.Name))
-
-	createdUser, err := h.userService.CreateUser(c.Request.Context(), req)
-	if err != nil {
-		// TODO: Handle specific errors like duplicate username/email if implemented
-		logger.Error("Failed to create user in service", slog.String("error", err.Error()))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
-		return
-	}
-
-	logger.Info("User created successfully", slog.String("new_user_id", createdUser.UserID))
-	c.JSON(http.StatusCreated, dto.ToUserResponse(createdUser))
 }
 
 // getUser godoc
@@ -302,5 +254,3 @@ func (h *userHandler) deleteUser(c *gin.Context) {
 	logger.Info("User deleted successfully")
 	c.Status(http.StatusNoContent)
 }
-
-// TODO: Add other user handlers (List, Update, Delete) later

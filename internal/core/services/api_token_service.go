@@ -3,7 +3,9 @@ package services
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -11,7 +13,7 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 	"github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	portssvc "github.com/SscSPs/money_managemet_app/internal/core/ports/services"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/SscSPs/money_managemet_app/internal/middleware"
 )
 
 // apiTokenService implements the APITokenSvc interface
@@ -45,10 +47,7 @@ func (s *apiTokenService) CreateToken(ctx context.Context, userID, name string, 
 	}
 
 	// Hash the token for storage
-	tokenHash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to hash token: %w", err)
-	}
+	tokenHash := hashToken(token)
 
 	// Calculate expiration time
 	var expiresAt *time.Time
@@ -130,16 +129,19 @@ func (s *apiTokenService) ValidateToken(ctx context.Context, tokenString string)
 	if tokenString == "" {
 		return nil, errors.New("token is required")
 	}
+	// Hash the token to check in storage
+	tokenHash := hashToken(tokenString)
 
+	logger := middleware.GetLoggerFromCtx(ctx)
 	// Find the token by its hash (we need to hash the input to find it)
-	token, err := s.tokenRepo.FindByToken(ctx, tokenString)
+	token, err := s.tokenRepo.FindByToken(ctx, tokenHash)
 	if err != nil {
 		return nil, fmt.Errorf("invalid token: %w", err)
 	}
-
 	// Check if token is expired
 	if token.IsExpired() {
 		// Auto-revoke expired tokens
+		logger.Info("Token is expired", "token", tokenString, "hash", tokenHash)
 		_ = s.tokenRepo.Delete(ctx, token.ID)
 		return nil, errors.New("token has expired")
 	}
@@ -148,7 +150,7 @@ func (s *apiTokenService) ValidateToken(ctx context.Context, tokenString string)
 	token.UpdateLastUsed()
 	if err := s.tokenRepo.Update(ctx, token); err != nil {
 		// Log the error but don't fail the validation
-		// TODO: Add proper logging
+		logger.Error("Failed to update token", "error", err)
 	}
 
 	// Get the associated user
@@ -156,7 +158,6 @@ func (s *apiTokenService) ValidateToken(ctx context.Context, tokenString string)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
-
 	return user, nil
 }
 
@@ -169,4 +170,9 @@ func generateSecureToken(length int) (string, error) {
 	}
 	// Use URL-safe base64 encoding without padding
 	return "mma_" + base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(b), nil
+}
+
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }

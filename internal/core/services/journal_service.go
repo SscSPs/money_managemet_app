@@ -32,12 +32,12 @@ var (
 // journalService provides core journal and transaction operations.
 type journalService struct {
 	accountSvc   portssvc.AccountSvcFacade
-	journalRepo  portsrepo.JournalRepositoryFacade
+	journalRepo  portsrepo.JournalRepositoryWithTx
 	workplaceSvc portssvc.WorkplaceSvcFacade // Updated to use WorkplaceSvcFacade
 }
 
 // NewJournalService creates a new JournalService.
-func NewJournalService(journalRepo portsrepo.JournalRepositoryFacade, accountSvc portssvc.AccountSvcFacade, workplaceSvc portssvc.WorkplaceSvcFacade) portssvc.JournalSvcFacade {
+func NewJournalService(journalRepo portsrepo.JournalRepositoryWithTx, accountSvc portssvc.AccountSvcFacade, workplaceSvc portssvc.WorkplaceSvcFacade) portssvc.JournalSvcFacade {
 	return &journalService{
 		accountSvc:   accountSvc,
 		journalRepo:  journalRepo,
@@ -474,8 +474,6 @@ func (s *journalService) UpdateJournal(ctx context.Context, workplaceID string, 
 	journal.Transactions = nil
 	return journal, nil
 }
-
-
 
 // ListTransactionsByAccount retrieves transactions for a specific account within a workplace.
 func (j *journalService) ListTransactionsByAccount(ctx context.Context, workplaceID string, accountID string, userID string, params dto.ListTransactionsParams) (*dto.ListTransactionsResponse, error) {

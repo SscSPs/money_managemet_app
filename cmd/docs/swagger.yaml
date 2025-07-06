@@ -1238,47 +1238,6 @@ paths:
       summary: List users
       tags:
       - users
-    post:
-      consumes:
-      - application/json
-      description: Creates a new user (typically an admin action)
-      parameters:
-      - description: User details
-        in: body
-        name: user
-        required: true
-        schema:
-          $ref: '#/definitions/dto.CreateUserRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/dto.UserResponse'
-        "400":
-          description: Invalid input
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Failed to create user
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Create a new user
-      tags:
-      - users
   /users/{id}:
     delete:
       description: Marks a user as deleted (soft delete)

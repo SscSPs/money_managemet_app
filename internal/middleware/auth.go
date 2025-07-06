@@ -16,6 +16,13 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Retrieve logger from the standard context
 		logger := GetLoggerFromCtx(c.Request.Context())
+		logger.Info("AuthMiddleware", "method", c.Request.Method, "path", c.Request.URL.Path)
+		// if auth is already done, skip this middleware
+		if authMethod, exists := c.Get("authMethod"); exists {
+			logger.Info("Auth already done", "authMethod", authMethod)
+			c.Next()
+			return
+		}
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			logger.Warn("Authorization header missing")

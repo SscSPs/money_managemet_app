@@ -12,6 +12,7 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/core/services"
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -24,7 +25,24 @@ type MockJournalRepository struct {
 }
 
 // Ensure MockJournalRepository implements portsrepo.JournalRepositoryFacade
-var _ portsrepo.JournalRepositoryFacade = (*MockJournalRepository)(nil)
+var _ portsrepo.JournalRepositoryWithTx = (*MockJournalRepository)(nil)
+
+func (m *MockJournalRepository) Begin(ctx context.Context) (pgx.Tx, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(pgx.Tx), args.Error(1)
+}
+func (m *MockJournalRepository) Commit(ctx context.Context, tx pgx.Tx) error {
+	args := m.Called(ctx, tx)
+	return args.Error(0)
+}
+
+func (m *MockJournalRepository) Rollback(ctx context.Context, tx pgx.Tx) error {
+	args := m.Called(ctx, tx)
+	return args.Error(0)
+}
 
 func (m *MockJournalRepository) SaveJournal(ctx context.Context, journal domain.Journal, transactions []domain.Transaction, balanceChanges map[string]decimal.Decimal) error {
 	args := m.Called(ctx, journal, transactions, balanceChanges)
