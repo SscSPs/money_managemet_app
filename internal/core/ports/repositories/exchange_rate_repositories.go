@@ -10,6 +10,8 @@ import (
 type ExchangeRateReader interface {
 	// FindExchangeRate retrieves an exchange rate between two currencies.
 	FindExchangeRate(ctx context.Context, fromCurrencyCode, toCurrencyCode string) (*domain.ExchangeRate, error)
+	// FindExchangeRateByID retrieves an exchange rate by its ID.
+	FindExchangeRateByID(ctx context.Context, rateID string) (*domain.ExchangeRate, error)
 }
 
 // ExchangeRateWriter defines write operations for exchange rate data

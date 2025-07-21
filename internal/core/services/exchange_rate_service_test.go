@@ -13,6 +13,7 @@ import (
 	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
@@ -35,22 +36,56 @@ func (m *MockExchangeRateRepository) FindExchangeRate(ctx context.Context, fromC
 	return args.Get(0).(*domain.ExchangeRate), args.Error(1)
 }
 
+func (m *MockExchangeRateRepository) FindExchangeRateByID(ctx context.Context, rateID string) (*domain.ExchangeRate, error) {
+	args := m.Called(ctx, rateID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.ExchangeRate), args.Error(1)
+}
+
 // --- Test Suite ---
 type ExchangeRateServiceTestSuite struct {
 	suite.Suite
-	mockRateRepo     *MockExchangeRateRepository
-	mockCurrencyRepo *MockCurrencyRepository // Need mock for currency validation
-	service          portssvc.ExchangeRateSvcFacade
-	currencyService  portssvc.CurrencySvcFacade // Real currency service using mock repo
+	mockRateRepo *MockExchangeRateRepository
+	service     portssvc.ExchangeRateSvcFacade
 }
 
 func (suite *ExchangeRateServiceTestSuite) SetupTest() {
 	suite.mockRateRepo = new(MockExchangeRateRepository)
-	suite.mockCurrencyRepo = new(MockCurrencyRepository)
-	// Create real currency service with its mock repo for validation dependency
-	suite.currencyService = services.NewCurrencyService(suite.mockCurrencyRepo)
-	// Inject mock rate repo and the created currency service
-	suite.service = services.NewExchangeRateService(suite.mockRateRepo, suite.currencyService)
+	// Create a mock currency service
+	mockCurrencySvc := new(MockCurrencyService)
+	// Inject mocks into the service
+	suite.service = services.NewExchangeRateService(suite.mockRateRepo, mockCurrencySvc)
+}
+
+// MockCurrencyService implements the CurrencySvcFacade interface
+type MockCurrencyService struct {
+	mock.Mock
+}
+
+func (m *MockCurrencyService) GetCurrencyByCode(ctx context.Context, code string) (*domain.Currency, error) {
+	args := m.Called(ctx, code)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Currency), args.Error(1)
+}
+
+func (m *MockCurrencyService) ListCurrencies(ctx context.Context) ([]domain.Currency, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.Currency), args.Error(1)
+}
+
+func (m *MockCurrencyService) CreateCurrency(ctx context.Context, req dto.CreateCurrencyRequest, creatorUserID string) (*domain.Currency, error) {
+	args := m.Called(ctx, req, creatorUserID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Currency), args.Error(1)
 }
 
 // --- Test Cases ---
@@ -67,9 +102,13 @@ func (suite *ExchangeRateServiceTestSuite) TestCreateExchangeRate_Success() {
 		DateEffective:    time.Now().Truncate(24 * time.Hour),
 	}
 
+	// Get the mock currency service from the test suite
+	mockCurrencySvc, ok := suite.service.(interface{ GetCurrencyService() portssvc.CurrencySvcFacade }).GetCurrencyService().(*MockCurrencyService)
+	suite.Require().True(ok, "Failed to get mock currency service")
+
 	// Mock currency validation success
-	suite.mockCurrencyRepo.On("FindCurrencyByCode", ctx, fromCode).Return(&domain.Currency{CurrencyCode: fromCode}, nil).Once()
-	suite.mockCurrencyRepo.On("FindCurrencyByCode", ctx, toCode).Return(&domain.Currency{CurrencyCode: toCode}, nil).Once()
+	mockCurrencySvc.On("GetCurrencyByCode", ctx, fromCode).Return(&domain.Currency{CurrencyCode: fromCode}, nil).Once()
+	mockCurrencySvc.On("GetCurrencyByCode", ctx, toCode).Return(&domain.Currency{CurrencyCode: toCode}, nil).Once()
 
 	// Mock rate save success
 	suite.mockRateRepo.On("SaveExchangeRate", ctx, mock.AnythingOfType("domain.ExchangeRate")).Return(nil).Once()
@@ -86,7 +125,7 @@ func (suite *ExchangeRateServiceTestSuite) TestCreateExchangeRate_Success() {
 	suite.Equal(creatorUserID, rate.CreatedBy)
 
 	suite.mockRateRepo.AssertExpectations(suite.T())
-	suite.mockCurrencyRepo.AssertExpectations(suite.T())
+	mockCurrencySvc.AssertExpectations(suite.T())
 }
 
 func (suite *ExchangeRateServiceTestSuite) TestCreateExchangeRate_InvalidRate() {
@@ -132,7 +171,11 @@ func (suite *ExchangeRateServiceTestSuite) TestCreateExchangeRate_FromCurrencyNo
 	toCode := "EUR"
 	req := dto.CreateExchangeRateRequest{FromCurrencyCode: fromCode, ToCurrencyCode: toCode, Rate: decimal.NewFromFloat(1)} // simplified
 
-	suite.mockCurrencyRepo.On("FindCurrencyByCode", ctx, fromCode).Return(nil, apperrors.ErrNotFound).Once()
+	// Get the mock currency service from the test suite
+	mockCurrencySvc, ok := suite.service.(interface{ GetCurrencyService() portssvc.CurrencySvcFacade }).GetCurrencyService().(*MockCurrencyService)
+	suite.Require().True(ok, "Failed to get mock currency service")
+
+	mockCurrencySvc.On("GetCurrencyByCode", ctx, fromCode).Return(nil, apperrors.ErrNotFound).Once()
 
 	rate, err := suite.service.CreateExchangeRate(ctx, req, creatorUserID)
 
@@ -141,11 +184,35 @@ func (suite *ExchangeRateServiceTestSuite) TestCreateExchangeRate_FromCurrencyNo
 	suite.ErrorIs(err, apperrors.ErrValidation)
 	suite.Contains(err.Error(), "'from' currency code")
 	suite.Contains(err.Error(), "not found")
-	suite.mockCurrencyRepo.AssertExpectations(suite.T())
+	mockCurrencySvc.AssertExpectations(suite.T())
 	suite.mockRateRepo.AssertNotCalled(suite.T(), "SaveExchangeRate")
 }
 
-// Add similar test for ToCurrencyNotFound
+func (suite *ExchangeRateServiceTestSuite) TestCreateExchangeRate_ToCurrencyNotFound() {
+	ctx := context.Background()
+	creatorUserID := uuid.NewString()
+	fromCode := "USD"
+	toCode := "XXX"
+	req := dto.CreateExchangeRateRequest{FromCurrencyCode: fromCode, ToCurrencyCode: toCode, Rate: decimal.NewFromFloat(1)}
+
+	// Get the mock currency service from the test suite
+	mockCurrencySvc, ok := suite.service.(interface{ GetCurrencyService() portssvc.CurrencySvcFacade }).GetCurrencyService().(*MockCurrencyService)
+	suite.Require().True(ok, "Failed to get mock currency service")
+
+	// Mock 'from' currency found but 'to' currency not found
+	mockCurrencySvc.On("GetCurrencyByCode", ctx, fromCode).Return(&domain.Currency{CurrencyCode: fromCode}, nil).Once()
+	mockCurrencySvc.On("GetCurrencyByCode", ctx, toCode).Return(nil, apperrors.ErrNotFound).Once()
+
+	rate, err := suite.service.CreateExchangeRate(ctx, req, creatorUserID)
+
+	suite.Require().Error(err)
+	suite.Nil(rate)
+	suite.ErrorIs(err, apperrors.ErrValidation)
+	suite.Contains(err.Error(), "'to' currency code")
+	suite.Contains(err.Error(), "not found")
+	mockCurrencySvc.AssertExpectations(suite.T())
+	suite.mockRateRepo.AssertNotCalled(suite.T(), "SaveExchangeRate")
+}
 
 func (suite *ExchangeRateServiceTestSuite) TestCreateExchangeRate_SaveDuplicate() {
 	ctx := context.Background()
@@ -155,9 +222,14 @@ func (suite *ExchangeRateServiceTestSuite) TestCreateExchangeRate_SaveDuplicate(
 	req := dto.CreateExchangeRateRequest{FromCurrencyCode: fromCode, ToCurrencyCode: toCode, Rate: decimal.NewFromFloat(1)} // simplified
 	duplicateErr := fmt.Errorf("%w: exchange rate exists", apperrors.ErrDuplicate)
 
+	// Get the mock currency service from the test suite
+	mockCurrencySvc, ok := suite.service.(interface{ GetCurrencyService() portssvc.CurrencySvcFacade }).GetCurrencyService().(*MockCurrencyService)
+	suite.Require().True(ok, "Failed to get mock currency service")
+
 	// Mock currency validation success
-	suite.mockCurrencyRepo.On("FindCurrencyByCode", ctx, fromCode).Return(&domain.Currency{}, nil).Once()
-	suite.mockCurrencyRepo.On("FindCurrencyByCode", ctx, toCode).Return(&domain.Currency{}, nil).Once()
+	mockCurrencySvc.On("GetCurrencyByCode", ctx, fromCode).Return(&domain.Currency{CurrencyCode: fromCode}, nil).Once()
+	mockCurrencySvc.On("GetCurrencyByCode", ctx, toCode).Return(&domain.Currency{CurrencyCode: toCode}, nil).Once()
+
 	// Mock rate save duplicate error
 	suite.mockRateRepo.On("SaveExchangeRate", ctx, mock.AnythingOfType("domain.ExchangeRate")).Return(duplicateErr).Once()
 
@@ -166,8 +238,9 @@ func (suite *ExchangeRateServiceTestSuite) TestCreateExchangeRate_SaveDuplicate(
 	suite.Require().Error(err)
 	suite.Nil(rate)
 	suite.ErrorIs(err, apperrors.ErrValidation) // Service maps duplicate to validation
+
 	suite.mockRateRepo.AssertExpectations(suite.T())
-	suite.mockCurrencyRepo.AssertExpectations(suite.T())
+	mockCurrencySvc.AssertExpectations(suite.T())
 }
 
 func (suite *ExchangeRateServiceTestSuite) TestGetExchangeRate_Success() {
@@ -196,6 +269,128 @@ func (suite *ExchangeRateServiceTestSuite) TestGetExchangeRate_InvalidCode() {
 	suite.Require().Error(err)
 	suite.Nil(rate)
 	suite.ErrorIs(err, apperrors.ErrValidation)
+}
+
+func (suite *ExchangeRateServiceTestSuite) TestConvertAmount_Success() {
+	ctx := context.Background()
+	fromAmount := decimal.NewFromFloat(100.00)
+	fromCurrency := "USD"
+	toCurrency := "EUR"
+	exchangeRate := &domain.ExchangeRate{
+		ExchangeRateID:   "rate_123",
+		FromCurrencyCode: fromCurrency,
+		ToCurrencyCode:   toCurrency,
+		Rate:             decimal.NewFromFloat(0.85),
+		DateEffective:    time.Now().Truncate(24 * time.Hour),
+	}
+
+	// Mock the exchange rate lookup
+	suite.mockRateRepo.On("FindExchangeRate", ctx, fromCurrency, toCurrency).Return(exchangeRate, nil).Once()
+
+	// Test conversion
+	convertedAmount, rate, err := suite.service.(interface {
+		ConvertAmount(ctx context.Context, fromAmount decimal.Decimal, fromCurrency, toCurrency string) (decimal.Decimal, *domain.ExchangeRate, error)
+	}).ConvertAmount(ctx, fromAmount, fromCurrency, toCurrency)
+
+	suite.Require().NoError(err)
+	suite.Require().NotNil(rate)
+	suite.True(convertedAmount.Equal(decimal.NewFromFloat(85.00)))
+	suite.Equal(exchangeRate.ExchangeRateID, rate.ExchangeRateID)
+	suite.mockRateRepo.AssertExpectations(suite.T())
+}
+
+func (suite *ExchangeRateServiceTestSuite) TestConvertAmount_InvalidCurrency() {
+	ctx := context.Background()
+	fromAmount := decimal.NewFromFloat(100.00)
+
+	// Test with invalid from currency
+	_, _, err := suite.service.(interface {
+		ConvertAmount(ctx context.Context, fromAmount decimal.Decimal, fromCurrency, toCurrency string) (decimal.Decimal, *domain.ExchangeRate, error)
+	}).ConvertAmount(ctx, fromAmount, "US", "EUR")
+
+	suite.Require().Error(err)
+	suite.ErrorIs(err, apperrors.ErrValidation)
+
+	// Test with invalid to currency
+	_, _, err = suite.service.(interface {
+		ConvertAmount(ctx context.Context, fromAmount decimal.Decimal, fromCurrency, toCurrency string) (decimal.Decimal, *domain.ExchangeRate, error)
+	}).ConvertAmount(ctx, fromAmount, "USD", "EU")
+
+	suite.Require().Error(err)
+	suite.ErrorIs(err, apperrors.ErrValidation)
+}
+
+func (suite *ExchangeRateServiceTestSuite) TestConvertAmount_RateNotFound() {
+	ctx := context.Background()
+	fromAmount := decimal.NewFromFloat(100.00)
+	fromCurrency := "USD"
+	toCurrency := "EUR"
+
+	// Mock the exchange rate lookup to return not found
+	suite.mockRateRepo.On("FindExchangeRate", ctx, fromCurrency, toCurrency).
+		Return(nil, apperrors.NewNotFoundError("exchange rate not found")).Once()
+
+	// Test conversion
+	_, _, err := suite.service.(interface {
+		ConvertAmount(ctx context.Context, fromAmount decimal.Decimal, fromCurrency, toCurrency string) (decimal.Decimal, *domain.ExchangeRate, error)
+	}).ConvertAmount(ctx, fromAmount, fromCurrency, toCurrency)
+
+	suite.Require().Error(err)
+	suite.ErrorIs(err, apperrors.ErrNotFound)
+	suite.mockRateRepo.AssertExpectations(suite.T())
+}
+
+func (suite *ExchangeRateServiceTestSuite) TestGetExchangeRateByID_Success() {
+	ctx := context.Background()
+	rateID := "rate_123"
+	expectedRate := &domain.ExchangeRate{
+		ExchangeRateID:   rateID,
+		FromCurrencyCode: "USD",
+		ToCurrencyCode:   "EUR",
+		Rate:             decimal.NewFromFloat(0.85),
+	}
+
+	suite.mockRateRepo.On("FindExchangeRateByID", ctx, rateID).Return(expectedRate, nil).Once()
+
+	rate, err := suite.service.(interface {
+		GetExchangeRateByID(ctx context.Context, rateID string) (*domain.ExchangeRate, error)
+	}).GetExchangeRateByID(ctx, rateID)
+
+	suite.Require().NoError(err)
+	suite.Equal(expectedRate, rate)
+	suite.mockRateRepo.AssertExpectations(suite.T())
+}
+
+func (suite *ExchangeRateServiceTestSuite) TestGetExchangeRateByID_NotFound() {
+	ctx := context.Background()
+	rateID := "nonexistent_rate"
+
+	suite.mockRateRepo.On("FindExchangeRateByID", ctx, rateID).
+		Return(nil, apperrors.NewNotFoundError("exchange rate not found")).Once()
+
+	rate, err := suite.service.(interface {
+		GetExchangeRateByID(ctx context.Context, rateID string) (*domain.ExchangeRate, error)
+	}).GetExchangeRateByID(ctx, rateID)
+
+	suite.Require().Error(err)
+	suite.Nil(rate)
+	suite.ErrorIs(err, apperrors.ErrNotFound)
+	suite.mockRateRepo.AssertExpectations(suite.T())
+}
+
+func TestNewExchangeRateService(t *testing.T) {
+	// Create mock dependencies
+	mockRateRepo := new(MockExchangeRateRepository)
+	mockCurrencySvc := new(MockCurrencyService)
+	
+	// Create the service
+	service := services.NewExchangeRateService(mockRateRepo, mockCurrencySvc)
+	
+	// Verify the service is created with the correct dependencies
+	assert.NotNil(t, service)
+	
+	// Test that the service implements the correct interface
+	var _ portssvc.ExchangeRateSvcFacade = service
 }
 
 func (suite *ExchangeRateServiceTestSuite) TestGetExchangeRate_NotFound() {

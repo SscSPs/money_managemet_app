@@ -30,8 +30,14 @@ type CurrencySvcFacade interface {
 
 // ExchangeRateReaderSvc defines read operations for exchange rate data
 type ExchangeRateReaderSvc interface {
+	// GetExchangeRateByID retrieves an exchange rate by its ID.
+	GetExchangeRateByID(ctx context.Context, rateID string) (*domain.ExchangeRate, error)
 	// GetExchangeRate retrieves an exchange rate between two currencies.
 	GetExchangeRate(ctx context.Context, fromCode, toCode string) (*domain.ExchangeRate, error)
+	// ListExchangeRates retrieves all available exchange rates.
+	ListExchangeRates(ctx context.Context) ([]domain.ExchangeRate, error)
+	// ListExchangeRatesByCurrency retrieves all exchange rates for a specific currency.
+	ListExchangeRatesByCurrency(ctx context.Context, currencyCode string) ([]domain.ExchangeRate, error)
 }
 
 // ExchangeRateWriterSvc defines write operations for exchange rate data

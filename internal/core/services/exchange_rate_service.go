@@ -106,6 +106,20 @@ func (s *exchangeRateService) CreateExchangeRate(ctx context.Context, req dto.Cr
 	return &rate, nil
 }
 
+// GetExchangeRateByID retrieves an exchange rate by its ID.
+func (s *exchangeRateService) GetExchangeRateByID(ctx context.Context, rateID string) (*domain.ExchangeRate, error) {
+	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
+
+	rate, err := s.exchangeRateRepo.FindExchangeRateByID(ctx, rateID)
+	if err != nil {
+		logger.Error("Failed to find exchange rate in repository", slog.String("error", err.Error()), slog.String("rate_id", rateID))
+		return nil, fmt.Errorf("failed to get exchange rate in service: %w", err)
+	}
+
+	logger.Debug("Exchange rate retrieved successfully from service", slog.String("rate_id", rate.ExchangeRateID))
+	return rate, nil
+}
+
 // GetExchangeRate retrieves a specific exchange rate for a given currency pair and date.
 func (s *exchangeRateService) GetExchangeRate(ctx context.Context, fromCode, toCode string) (*domain.ExchangeRate, error) {
 	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
