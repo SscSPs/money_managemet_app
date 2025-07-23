@@ -100,7 +100,7 @@ func RegisterAPITokenRoutes(router *gin.RouterGroup, tokenSvc services.APITokenS
 // @Failure 400 {object} APIErrorResponse
 // @Failure 401 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
-// @Router /api/v1/tokens [post]
+// @Router /tokens [post]
 func (h *APITokenHandler) CreateToken(c *gin.Context) {
 	// Get user ID from context (set by auth middleware)
 	creatorUserID, ok := middleware.GetUserIDFromContext(c)
@@ -136,7 +136,7 @@ func (h *APITokenHandler) CreateToken(c *gin.Context) {
 // @Success 200 {object} ListAPITokensResponse
 // @Failure 401 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
-// @Router /api/v1/tokens [get]
+// @Router /tokens [get]
 func (h *APITokenHandler) ListTokens(c *gin.Context) {
 	// Get user ID from context (set by auth middleware)
 	creatorUserID, ok := middleware.GetUserIDFromContext(c)
@@ -170,7 +170,7 @@ func (h *APITokenHandler) ListTokens(c *gin.Context) {
 // @Failure 403 {object} APIErrorResponse
 // @Failure 404 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
-// @Router /api/v1/tokens/{id} [delete]
+// @Router /tokens/{id} [delete]
 func (h *APITokenHandler) RevokeToken(c *gin.Context) {
 	// Get user ID from context (set by auth middleware)
 	creatorUserID, ok := middleware.GetUserIDFromContext(c)
@@ -210,7 +210,7 @@ func (h *APITokenHandler) RevokeToken(c *gin.Context) {
 // @Success 204 "All tokens revoked successfully"
 // @Failure 401 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
-// @Router /api/v1/tokens [delete]
+// @Router /tokens [delete]
 func (h *APITokenHandler) RevokeAllTokens(c *gin.Context) {
 	// Get user ID from context (set by auth middleware)
 	creatorUserID, ok := middleware.GetUserIDFromContext(c)

@@ -15,196 +15,6 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/v1/tokens": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Lists all API tokens for the authenticated user. Only returns token metadata, not the actual token values.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "tokens"
-                ],
-                "summary": "List all API tokens",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "description": "A list of API tokens",
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/handlers.APITokenResponse"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Creates a new API token for the authenticated user. The token will be shown only once upon creation.\nThe token can be used for API authentication by including it in the Authorization header as: ` + "`" + `Authorization: Bearer \u003ctoken\u003e` + "`" + `",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "tokens"
-                ],
-                "summary": "Create a new API token",
-                "parameters": [
-                    {
-                        "description": "Token creation details",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handlers.CreateAPITokenRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.CreateAPITokenResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Revokes all API tokens for the authenticated user. This will immediately invalidate all tokens.\nA new token will need to be generated for API access after this operation.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "tokens"
-                ],
-                "summary": "Revoke all API tokens",
-                "responses": {
-                    "204": {
-                        "description": "All tokens revoked successfully"
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/tokens/{id}": {
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Revokes a specific API token by ID. The token will be immediately invalidated.\nOnly the token owner can revoke their own tokens.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "tokens"
-                ],
-                "summary": "Revoke an API token",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "format": "uuid",
-                        "description": "Token ID (UUID format)",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "Token revoked successfully"
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.APIErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/auth/login": {
             "post": {
                 "description": "Authenticates a user and returns a JWT token.",
@@ -780,38 +590,192 @@ const docTemplate = `{
         },
         "/tokens": {
             "get": {
-                "description": "Registers all the API token related routes",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lists all API tokens for the authenticated user. Only returns token metadata, not the actual token values.",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "tokens"
                 ],
-                "summary": "Register API token routes",
-                "responses": {}
+                "summary": "List all API tokens",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "description": "A list of API tokens",
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handlers.APITokenResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
             },
             "post": {
-                "description": "Registers all the API token related routes",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new API token for the authenticated user. The token will be shown only once upon creation.\nThe token can be used for API authentication by including it in the Authorization header as: ` + "`" + `Authorization: Bearer \u003ctoken\u003e` + "`" + `",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "tokens"
                 ],
-                "summary": "Register API token routes",
-                "responses": {}
+                "summary": "Create a new API token",
+                "parameters": [
+                    {
+                        "description": "Token creation details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateAPITokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateAPITokenResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
             },
             "delete": {
-                "description": "Registers all the API token related routes",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Revokes all API tokens for the authenticated user. This will immediately invalidate all tokens.\nA new token will need to be generated for API access after this operation.",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "tokens"
                 ],
-                "summary": "Register API token routes",
-                "responses": {}
+                "summary": "Revoke all API tokens",
+                "responses": {
+                    "204": {
+                        "description": "All tokens revoked successfully"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
             }
         },
         "/tokens/{id}": {
             "delete": {
-                "description": "Registers all the API token related routes",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Revokes a specific API token by ID. The token will be immediately invalidated.\nOnly the token owner can revoke their own tokens.",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "tokens"
                 ],
-                "summary": "Register API token routes",
-                "responses": {}
+                "summary": "Revoke an API token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Token ID (UUID format)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Token revoked successfully"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
             }
         },
         "/users": {
@@ -3010,6 +2974,10 @@ const docTemplate = `{
                 "RoleReadOnly": "Users with read-only access to workplace data",
                 "RoleRemoved": "For users who have been removed from the workplace"
             },
+            "x-enum-descriptions": [
+                "Users with read-only access to workplace data",
+                "For users who have been removed from the workplace"
+            ],
             "x-enum-varnames": [
                 "RoleAdmin",
                 "RoleMember",
