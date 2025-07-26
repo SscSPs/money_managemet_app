@@ -106,6 +106,34 @@ func (s *exchangeRateService) CreateExchangeRate(ctx context.Context, req dto.Cr
 	return &rate, nil
 }
 
+// GetExchangeRateByID retrieves an exchange rate by its ID.
+func (s *exchangeRateService) GetExchangeRateByID(ctx context.Context, rateID string) (*domain.ExchangeRate, error) {
+	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
+
+	rate, err := s.exchangeRateRepo.FindExchangeRateByID(ctx, rateID)
+	if err != nil {
+		logger.Error("Failed to find exchange rate in repository", slog.String("error", err.Error()), slog.String("rate_id", rateID))
+		return nil, fmt.Errorf("failed to get exchange rate in service: %w", err)
+	}
+
+	logger.Debug("Exchange rate retrieved successfully from service", slog.String("rate_id", rate.ExchangeRateID))
+	return rate, nil
+}
+
+// GetExchangeRateByIDs retrieves exchange rates by their IDs.
+func (s *exchangeRateService) GetExchangeRateByIDs(ctx context.Context, rateIDs []string) ([]domain.ExchangeRate, error) {
+	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
+
+	rates, err := s.exchangeRateRepo.FindExchangeRateByIDs(ctx, rateIDs)
+	if err != nil {
+		logger.Error("Failed to find exchange rates in repository", slog.String("error", err.Error()), slog.Any("rate_ids", rateIDs))
+		return nil, fmt.Errorf("failed to get exchange rates in service: %w", err)
+	}
+
+	logger.Debug("Exchange rates retrieved successfully from service", slog.Any("rate_ids", rateIDs))
+	return rates, nil
+}
+
 // GetExchangeRate retrieves a specific exchange rate for a given currency pair and date.
 func (s *exchangeRateService) GetExchangeRate(ctx context.Context, fromCode, toCode string) (*domain.ExchangeRate, error) {
 	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
@@ -125,4 +153,61 @@ func (s *exchangeRateService) GetExchangeRate(ctx context.Context, fromCode, toC
 
 	logger.Debug("Exchange rate retrieved successfully from service", slog.String("rate_id", rate.ExchangeRateID))
 	return rate, nil
+}
+
+// ListExchangeRates retrieves all available exchange rates.
+func (s *exchangeRateService) ListExchangeRates(ctx context.Context) ([]domain.ExchangeRate, error) {
+	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
+
+	// Use the repository's ListExchangeRates method with no filters
+	rates, _, err := s.exchangeRateRepo.ListExchangeRates(ctx, nil, nil, nil, 0, 0)
+	if err != nil {
+		logger.Error("Failed to list exchange rates in repository", slog.String("error", err.Error()))
+		return nil, fmt.Errorf("failed to list exchange rates in service: %w", err)
+	}
+
+	logger.Debug("Exchange rates listed successfully from service", slog.Int("count", len(rates)))
+	return rates, nil
+}
+
+// ListExchangeRatesByCurrency retrieves all exchange rates for a specific currency.
+func (s *exchangeRateService) ListExchangeRatesByCurrency(ctx context.Context, currencyCode string) ([]domain.ExchangeRate, error) {
+	logger := middleware.GetLoggerFromCtx(ctx) // Get logger from context
+
+	currencyCode = strings.ToUpper(currencyCode)
+	if len(currencyCode) != 3 {
+		logger.Warn("Validation Error: Invalid currency code length", slog.String("currency_code", currencyCode))
+		return nil, fmt.Errorf("%w: currency code must be 3 letters", apperrors.ErrValidation)
+	}
+
+	// Get rates where this currency is either the 'from' or 'to' currency
+	fromRates, _, err := s.exchangeRateRepo.ListExchangeRates(ctx, &currencyCode, nil, nil, 0, 0)
+	if err != nil {
+		logger.Error("Failed to list 'from' exchange rates in repository", slog.String("error", err.Error()), slog.String("currency_code", currencyCode))
+		return nil, fmt.Errorf("failed to list exchange rates for currency in service: %w", err)
+	}
+
+	toRates, _, err := s.exchangeRateRepo.ListExchangeRates(ctx, nil, &currencyCode, nil, 0, 0)
+	if err != nil {
+		logger.Error("Failed to list 'to' exchange rates in repository", slog.String("error", err.Error()), slog.String("currency_code", currencyCode))
+		return nil, fmt.Errorf("failed to list exchange rates for currency in service: %w", err)
+	}
+
+	// Combine and deduplicate results
+	rateMap := make(map[string]domain.ExchangeRate)
+	for _, rate := range fromRates {
+		rateMap[rate.ExchangeRateID] = rate
+	}
+	for _, rate := range toRates {
+		rateMap[rate.ExchangeRateID] = rate
+	}
+
+	// Convert map back to slice
+	var allRates []domain.ExchangeRate
+	for _, rate := range rateMap {
+		allRates = append(allRates, rate)
+	}
+
+	logger.Debug("Exchange rates for currency listed successfully from service", slog.String("currency_code", currencyCode), slog.Int("count", len(allRates)))
+	return allRates, nil
 }

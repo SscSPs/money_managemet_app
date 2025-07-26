@@ -35,6 +35,10 @@ func registerExchangeRateRoutes(rg *gin.RouterGroup, exchangeRateService portssv
 	{
 		exchangeRates.POST("", h.createExchangeRate)
 		exchangeRates.GET("/:from/:to", h.getExchangeRate)
+		exchangeRates.GET("/id/:id", h.getExchangeRateByID)
+		exchangeRates.GET("/batch", h.getExchangeRatesByIDs)
+		exchangeRates.GET("", h.listExchangeRates)
+		exchangeRates.GET("/currency/:currencyCode", h.listExchangeRatesByCurrency)
 	}
 }
 
@@ -127,8 +131,6 @@ func (h *exchangeRateHandler) getExchangeRate(c *gin.Context) {
 			logger.Warn("Validation error getting exchange rate", slog.String("error", err.Error()))
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		} else if errors.Is(err, apperrors.ErrNotFound) {
-			// Note: The service currently wraps ErrNotFound, so this check might not work directly.
-			// We might need to check the error message content or adjust service error handling.
 			logger.Warn("Exchange rate not found")
 			c.JSON(http.StatusNotFound, gin.H{"error": "Exchange rate not found"})
 		} else {
@@ -140,4 +142,155 @@ func (h *exchangeRateHandler) getExchangeRate(c *gin.Context) {
 
 	logger.Info("Exchange rate retrieved successfully")
 	c.JSON(http.StatusOK, dto.ToExchangeRateResponse(rate))
+}
+
+// getExchangeRateByID godoc
+// @Summary Get exchange rate by ID
+// @Description Retrieves an exchange rate by its unique identifier
+// @Tags exchange rates
+// @Produce  json
+// @Param   id   path     string  true  "Exchange Rate ID"
+// @Success 200 {object} dto.ExchangeRateResponse
+// @Failure 400 {object} map[string]string "Invalid ID format"
+// @Failure 404 {object} map[string]string "Exchange rate not found"
+// @Failure 500 {object} map[string]string "Failed to retrieve exchange rate"
+// @Security BearerAuth
+// @Router /exchange-rates/id/{id} [get]
+func (h *exchangeRateHandler) getExchangeRateByID(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	rateID := c.Param("id")
+
+	if rateID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Exchange rate ID is required"})
+		return
+	}
+
+	logger = logger.With(slog.String("rate_id", rateID))
+	logger.Info("Received request to get exchange rate by ID")
+
+	rate, err := h.exchangeRateService.GetExchangeRateByID(c.Request.Context(), rateID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrNotFound) {
+			logger.Warn("Exchange rate not found")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Exchange rate not found"})
+		} else {
+			logger.Error("Failed to get exchange rate by ID", slog.String("error", err.Error()))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve exchange rate"})
+		}
+		return
+	}
+
+	logger.Info("Exchange rate retrieved successfully by ID")
+	c.JSON(http.StatusOK, dto.ToExchangeRateResponse(rate))
+}
+
+// getExchangeRatesByIDs godoc
+// @Summary Get multiple exchange rates by their IDs
+// @Description Retrieves multiple exchange rates by their unique identifiers
+// @Tags exchange rates
+// @Produce  json
+// @Param   ids  query    []string  true  "Array of Exchange Rate IDs"
+// @Success 200 {array}  dto.ExchangeRateResponse
+// @Failure 400 {object} map[string]string "Invalid ID format"
+// @Failure 500 {object} map[string]string "Failed to retrieve exchange rates"
+// @Security BearerAuth
+// @Router /exchange-rates/batch [get]
+func (h *exchangeRateHandler) getExchangeRatesByIDs(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+
+	// Get IDs from query parameters
+	ids := c.QueryArray("ids")
+	if len(ids) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "At least one rate ID is required"})
+		return
+	}
+
+	logger = logger.With(slog.Any("rate_ids", ids))
+	logger.Info("Received request to get multiple exchange rates by IDs")
+
+	rates, err := h.exchangeRateService.GetExchangeRateByIDs(c.Request.Context(), ids)
+	if err != nil {
+		logger.Error("Failed to get exchange rates by IDs", slog.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve exchange rates"})
+		return
+	}
+
+	responses := make([]dto.ExchangeRateResponse, len(rates))
+	for i, rate := range rates {
+		rateCopy := rate // Create a local copy to avoid taking the address of the loop variable
+		responses[i] = dto.ToExchangeRateResponse(&rateCopy)
+	}
+
+	logger.Info("Successfully retrieved exchange rates by IDs")
+	c.JSON(http.StatusOK, responses)
+}
+
+// listExchangeRates godoc
+// @Summary List all exchange rates
+// @Description Retrieves all available exchange rates
+// @Tags exchange rates
+// @Produce  json
+// @Success 200 {array}  dto.ExchangeRateResponse
+// @Failure 500 {object} map[string]string "Failed to retrieve exchange rates"
+// @Security BearerAuth
+// @Router /exchange-rates [get]
+func (h *exchangeRateHandler) listExchangeRates(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	logger.Info("Received request to list all exchange rates")
+
+	rates, err := h.exchangeRateService.ListExchangeRates(c.Request.Context())
+	if err != nil {
+		logger.Error("Failed to list exchange rates", slog.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve exchange rates"})
+		return
+	}
+
+	responses := make([]dto.ExchangeRateResponse, len(rates))
+	for i, rate := range rates {
+		rateCopy := rate // Create a local copy to avoid taking the address of the loop variable
+		responses[i] = dto.ToExchangeRateResponse(&rateCopy)
+	}
+
+	logger.Info("Successfully retrieved all exchange rates")
+	c.JSON(http.StatusOK, responses)
+}
+
+// listExchangeRatesByCurrency godoc
+// @Summary List exchange rates by currency
+// @Description Retrieves all exchange rates for a specific currency
+// @Tags exchange rates
+// @Produce  json
+// @Param   currencyCode path string true "Currency Code (3 letters)"
+// @Success 200 {array}  dto.ExchangeRateResponse
+// @Failure 400 {object} map[string]string "Invalid currency code format"
+// @Failure 500 {object} map[string]string "Failed to retrieve exchange rates"
+// @Security BearerAuth
+// @Router /exchange-rates/currency/{currencyCode} [get]
+func (h *exchangeRateHandler) listExchangeRatesByCurrency(c *gin.Context) {
+	logger := middleware.GetLoggerFromCtx(c.Request.Context())
+	currencyCode := c.Param("currencyCode")
+
+	if len(currencyCode) != 3 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Currency code must be 3 letters"})
+		return
+	}
+
+	logger = logger.With(slog.String("currency_code", currencyCode))
+	logger.Info("Received request to list exchange rates by currency")
+
+	rates, err := h.exchangeRateService.ListExchangeRatesByCurrency(c.Request.Context(), currencyCode)
+	if err != nil {
+		logger.Error("Failed to list exchange rates by currency", slog.String("error", err.Error()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve exchange rates"})
+		return
+	}
+
+	responses := make([]dto.ExchangeRateResponse, len(rates))
+	for i, rate := range rates {
+		rateCopy := rate // Create a local copy to avoid taking the address of the loop variable
+		responses[i] = dto.ToExchangeRateResponse(&rateCopy)
+	}
+
+	logger.Info("Successfully retrieved exchange rates by currency")
+	c.JSON(http.StatusOK, responses)
 }

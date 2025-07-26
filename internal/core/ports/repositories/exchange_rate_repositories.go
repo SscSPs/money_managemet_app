@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 )
@@ -10,6 +11,12 @@ import (
 type ExchangeRateReader interface {
 	// FindExchangeRate retrieves an exchange rate between two currencies.
 	FindExchangeRate(ctx context.Context, fromCurrencyCode, toCurrencyCode string) (*domain.ExchangeRate, error)
+	// FindExchangeRateByID retrieves an exchange rate by its ID.
+	FindExchangeRateByID(ctx context.Context, rateID string) (*domain.ExchangeRate, error)
+	// FindExchangeRateByIDs retrieves exchange rates by their IDs.
+	FindExchangeRateByIDs(ctx context.Context, rateIDs []string) ([]domain.ExchangeRate, error)
+	// ListExchangeRates retrieves all exchange rates with optional filtering.
+	ListExchangeRates(ctx context.Context, fromCurrency, toCurrency *string, effectiveDate *time.Time, page, pageSize int) ([]domain.ExchangeRate, int, error)
 }
 
 // ExchangeRateWriter defines write operations for exchange rate data
