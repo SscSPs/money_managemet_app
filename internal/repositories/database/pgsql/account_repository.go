@@ -82,7 +82,7 @@ func (r *PgxAccountRepository) SaveAccount(ctx context.Context, account domain.A
 		if errors.As(err, &pgErr) {
 			if pgErr.Code == "23505" { // Unique violation
 				// Treat unique violation as a validation error
-				return apperrors.NewConflictError("account with ID "+modelAcc.AccountID+" already exists")
+				return apperrors.NewConflictError("account with ID " + modelAcc.AccountID + " already exists")
 			}
 		}
 		return apperrors.NewAppError(500, "failed to save account "+modelAcc.AccountID, err)
@@ -129,7 +129,7 @@ func (r *PgxAccountRepository) FindAccountByCFID(ctx context.Context, cfid strin
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.NewNotFoundError("account with CFID "+cfid+" not found in workplace "+workplaceID)
+			return nil, apperrors.NewNotFoundError("account with CFID " + cfid + " not found in workplace " + workplaceID)
 		}
 		return nil, apperrors.NewAppError(500, "failed to query account by CFID", err)
 	}
@@ -187,7 +187,7 @@ func (r *PgxAccountRepository) FindAccountByID(ctx context.Context, accountID st
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperrors.NewNotFoundError("account with ID "+accountID+" not found")
+			return nil, apperrors.NewNotFoundError("account with ID " + accountID + " not found")
 		}
 		return nil, apperrors.NewAppError(500, "failed to find account by ID", err)
 	}
@@ -513,7 +513,7 @@ func (r *PgxAccountRepository) FindAccountsByIDsForUpdate(ctx context.Context, t
 				missingIDs = append(missingIDs, id)
 			}
 		}
-		return nil, apperrors.NewNotFoundError("accounts not found: "+fmt.Sprint(missingIDs))
+		return nil, apperrors.NewNotFoundError("accounts not found: " + fmt.Sprint(missingIDs))
 	}
 
 	return accountsMap, nil
@@ -573,7 +573,7 @@ func (r *PgxAccountRepository) UpdateAccountBalancesInTx(ctx context.Context, tx
 
 	// If any accounts failed to update, return an error
 	if len(failedAccounts) > 0 {
-		return apperrors.NewNotFoundError("one or more accounts not found or inactive: "+fmt.Sprint(failedAccounts))
+		return apperrors.NewNotFoundError("one or more accounts not found or inactive: " + fmt.Sprint(failedAccounts))
 	}
 
 	return nil

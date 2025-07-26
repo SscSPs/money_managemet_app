@@ -90,6 +90,12 @@ func NewGatewayTimeoutError(message string) *AppError {
 	return NewAppError(http.StatusGatewayTimeout, message, nil)
 }
 
+// NewValidationError creates an AppError for validation issues with a custom message.
+// It's an alias for NewValidationFailedError for backward compatibility.
+func NewValidationError(message string) *AppError {
+	return NewValidationFailedError(message)
+}
+
 // NewValidationFailedError creates an AppError for validation issues, typically a 422 Unprocessable Entity or 400 Bad Request.
 func NewValidationFailedError(message string) *AppError {
 	// HTTP 422 is often used for validation errors, but 400 is also common.

@@ -28,9 +28,14 @@ COPY . .
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 
+# Install make and other build essentials
+RUN apt-get update && apt-get install -y make
+
+# Set the default shell to bash
+SHELL ["/bin/bash", "-c"]
+
 # Build the application
 RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/root/.cache/go-build \
     if [ "$TARGETARCH" = "arm64" ]; then \
         make release-static-arm64; \

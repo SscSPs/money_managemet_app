@@ -2,9 +2,10 @@ package pgsql
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
-
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -33,7 +34,7 @@ func (r *BaseRepository) Commit(ctx context.Context, tx pgx.Tx) error {
 
 // Rollback rolls back a transaction
 func (r *BaseRepository) Rollback(ctx context.Context, tx pgx.Tx) error {
-	if err := tx.Rollback(ctx); err != nil {
+	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, sql.ErrTxDone) {
 		return apperrors.NewAppError(500, "failed to rollback transaction", err)
 	}
 	return nil
