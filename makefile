@@ -3,41 +3,17 @@
 # Define default target
 .DEFAULT_GOAL := help
 
-# Set OS-specific variables
-ifeq ($(OS),Windows_NT)
-    # Windows
-    DETECTED_OS := Windows
-    BIN_EXT := .exe
-    RM_CMD := del /q
-    MKDIR_CMD := if not exist
-    MKDIR_FLAGS :=
-    RM_RF_CMD := rmdir /s /q
-    RM_RF_FLAGS :=
-    SHELL := cmd
-    RM_DIR_CMD = if exist $(1) rmdir /s /q $(1)
-else
-    # Unix-like (macOS, Linux)
-    DETECTED_OS := $(shell uname -s)
-    BIN_EXT :=
-    RM_CMD := rm -f
-    MKDIR_CMD := mkdir -p
-    MKDIR_FLAGS :=
-    RM_RF_CMD := rm -rf
-    RM_RF_FLAGS :=
-    SHELL := /bin/bash
-    RM_DIR_CMD = rm -rf $(1)
-endif
-
 # Variables
 APP_NAME := mma_backend
 BIN_DIR := bin
-BIN_PATH := $(BIN_DIR)/$(APP_NAME)$(BIN_EXT)
+BIN_PATH := $(BIN_DIR)/$(APP_NAME)
+GO_FILES := $(shell find . -name '*.go' -not -path './vendor/*')
 BASE_ENTRY := ./cmd/mma_backend
 
 # Clean the build artifacts
 clean:
 	@echo "Cleaning up..."
-	@if exist "$(subst /,\,$(BIN_PATH))" $(RM_CMD) "$(subst /,\,$(BIN_PATH))"
+	rm -f $(BIN_PATH)
 
 # Generate Swagger documentation
 swagger:
@@ -47,35 +23,32 @@ swagger:
 # Build the binary (dynamic)
 build: clean swagger
 	@echo "Building the project..."
-	@if not exist "$(subst /,\,$(BIN_DIR))" mkdir "$(subst /,\,$(BIN_DIR))"
-	go build -o "$(BIN_PATH)" $(BASE_ENTRY)
+	go build -o $(BIN_PATH) ${BASE_ENTRY}
 
 # Build a statically linked binary (for Docker scratch or distroless)
 build-static: clean swagger
 	@echo "Building static binary for Linux AMD64..."
-	@if not exist "$(subst /,\,$(BIN_DIR))" mkdir "$(subst /,\,$(BIN_DIR))"
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -a -installsuffix cgo -o "$(BIN_PATH)" $(BASE_ENTRY)
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -a -installsuffix cgo -o $(BIN_PATH) ${BASE_ENTRY}
 
 # Build a statically linked binary for ARM64 (for Docker scratch or distroless)
 build-static-arm64: clean swagger
 	@echo "Building static binary for Linux ARM64..."
-	@if not exist "$(subst /,\,$(BIN_DIR))" mkdir "$(subst /,\,$(BIN_DIR))"
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -a -installsuffix cgo -o "$(BIN_PATH)-arm64" $(BASE_ENTRY)
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -a -installsuffix cgo -o $(BIN_PATH)-arm64 ${BASE_ENTRY}
 
 # Run the application with default settings after passing unit tests
 run: test build
 	@echo "Running the application(dev mode) after unit tests..."
-	@"$(BIN_PATH)"
+	$(BIN_PATH)
 
 # Run the application WITHOUT running tests first
 run-fast: build
 	@echo "Running the application(dev mode) without tests..."
-	@"$(BIN_PATH)"
+	$(BIN_PATH)
 
 # Run the application after passing ALL tests
 run-all-tests: test-all build
 	@echo "Running the application(dev mode) after all tests..."
-	@"$(BIN_PATH)"
+	$(BIN_PATH)
 
 # Test the application (Unit Tests Only)
 test:
