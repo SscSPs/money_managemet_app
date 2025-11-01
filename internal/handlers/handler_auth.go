@@ -334,7 +334,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 // @Summary Get current user details
 // @Description Retrieves details for the currently authenticated user.
 // @Tags auth
-// @Security ApiKeyAuth
 // @Produce json
 // @Success 200 {object} dto.UserMeResponse
 // @Failure 401 {object} ErrorResponse
@@ -343,17 +342,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 func (h *AuthHandler) GetMe(c *gin.Context) {
 	logger := middleware.GetLoggerFromCtx(c)
 
-	userID, ok := c.Get("userID")
-	if !ok {
-		logger.Error("User ID not found in context")
-		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "Unauthorized: User ID missing"})
-		return
-	}
-
-	userUUID, ok := userID.(string)
-	if !ok {
-		logger.Error("User ID in context is not a string", slog.Any("userID", userID))
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error: Invalid user ID format"})
+	userUUID, exists := middleware.GetUserIDFromContext(c)
+	if !exists || userUUID == "" {
+		logger.Error("User ID not found in context for GetMe")
+		// This shouldn't happen if auth middleware is working correctly
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "User context not found"})
 		return
 	}
 

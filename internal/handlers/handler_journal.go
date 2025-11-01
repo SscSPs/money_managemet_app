@@ -45,7 +45,7 @@ func registerJournalRoutes(rg *gin.RouterGroup, journalService portssvc.JournalS
 		journals.GET("/:id", h.getJournal)
 		journals.GET("", h.listJournals)
 		journals.PUT("/:id", h.updateJournal)
-		
+
 		journals.POST("/:id/reverse", h.reverseJournal)
 	}
 }
@@ -293,8 +293,6 @@ func (h *journalHandler) updateJournal(c *gin.Context) {
 	logger.Info("Journal updated successfully")
 	c.JSON(http.StatusOK, dto.ToJournalResponse(updatedJournal))
 }
-
-
 
 // reverseJournal godoc
 // @Summary Reverse a journal entry in workplace

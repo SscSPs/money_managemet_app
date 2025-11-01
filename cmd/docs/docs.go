@@ -110,11 +110,6 @@ const docTemplate = `{
         },
         "/auth/me": {
             "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
                 "description": "Retrieves details for the currently authenticated user.",
                 "produces": [
                     "application/json"
@@ -3185,6 +3180,8 @@ const docTemplate = `{
                 "RoleRemoved": "For users who have been removed from the workplace"
             },
             "x-enum-descriptions": [
+                "",
+                "",
                 "Users with read-only access to workplace data",
                 "For users who have been removed from the workplace"
             ],
@@ -3453,10 +3450,22 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "amount": {
-                    "description": "Use custom validator",
+                    "description": "Amount in journal's base currency",
                     "type": "number"
                 },
+                "exchangeRateId": {
+                    "description": "Reference to exchange rate used",
+                    "type": "string"
+                },
                 "notes": {
+                    "type": "string"
+                },
+                "originalAmount": {
+                    "description": "Original amount in transaction's currency",
+                    "type": "number"
+                },
+                "originalCurrency": {
+                    "description": "Original currency code (ISO 4217)",
                     "type": "string"
                 },
                 "transactionDate": {
@@ -3770,16 +3779,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "amount": {
-                    "description": "Always positive",
                     "type": "number"
                 },
-                "createdAt": {
-                    "type": "string"
+                "exchangeRate": {
+                    "type": "number"
                 },
-                "createdBy": {
-                    "type": "string"
-                },
-                "currencyCode": {
+                "exchangeRateId": {
                     "type": "string"
                 },
                 "journalDate": {
@@ -3794,12 +3799,16 @@ const docTemplate = `{
                 "notes": {
                     "type": "string"
                 },
+                "originalAmount": {
+                    "type": "number"
+                },
+                "originalCurrency": {
+                    "type": "string"
+                },
                 "runningBalance": {
-                    "description": "Added running balance",
                     "type": "number"
                 },
                 "transactionDate": {
-                    "description": "Date of the actual transaction",
                     "type": "string"
                 },
                 "transactionID": {

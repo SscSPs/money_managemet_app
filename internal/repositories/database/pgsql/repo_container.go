@@ -26,3 +26,8 @@ func NewRepositoryProvider(dbPool *pgxpool.Pool) portsrepo.RepositoryProvider {
 		APITokenRepo:     apiTokenRepo,
 	}
 }
+
+// newPgxExchangeRateRepository creates a new repository for exchange rate data.
+func newPgxExchangeRateRepository(pool *pgxpool.Pool) portsrepo.ExchangeRateRepositoryWithTx {
+	return NewPgxExchangeRateRepository(pool)
+}

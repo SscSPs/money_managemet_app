@@ -9,7 +9,6 @@ import (
 
 	"github.com/SscSPs/money_managemet_app/internal/apperrors"
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
-	portsrepo "github.com/SscSPs/money_managemet_app/internal/core/ports/repositories"
 	"github.com/SscSPs/money_managemet_app/internal/models"
 	"github.com/SscSPs/money_managemet_app/internal/utils/mapping"
 	"github.com/jackc/pgx/v5"
@@ -22,14 +21,12 @@ type PgxExchangeRateRepository struct {
 	BaseRepository
 }
 
-// newPgxExchangeRateRepository creates a new PgxExchangeRateRepository.
-func newPgxExchangeRateRepository(db *pgxpool.Pool) portsrepo.ExchangeRateRepositoryWithTx {
+// NewPgxExchangeRateRepository creates a new PgxExchangeRateRepository.
+func NewPgxExchangeRateRepository(db *pgxpool.Pool) *PgxExchangeRateRepository {
 	return &PgxExchangeRateRepository{
 		BaseRepository: BaseRepository{Pool: db},
 	}
 }
-
-var _ portsrepo.ExchangeRateRepositoryWithTx = (*PgxExchangeRateRepository)(nil)
 
 // FindExchangeRateByID retrieves an exchange rate by its ID.
 func (r *PgxExchangeRateRepository) FindExchangeRateByID(ctx context.Context, rateID string) (*domain.ExchangeRate, error) {
@@ -87,9 +84,7 @@ func (r *PgxExchangeRateRepository) SaveExchangeRate(ctx context.Context, rate d
 	}
 
 	if err != nil {
-		if rbErr := tx.Rollback(ctx); rbErr != nil {
-			return apperrors.NewAppError(500, "failed to rollback transaction", rbErr)
-		}
+		_ = r.Rollback(ctx, tx)
 		return apperrors.NewAppError(500, "failed to save exchange rate", err)
 	}
 

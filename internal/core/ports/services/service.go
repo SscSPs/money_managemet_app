@@ -13,5 +13,5 @@ type ServiceContainer struct {
 	Reporting          ReportingService
 	TokenService       TokenSvcFacade
 	GoogleOAuthHandler GoogleOAuthHandlerSvcFacade
-	APITokenSvc       APITokenSvc
+	APITokenSvc        APITokenSvc
 }

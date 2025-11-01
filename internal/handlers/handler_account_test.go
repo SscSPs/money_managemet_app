@@ -154,6 +154,11 @@ type AccountHandlerTestSuite struct {
 	// No need for handler instance field, routes are registered once
 }
 
+// decimalPtr returns a pointer to the provided decimal.Decimal value.
+func decimalPtr(d decimal.Decimal) *decimal.Decimal {
+	return &d
+}
+
 // generateTestToken creates a dummy JWT for testing.
 func (suite *AccountHandlerTestSuite) generateTestToken(userID string) string {
 	claims := jwt.RegisteredClaims{
@@ -201,9 +206,26 @@ func (suite *AccountHandlerTestSuite) TestListTransactionsByAccount_Success() {
 	limit := 10
 
 	// Prepare expected transactions
+	usd := "USD"
 	expectedTransactions := []dto.TransactionResponse{
-		{TransactionID: uuid.NewString(), JournalID: uuid.NewString(), AccountID: accountID, Amount: decimal.NewFromInt(100), TransactionType: domain.Debit, CurrencyCode: "USD", CreatedAt: time.Now()},
-		{TransactionID: uuid.NewString(), JournalID: uuid.NewString(), AccountID: accountID, Amount: decimal.NewFromInt(50), TransactionType: domain.Credit, CurrencyCode: "USD", CreatedAt: time.Now().Add(-time.Hour)},
+		{
+			TransactionID:    uuid.NewString(),
+			JournalID:        uuid.NewString(),
+			AccountID:        accountID,
+			Amount:           decimal.NewFromInt(100),
+			TransactionType:  domain.Debit,
+			OriginalAmount:   decimalPtr(decimal.NewFromInt(100)),
+			OriginalCurrency: &usd,
+		},
+		{
+			TransactionID:    uuid.NewString(),
+			JournalID:        uuid.NewString(),
+			AccountID:        accountID,
+			Amount:           decimal.NewFromInt(50),
+			TransactionType:  domain.Credit,
+			OriginalAmount:   decimalPtr(decimal.NewFromInt(50)),
+			OriginalCurrency: &usd,
+		},
 	}
 	expectedResponse := &dto.ListTransactionsResponse{
 		Transactions: expectedTransactions,

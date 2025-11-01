@@ -118,11 +118,9 @@ func (suite *ExchangeRateServiceTestSuite) TestCreateExchangeRate_Success() {
 		DateEffective:    time.Now().Truncate(24 * time.Hour),
 	}
 
-	// Mock currency validation success
+	// Mock rate save success
 	suite.mockCurrencySvc.On("GetCurrencyByCode", ctx, fromCode).Return(&domain.Currency{CurrencyCode: fromCode}, nil).Once()
 	suite.mockCurrencySvc.On("GetCurrencyByCode", ctx, toCode).Return(&domain.Currency{CurrencyCode: toCode}, nil).Once()
-
-	// Mock rate save success
 	suite.mockRateRepo.On("SaveExchangeRate", ctx, mock.AnythingOfType("domain.ExchangeRate")).Return(nil).Once()
 
 	rate, err := suite.service.CreateExchangeRate(ctx, req, creatorUserID)
@@ -226,7 +224,7 @@ func (suite *ExchangeRateServiceTestSuite) TestCreateExchangeRate_SaveDuplicate(
 	req := dto.CreateExchangeRateRequest{FromCurrencyCode: fromCode, ToCurrencyCode: toCode, Rate: decimal.NewFromFloat(1)}
 	duplicateErr := fmt.Errorf("%w: exchange rate exists", apperrors.ErrDuplicate)
 
-	// Mock currency validation success
+	// Mock currency service calls
 	suite.mockCurrencySvc.On("GetCurrencyByCode", ctx, fromCode).Return(&domain.Currency{CurrencyCode: fromCode}, nil).Once()
 	suite.mockCurrencySvc.On("GetCurrencyByCode", ctx, toCode).Return(&domain.Currency{CurrencyCode: toCode}, nil).Once()
 
@@ -271,8 +269,6 @@ func (suite *ExchangeRateServiceTestSuite) TestGetExchangeRate_InvalidCode() {
 	suite.ErrorIs(err, apperrors.ErrValidation)
 }
 
-// ConvertAmount method doesn't exist in the service interface, so we don't test it
-
 func (suite *ExchangeRateServiceTestSuite) TestGetExchangeRateByID_Success() {
 	ctx := context.Background()
 	rateID := "rate_123"
@@ -303,8 +299,7 @@ func (suite *ExchangeRateServiceTestSuite) TestGetExchangeRateByID_NotFound() {
 
 	suite.Require().Error(err)
 	suite.Nil(rate)
-	// Service wraps not found error, check for wrapped error
-	suite.Contains(err.Error(), "failed to get exchange rate in service")
+	suite.ErrorIs(err, apperrors.ErrNotFound)
 	suite.mockRateRepo.AssertExpectations(suite.T())
 }
 

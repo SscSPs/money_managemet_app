@@ -19,11 +19,14 @@ type CreateJournalRequest struct {
 
 // CreateTransactionRequest defines data for a single transaction within a journal creation request.
 type CreateTransactionRequest struct {
-	AccountID       string                 `json:"accountID" binding:"required,uuid"`
-	Amount          decimal.Decimal        `json:"amount" binding:"required,decimal_gtz"` // Use custom validator
-	TransactionType domain.TransactionType `json:"transactionType" binding:"required,oneof=DEBIT CREDIT"`
-	TransactionDate *time.Time             `json:"transactionDate,omitempty"` // Optional, defaults to journal date if not provided
-	Notes           string                 `json:"notes"`
+	AccountID        string                 `json:"accountID" binding:"required,uuid"`
+	Amount           decimal.Decimal        `json:"amount" binding:"required,decimal_gtz"` // Amount in journal's base currency
+	OriginalAmount   *decimal.Decimal       `json:"originalAmount,omitempty"`              // Original amount in transaction's currency
+	OriginalCurrency *string                `json:"originalCurrency,omitempty"`            // Original currency code (ISO 4217)
+	ExchangeRateID   *string                `json:"exchangeRateId,omitempty"`              // Reference to exchange rate used
+	TransactionType  domain.TransactionType `json:"transactionType" binding:"required,oneof=DEBIT CREDIT"`
+	TransactionDate  *time.Time             `json:"transactionDate,omitempty"` // Optional, defaults to journal date if not provided
+	Notes            string                 `json:"notes"`
 	// CurrencyCode is inherited from the Journal
 }
 
@@ -94,35 +97,48 @@ type TransactionResponse struct {
 	TransactionID      string                 `json:"transactionID"`
 	JournalID          string                 `json:"journalID"`
 	AccountID          string                 `json:"accountID"`
-	Amount             decimal.Decimal        `json:"amount"` // Always positive
+	Amount             decimal.Decimal        `json:"amount"`
+	OriginalAmount     *decimal.Decimal       `json:"originalAmount,omitempty"`
+	OriginalCurrency   *string                `json:"originalCurrency,omitempty"`
+	ExchangeRate       *decimal.Decimal       `json:"exchangeRate,omitempty"`
+	ExchangeRateID     *string                `json:"exchangeRateId,omitempty"`
 	TransactionType    domain.TransactionType `json:"transactionType"`
-	CurrencyCode       string                 `json:"currencyCode"`
 	Notes              string                 `json:"notes"`
-	TransactionDate    time.Time              `json:"transactionDate"` // Date of the actual transaction
-	CreatedAt          time.Time              `json:"createdAt"`
-	CreatedBy          string                 `json:"createdBy"`
-	RunningBalance     decimal.Decimal        `json:"runningBalance,omitempty"` // Added running balance
-	JournalDate        time.Time              `json:"journalDate,omitempty"`
-	JournalDescription string                 `json:"journalDescription,omitempty"`
+	TransactionDate    time.Time              `json:"transactionDate"`
+	RunningBalance     decimal.Decimal        `json:"runningBalance,omitempty"`
+	JournalDate        time.Time              `json:"journalDate"`
+	JournalDescription string                 `json:"journalDescription"`
 }
 
 // ToTransactionResponse converts domain.Transaction to TransactionResponse DTO.
 func ToTransactionResponse(t *domain.Transaction) TransactionResponse {
-	return TransactionResponse{
+	txnResponse := TransactionResponse{
 		TransactionID:      t.TransactionID,
 		JournalID:          t.JournalID,
 		AccountID:          t.AccountID,
-		Amount:             t.Amount, // Already positive in domain
+		Amount:             t.Amount,
 		TransactionType:    t.TransactionType,
-		CurrencyCode:       t.CurrencyCode,
 		Notes:              t.Notes,
 		TransactionDate:    t.TransactionDate,
-		CreatedAt:          t.CreatedAt,
-		CreatedBy:          t.CreatedBy,
-		RunningBalance:     t.RunningBalance, // Added running balance
+		RunningBalance:     t.RunningBalance,
 		JournalDate:        t.JournalDate,
 		JournalDescription: t.JournalDescription,
 	}
+
+	// Add multi-currency fields if available
+	if t.OriginalAmount != nil && t.OriginalCurrency != nil {
+		txnResponse.OriginalAmount = t.OriginalAmount
+		txnResponse.OriginalCurrency = t.OriginalCurrency
+		txnResponse.ExchangeRateID = t.ExchangeRateID
+
+		// Calculate exchange rate if both original and converted amounts are available
+		if !t.Amount.IsZero() && !t.OriginalAmount.IsZero() {
+			exchangeRate := t.Amount.Div(*t.OriginalAmount)
+			txnResponse.ExchangeRate = &exchangeRate
+		}
+	}
+
+	return txnResponse
 }
 
 // ToTransactionResponses converts a slice of domain.Transaction to DTOs.

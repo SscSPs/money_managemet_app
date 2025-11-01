@@ -98,7 +98,6 @@ func NewValidationError(message string) *AppError {
 
 // NewValidationFailedError creates an AppError for validation issues, typically a 422 Unprocessable Entity or 400 Bad Request.
 func NewValidationFailedError(message string) *AppError {
-	// HTTP 422 is often used for validation errors, but 400 is also common.
 	return NewAppError(http.StatusUnprocessableEntity, message, nil)
 }
 

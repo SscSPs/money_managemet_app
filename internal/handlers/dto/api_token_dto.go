@@ -23,8 +23,8 @@ type APITokenResponse struct {
 
 // CreateAPITokenResponse represents the response when creating a new API token
 type CreateAPITokenResponse struct {
-	TokenString string          `json:"token"` // Only shown once when created
-	Details    APITokenResponse `json:"details"`
+	TokenString string           `json:"token"` // Only shown once when created
+	Details     APITokenResponse `json:"details"`
 }
 
 // ListAPITokensResponse represents a list of API tokens

@@ -112,6 +112,13 @@ func (s *exchangeRateService) GetExchangeRateByID(ctx context.Context, rateID st
 
 	rate, err := s.exchangeRateRepo.FindExchangeRateByID(ctx, rateID)
 	if err != nil {
+		// Normalize any 404-like AppError to the sentinel ErrNotFound so tests using errors.Is pass
+		if appErr, ok := err.(*apperrors.AppError); ok && appErr.Code == apperrors.ErrNotFound.Code {
+			return nil, apperrors.ErrNotFound
+		}
+		if errors.Is(err, apperrors.ErrNotFound) {
+			return nil, apperrors.ErrNotFound
+		}
 		logger.Error("Failed to find exchange rate in repository", slog.String("error", err.Error()), slog.String("rate_id", rateID))
 		return nil, fmt.Errorf("failed to get exchange rate in service: %w", err)
 	}
@@ -153,6 +160,32 @@ func (s *exchangeRateService) GetExchangeRate(ctx context.Context, fromCode, toC
 
 	logger.Debug("Exchange rate retrieved successfully from service", slog.String("rate_id", rate.ExchangeRateID))
 	return rate, nil
+}
+
+// ConvertAmount converts an amount from one currency to another using the latest rate
+func (s *exchangeRateService) ConvertAmount(ctx context.Context, fromAmount decimal.Decimal, fromCurrency, toCurrency string) (decimal.Decimal, *domain.ExchangeRate, error) {
+	from := strings.ToUpper(strings.TrimSpace(fromCurrency))
+	to := strings.ToUpper(strings.TrimSpace(toCurrency))
+	if len(from) != 3 || len(to) != 3 {
+		return decimal.Zero, nil, apperrors.ErrValidation
+	}
+	rate, err := s.exchangeRateRepo.FindExchangeRate(ctx, from, to)
+	if err != nil {
+		if appErr, ok := err.(*apperrors.AppError); ok && appErr.Code == apperrors.ErrNotFound.Code {
+			return decimal.Zero, nil, apperrors.ErrNotFound
+		}
+		if errors.Is(err, apperrors.ErrNotFound) {
+			return decimal.Zero, nil, apperrors.ErrNotFound
+		}
+		return decimal.Zero, nil, err
+	}
+	converted := fromAmount.Mul(rate.Rate)
+	return converted, rate, nil
+}
+
+// GetCurrencyService exposes the underlying currency service (used in tests)
+func (s *exchangeRateService) GetCurrencyService() portssvc.CurrencySvcFacade {
+	return s.currencyService
 }
 
 // ListExchangeRates retrieves all available exchange rates.
