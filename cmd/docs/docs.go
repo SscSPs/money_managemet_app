@@ -3185,6 +3185,8 @@ const docTemplate = `{
                 "RoleRemoved": "For users who have been removed from the workplace"
             },
             "x-enum-descriptions": [
+                "",
+                "",
                 "Users with read-only access to workplace data",
                 "For users who have been removed from the workplace"
             ],
