@@ -1,5 +1,5 @@
 # Build stage for downloading dependencies
-FROM golang:1.24.2 AS deps
+FROM --platform=$BUILDPLATFORM golang:1.24.2 AS deps
 WORKDIR /app
 
 # Copy only the dependency files first for better caching
@@ -25,8 +25,8 @@ RUN go install github.com/swaggo/swag/cmd/swag@latest
 COPY . .
 
 # Build arguments
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETOS
+ARG TARGETARCH
 
 # Install make and other build essentials
 RUN apt-get update && apt-get install -y make
@@ -37,16 +37,8 @@ SHELL ["/bin/bash", "-c"]
 # Build the application
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    if [ "$TARGETARCH" = "arm64" ]; then \
-        make release-static-arm64; \
-    else \
-        make release-static; \
-    fi && \
-    if [ "$TARGETARCH" = "arm64" ]; then \
-        mv /app/bin/mma_backend-arm64 /app/bin/app_binary; \
-    else \
-        mv /app/bin/mma_backend /app/bin/app_binary; \
-    fi
+    make swagger && \
+    GOOS=$TARGETOS GOARCH=$TARGETARCH CGO_ENABLED=0 go build -a -installsuffix cgo -o /app/bin/app_binary ./cmd/mma_backend
 
 # Final image with distroless (smaller than alpine, more secure than scratch)
 FROM gcr.io/distroless/static-debian12:latest-${TARGETARCH:-amd64}

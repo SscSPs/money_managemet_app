@@ -2,7 +2,6 @@ package dto
 
 import (
 	"time"
-
 	"github.com/SscSPs/money_managemet_app/internal/core/domain"
 )
 

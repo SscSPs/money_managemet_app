@@ -50,6 +50,19 @@ definitions:
     - RoleMember
     - RoleReadOnly
     - RoleRemoved
+  dto.APITokenResponse:
+    properties:
+      createdAt:
+        type: string
+      expiresAt:
+        type: string
+      id:
+        type: string
+      lastUsedAt:
+        type: string
+      name:
+        type: string
+    type: object
   dto.AccountAmountResponse:
     properties:
       accountID:
@@ -135,6 +148,16 @@ definitions:
           totalLiabilities:
             type: number
         type: object
+    type: object
+  dto.CreateAPITokenRequest:
+    type: object
+  dto.CreateAPITokenResponse:
+    properties:
+      details:
+        $ref: '#/definitions/dto.APITokenResponse'
+      token:
+        description: Only shown once when created
+        type: string
     type: object
   dto.CreateAccountRequest:
     properties:
@@ -594,59 +617,6 @@ definitions:
       message:
         description: Message contains the error message
         example: An error occurred
-        type: string
-    type: object
-  handlers.APITokenResponse:
-    description: API token details returned in API responses
-    properties:
-      createdAt:
-        description: CreatedAt is the timestamp when the token was created
-        example: "2023-01-01T12:00:00Z"
-        type: string
-      expiresAt:
-        description: ExpiresAt is the timestamp when the token will expire (optional)
-        example: "2024-01-01T12:00:00Z"
-        type: string
-      id:
-        description: ID is the unique identifier of the token
-        example: 550e8400-e29b-41d4-a716-446655440000
-        type: string
-      lastUsedAt:
-        description: LastUsedAt is the timestamp when the token was last used (optional)
-        example: "2023-01-01T12:00:00Z"
-        type: string
-      name:
-        description: Name is the user-defined name for the token
-        example: My API Token
-        type: string
-    type: object
-  handlers.CreateAPITokenRequest:
-    description: Request body for creating a new API token
-    properties:
-      expiresIn:
-        description: ExpiresIn is the duration in seconds after which the token will
-          expire (optional)
-        example: 2592000
-        type: integer
-      name:
-        description: Name is a user-defined name for the token (3-100 characters)
-        example: My API Token
-        maxLength: 100
-        minLength: 3
-        type: string
-    required:
-    - name
-    type: object
-  handlers.CreateAPITokenResponse:
-    description: Response returned when a new API token is created
-    properties:
-      details:
-        allOf:
-        - $ref: '#/definitions/handlers.APITokenResponse'
-        description: Details contains the token metadata
-      token:
-        description: Token is the actual API token (only shown once at creation)
-        example: mma_abc123...
         type: string
     type: object
   handlers.ErrorResponse:
@@ -1211,9 +1181,8 @@ paths:
         "200":
           description: OK
           schema:
-            description: A list of API tokens
             items:
-              $ref: '#/definitions/handlers.APITokenResponse'
+              $ref: '#/definitions/dto.APITokenResponse'
             type: array
         "401":
           description: Unauthorized
@@ -1240,14 +1209,14 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/handlers.CreateAPITokenRequest'
+          $ref: '#/definitions/dto.CreateAPITokenRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/handlers.CreateAPITokenResponse'
+            $ref: '#/definitions/dto.CreateAPITokenResponse'
         "400":
           description: Bad Request
           schema:

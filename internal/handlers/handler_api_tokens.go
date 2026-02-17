@@ -2,9 +2,10 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/SscSPs/money_managemet_app/internal/core/ports/services"
-	"github.com/SscSPs/money_managemet_app/internal/handlers/dto"
+	"github.com/SscSPs/money_managemet_app/internal/dto"
 	"github.com/SscSPs/money_managemet_app/internal/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -16,43 +17,6 @@ import (
 type APIErrorResponse struct {
 	// Message contains the error message
 	Message string `json:"message" example:"An error occurred"`
-}
-
-// APITokenResponse represents an API token in the API responses
-// @Description API token details returned in API responses
-type APITokenResponse struct {
-	// ID is the unique identifier of the token
-	ID string `json:"id" example:"550e8400-e29b-41d4-a716-446655440000"`
-	// Name is the user-defined name for the token
-	Name string `json:"name" example:"My API Token"`
-	// LastUsedAt is the timestamp when the token was last used (optional)
-	LastUsedAt *string `json:"lastUsedAt,omitempty" example:"2023-01-01T12:00:00Z"`
-	// ExpiresAt is the timestamp when the token will expire (optional)
-	ExpiresAt *string `json:"expiresAt,omitempty" example:"2024-01-01T12:00:00Z"`
-	// CreatedAt is the timestamp when the token was created
-	CreatedAt string `json:"createdAt" example:"2023-01-01T12:00:00Z"`
-}
-
-// ListAPITokensResponse represents a list of API tokens
-// @Description A list of API tokens
-type ListAPITokensResponse []APITokenResponse
-
-// CreateAPITokenRequest represents the request body for creating a new API token
-// @Description Request body for creating a new API token
-type CreateAPITokenRequest struct {
-	// Name is a user-defined name for the token (3-100 characters)
-	Name string `json:"name" binding:"required,min=3,max=100" example:"My API Token"`
-	// ExpiresIn is the duration in seconds after which the token will expire (optional)
-	ExpiresIn *int64 `json:"expiresIn,omitempty" example:"2592000"` // 30 days in seconds
-}
-
-// CreateAPITokenResponse represents the response when creating a new API token
-// @Description Response returned when a new API token is created
-type CreateAPITokenResponse struct {
-	// Token is the actual API token (only shown once at creation)
-	Token string `json:"token" example:"mma_abc123..."`
-	// Details contains the token metadata
-	Details APITokenResponse `json:"details"`
 }
 
 // APITokenHandler handles HTTP requests for API token operations
@@ -95,8 +59,8 @@ func RegisterAPITokenRoutes(router *gin.RouterGroup, tokenSvc services.APITokenS
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body CreateAPITokenRequest true "Token creation details"
-// @Success 201 {object} CreateAPITokenResponse
+// @Param request body dto.CreateAPITokenRequest true "Token creation details"
+// @Success 201 {object} dto.CreateAPITokenResponse
 // @Failure 400 {object} APIErrorResponse
 // @Failure 401 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
@@ -116,8 +80,15 @@ func (h *APITokenHandler) CreateToken(c *gin.Context) {
 		return
 	}
 
+	// Convert expiresIn from seconds to time.Duration if provided
+	var expiresIn *time.Duration
+	if req.ExpiresIn != nil {
+		d := time.Duration(*req.ExpiresIn) * time.Second
+		expiresIn = &d
+	}
+
 	// Create the token
-	tokenStr, token, err := h.tokenSvc.CreateToken(c.Request.Context(), creatorUserID, req.Name, req.ExpiresIn)
+	tokenStr, token, err := h.tokenSvc.CreateToken(c.Request.Context(), creatorUserID, req.Name, expiresIn)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIErrorResponse{Message: "Failed to create token: " + err.Error()})
 		return
@@ -133,7 +104,7 @@ func (h *APITokenHandler) CreateToken(c *gin.Context) {
 // @Tags tokens
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} ListAPITokensResponse
+// @Success 200 {object} dto.ListAPITokensResponse
 // @Failure 401 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
 // @Router /tokens [get]
